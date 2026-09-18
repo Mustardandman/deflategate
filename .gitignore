@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Production build output (Render builds this on their servers via `npm run build`)
+dist/
+dist-ssr/
+
+# Environment / Local variables
+.env
+.env.local
+*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

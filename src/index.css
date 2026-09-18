@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes flyIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) translateY(60px);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.04) translateY(-6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-fly-card {
+  animation: flyIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
