@@ -90,23 +90,35 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
   const highestTeamId = highestBidderPlayer ? getEffectiveTeamId(highestBidderPlayer) : null;
   const bidIncrement = (highestTeamId === 'bears') ? 2 : 1;
 
-  // Minimum required bid amount: if no bid placed yet, min is card.minBid
-  const nextBid = activeCard ? (G.board.highestBidder !== null ? Math.max(activeCard.minBid, G.board.highestBid + bidIncrement) : activeCard.minBid) : 0;
   const myPlayer = G.players[effectivePlayerID];
+  const eligibleBidders = Object.keys(G.players).filter(id => !G.players[id].hasWonAuction);
+  const isSoleRemainingBidder = eligibleBidders.length === 1 && eligibleBidders[0] === effectivePlayerID;
+  const isSoleRemainingZeroCoins = isSoleRemainingBidder && myPlayer?.coins === 0;
+
+  // Minimum required bid amount: if no bid placed yet, min is card.minBid (or 0 if sole remaining bidder with 0 coins)
+  const nextBid = activeCard ? (
+    G.board.highestBidder !== null 
+      ? (isSoleRemainingZeroCoins ? 0 : Math.max(activeCard.minBid, G.board.highestBid + bidIncrement))
+      : (isSoleRemainingZeroCoins ? 0 : activeCard.minBid)
+  ) : 0;
   const effectiveTeam = myPlayer && myPlayer.team ? (myPlayer.copiedTeam ? myPlayer.copiedTeam : myPlayer.team) : null;
   const isJaguars = effectiveTeam && effectiveTeam.id === 'jaguars';
 
   const effMaxBid = activeCard ? getEffectiveCardMaxBid(activeCard, G.board.activeEvent) : 0;
-  const maxAllowedBid = activeCard && myPlayer ? Math.min(myPlayer.coins, effMaxBid) : 0;
+  const maxAllowedBid = activeCard && myPlayer ? (isSoleRemainingZeroCoins ? 0 : Math.min(myPlayer.coins, effMaxBid)) : 0;
 
   useEffect(() => {
-    if (nextBid > 0 && customBid < nextBid) {
-      setCustomBid(nextBid);
+    if (isSoleRemainingZeroCoins) {
+      setCustomBid(0);
+    } else {
+      if (nextBid > 0 && customBid < nextBid) {
+        setCustomBid(nextBid);
+      }
+      if (maxAllowedBid > 0 && customBid > maxAllowedBid) {
+        setCustomBid(maxAllowedBid);
+      }
     }
-    if (maxAllowedBid > 0 && customBid > maxAllowedBid) {
-      setCustomBid(maxAllowedBid);
-    }
-  }, [nextBid, maxAllowedBid]);
+  }, [nextBid, maxAllowedBid, isSoleRemainingZeroCoins]);
 
   // Automatic timer progression for refresh phase team-by-team animation
   useEffect(() => {
@@ -191,26 +203,42 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
     return (
       <div className="space-y-1 my-1">
         {effects && Array.isArray(effects) && effects.map((eff, i) => {
-          const perRoundSymbol = eff.perRound ? ' 🔄' : '';
-          const immediateSymbol = !eff.perRound ? ' ⚡' : '';
+          const symbolElement = eff.perRound ? (
+            <span 
+              title="End of Round Effect: Happens at the end of every round" 
+              className="cursor-help inline-block ml-1 hover:scale-125 transition-transform select-none"
+            >
+              🔄
+            </span>
+          ) : (
+            <span 
+              title="Instant effect: Happens immediately when bought" 
+              className="cursor-help inline-block ml-1 hover:scale-125 transition-transform select-none"
+            >
+              ⚡
+            </span>
+          );
 
           if (eff.type === 'coins') {
             const isPositive = eff.amount > 0;
             return (
-              <span key={i} className={`text-xs sm:text-sm block font-black font-mono leading-tight ${isPositive ? 'text-yellow-300' : 'text-orange-400'}`}>
-                🪙 {isPositive ? `+${eff.amount}` : eff.amount} Coins{perRoundSymbol}{immediateSymbol}
+              <span key={i} className={`text-xs sm:text-sm flex items-center font-black font-mono leading-tight ${isPositive ? 'text-yellow-300' : 'text-orange-400'}`}>
+                <span>🪙 {isPositive ? `+${eff.amount}` : eff.amount} Coins</span>
+                {symbolElement}
               </span>
             );
           } else if (eff.type === 'deflate') {
             return (
-              <span key={i} className="text-xs sm:text-sm block font-black font-mono text-emerald-300 leading-tight">
-                🏈 -{eff.amount} PSI{perRoundSymbol}{immediateSymbol}
+              <span key={i} className="text-xs sm:text-sm flex items-center font-black font-mono text-emerald-300 leading-tight">
+                <span>🏈 -{eff.amount} PSI</span>
+                {symbolElement}
               </span>
             );
           } else if (eff.type === 'inflate') {
             return (
-              <span key={i} className="text-xs sm:text-sm block font-black font-mono text-red-400 leading-tight">
-                🏈🔺 +{eff.amount} PSI{perRoundSymbol}{immediateSymbol}
+              <span key={i} className="text-xs sm:text-sm flex items-center font-black font-mono text-red-400 leading-tight">
+                <span>🏈🔺 +{eff.amount} PSI</span>
+                {symbolElement}
               </span>
             );
           }
@@ -1993,9 +2021,10 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                         <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl overflow-hidden">
                           <button 
                             onClick={() => setCustomBid(Math.max(nextBid, customBid - 1))}
-                            className="px-3 py-2 text-slate-400 hover:text-white font-black cursor-pointer"
+                            className="px-3 py-2 text-slate-400 hover:text-white font-black cursor-pointer text-xs select-none"
+                            title="Decrease Bid"
                           >
-                            -
+                            ◀
                           </button>
                           <input 
                             type="number" 
@@ -2003,29 +2032,35 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                             min={nextBid}
                             max={maxAllowedBid}
                             onChange={e => {
-                              const val = parseInt(e.target.value) || nextBid;
+                              const val = parseInt(e.target.value);
+                              if (isNaN(val)) return;
                               setCustomBid(Math.min(maxAllowedBid, Math.max(nextBid, val)));
                             }}
-                            className="w-14 bg-transparent text-center font-mono font-bold text-white text-sm outline-none"
+                            className="w-14 bg-transparent text-center font-mono font-bold text-white text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                           <button 
                             onClick={() => setCustomBid(Math.min(maxAllowedBid, customBid + 1))}
-                            className="px-3 py-2 text-slate-400 hover:text-white font-black cursor-pointer"
+                            className="px-3 py-2 text-slate-400 hover:text-white font-black cursor-pointer text-xs select-none"
+                            title="Increase Bid"
                           >
-                            +
+                            ▶
                           </button>
                         </div>
 
                         <button 
                           onClick={() => moves.bid(customBid, effectivePlayerID)}
-                          disabled={isDjMooreBlockedForBid || myPlayer.coins < customBid || customBid < nextBid || customBid > maxAllowedBid}
+                          disabled={
+                            isSoleRemainingZeroCoins
+                              ? false
+                              : (isDjMooreBlockedForBid || myPlayer.coins < customBid || customBid < nextBid || customBid > maxAllowedBid)
+                          }
                           className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all ${
-                            !isDjMooreBlockedForBid && myPlayer.coins >= customBid && customBid >= nextBid && customBid <= maxAllowedBid
+                            isSoleRemainingZeroCoins || (!isDjMooreBlockedForBid && myPlayer.coins >= customBid && customBid >= nextBid && customBid <= maxAllowedBid)
                               ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/25 cursor-pointer'
                               : 'bg-slate-800 text-slate-600 cursor-not-allowed'
                           }`}
                         >
-                          Bid {customBid} Coins
+                          {isSoleRemainingZeroCoins ? 'Acquire for 0 Coins' : `Bid ${customBid} Coins`}
                         </button>
 
                         {/* Dynamic Buy Max Button: Capped at effMaxBid, disabled & greyed out if coins < effMaxBid */}

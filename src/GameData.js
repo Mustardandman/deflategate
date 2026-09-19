@@ -45,7 +45,7 @@ export const EVENTS = [
   { id: 'e10', name: 'Trade Rumors', effect: 'Everyone picks one active player and passes it to the right', category: 'pass_right' },
   { id: 'e11', name: 'New Cap Limit', effect: 'Each player can pay 10 coins to add a practice squad player', category: 'buy_practice_squad' },
   { id: 'e12', name: 'Rookie Class', effect: 'Draw twice the number of players during Auction Phase', category: 'double_draft' },
-  { id: 'e13', name: 'Team Legend Returns', effect: 'Add a random Phase 2 player to the top of the Player Deck (Hall of Fame player instead if it is round 5 or later)', category: 'legend_returns' },
+  { id: 'e13', name: 'Team Legend Returns', effect: 'Add a random Phase 2 player to the top of the Player Deck (Hall of Fame player instead if it is round 7 or later)', category: 'legend_returns' },
   { id: 'e14', name: '1st Overall Pick', effect: 'Player with highest PSI deflates to match second highest', category: 'match_second_psi' },
   { id: 'e15', name: 'Rivalry', effect: 'Starting with 1st player, each player gives 1 PSI to player of choice', category: 'give_psi' },
   { id: 'e16', name: 'Overpaid', effect: 'Increase the Maximum cost to buy each player by 4', category: 'overpaid', maxAdd: 4 }

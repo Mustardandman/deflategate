@@ -259,6 +259,25 @@ Playtest #15: (Complete)
    - CPU Jaguars reorders the event deck before the upcoming round's event card is drawn.
    - Fix the "Got It" button freeze when CPU Jaguars reorders: dismissJaguarsPopup in eventPhase.moves and all phases.
 ---------------
-Playtest #16:
-The cardinals ability is setup perfectly, however, I need be able to see the card and what it does that I am swapping in. Right now it just says the name of the card I'm swapping, but I don't know the details of it. I also want to be able to look at the current teams and their rosters and abilities while choosing this so add a button to allow me to see the board state and then come back and make my choice.
-When Playing Player vs Player or Player vs Player vs cpu, need to have a some indication in the Current turn or Auction block that it is your turn to select a player to bid in. Make that indication yellow so it is easy to see. 
+Playtest #16: (Complete)
+1. Cardinals ability preview modal with card inspection & view board state toggle.
+2. Distinct yellow visual indicator on active nominator / bidder turn in PvP and PvPvCPU modes.
+
+---------------
+Playtest #17: (Complete)
+1. Hover Tooltips on Card Effects:
+   - 🔄: "End of Round Effect: Happens at the end of every round"
+   - ⚡: "Instant effect: Happens immediately when bought"
+2. Bid Control UI Cleanup:
+   - Suppressed browser default up/down number spinner arrows in the auction input.
+   - Clean left/right arrow buttons (◀ and ▶) for adjusting bids.
+3. 0-Coin Acquisition Resolution:
+   - When a player has 0 coins and is the sole remaining bidder for the round, allows bidding 0 coins via an active "Acquire for 0 Coins" button, resolving immediately without freezing.
+4. Lions AI Aggression & Opponent Counter-Play:
+   - Detroit Lions CPU aggressively targets cards they can pay max bid on or locks out opponents on the first player of each round to secure the franchise bonus coins.
+   - Opponent CPUs aggressively counter-bid / price-bump against Lions on the 1st player of the round until the cost of blocking outweighs the benefit.
+5. Deck Shuffle Progression & Team Legend Returns:
+   - Phase 2 players shuffle into the deck at Round 4 (after Round 3).
+   - Hall of Fame legends shuffle into the deck at Round 7 (after Round 6).
+   - "Team Legend Returns" event awards Phase 2 cards on rounds 1–6 and Hall of Fame legends on rounds 7+.
+   - CPU anticipation savings adjusted to Round 3 (approaching Phase 2) and Round 6 (approaching HOF).

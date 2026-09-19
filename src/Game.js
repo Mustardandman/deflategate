@@ -572,11 +572,34 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
   if (eligibleCards.length === 0) return -1;
   eligibleCards.sort((a, b) => b.score - a.score);
 
-  // #1 User Strategy: Decoy Nomination
-  // Sometimes nominate a cheap 2nd-rate card at minBid=1 so competing teams outbid and eliminate themselves
   const activeOpponents = Object.keys(G.players).filter(
     id => id !== currentPlayerId && !G.players[id].hasWonAuction
   );
+
+  // Lions 1st Player of Round Strategy:
+  // Aggressively target a card they can buy max to win immediately, or lockout as coin leader
+  const isFirstPlayerOfRound = Object.values(G.players).every(p => !p.hasWonAuction);
+  const effectiveTeamId = getEffectiveTeamId(currentPlayer);
+  const isLionsFirstBonus = isFirstPlayerOfRound && effectiveTeamId === 'lions';
+
+  if (isLionsFirstBonus) {
+    // 1. Target a player whose max bid Lions can immediately afford
+    const maxAffordable = eligibleCards.filter(item => {
+      const effMax = getEffectiveCardMaxBid(item.card, G.board.activeEvent);
+      return currentPlayer.coins >= effMax;
+    });
+    if (maxAffordable.length > 0) {
+      return maxAffordable[0].index;
+    }
+
+    // 2. If richest player at table, target the best player available
+    const richestOpponentCoins = Math.max(0, ...activeOpponents.map(id => G.players[id]?.coins || 0));
+    if (currentPlayer.coins > richestOpponentCoins) {
+      return eligibleCards[0].index;
+    }
+  }
+
+  // #1 User Strategy: Decoy Nomination
 
   const archetype = getCpuArchetype(currentPlayer, currentPlayerId);
   const decoyChance = archetype === 'opportunist' ? 0.40 : (archetype === 'tycoon' ? 0.35 : 0.20);
@@ -646,12 +669,12 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
-  // #3 Phase 2 & Hall of Fame Anticipation Savings (Rounds 4 & 7)
+  // #3 Phase 2 & Hall of Fame Anticipation Savings (Rounds 3 & 6)
   // Situational: Don't do this for every team (Packers love Phase 1, Browns get 30 free coins after R5, Dolphins re-up at 0).
   // Hold reserve if there is no one on the board that is especially good and none fit team strategy.
   let savingsReserve = 0;
-  const isApproachingPhase2 = (G.board.round === 4);
-  const isApproachingHoF = (G.board.round === 7);
+  const isApproachingPhase2 = (G.board.round === 3);
+  const isApproachingHoF = (G.board.round === 6);
 
   const teamExemptFromHoarding = (effectiveTeamId === 'packers' || effectiveTeamId === 'browns' || effectiveTeamId === 'dolphins');
 
@@ -692,6 +715,14 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // Base valuation mapped to card score
   let baseValuation = Math.max(card.minBid, Math.min(effMax, Math.round(cardScore * 0.75 * scarcityMultiplier)));
 
+  // Lions 1st-Player Aggression: Bonus coins equal to number of players (+4 to +10) if won!
+  const isFirstPlayerOfRound = Object.values(G.players).every(p => !p.hasWonAuction);
+  const isLionsFirstBonus = isFirstPlayerOfRound && effectiveTeamId === 'lions';
+  if (isLionsFirstBonus) {
+    const numP = Object.keys(G.players).length;
+    baseValuation = Math.max(baseValuation, card.minBid + numP + 4);
+  }
+
   let archetypeMult = 1.0;
   if (archetype === 'rusher') archetypeMult = 1.25;
   if (archetype === 'tycoon') archetypeMult = 0.80;
@@ -711,6 +742,28 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   valuation = Math.min(valuation, spendableCoins);
+
+  if (isLionsFirstBonus) {
+    // Lions are willing to spend up to their entire purse or effMax to secure the first player
+    valuation = Math.min(effMax, currentPlayer.coins);
+  }
+
+  // Non-Lions Counter-Play: Aggressively block Lions from obtaining the 1st player or drive the price up
+  const lionsPlayerId = Object.keys(G.players).find(
+    id => getEffectiveTeamId(G.players[id]) === 'lions' && !G.players[id].hasWonAuction
+  );
+  if (isFirstPlayerOfRound && effectiveTeamId !== 'lions' && lionsPlayerId) {
+    const isLionsHighest = G.board.highestBidder === lionsPlayerId;
+    const lionsPlayer = G.players[lionsPlayerId];
+
+    if (isLionsHighest && lionsPlayer && lionsPlayer.coins >= nextBid + 1) {
+      // Opponents drive up the price until the price of blocking them outweighs benefits
+      const blockCeiling = Math.min(effMax - 1, Math.max(valuation + 3, Math.round(effMax * 0.75)));
+      if (nextBid <= blockCeiling && currentPlayer.coins >= nextBid + 1) {
+        return { shouldBid: true, bidAmount: nextBid, isPriceBump: true };
+      }
+    }
+  }
 
   // #2 Price Bumping / Trap Bidding
   if (nextBid > valuation) {
@@ -746,7 +799,28 @@ const executeCpuMoveInternal = (G, ctx, events) => {
       G.board.passedAuctionPlayers = [];
       const eligibleBidders = Object.keys(G.players).filter(id => !G.players[id].hasWonAuction);
       const isSoleRemainingBidder = eligibleBidders.length === 1 && eligibleBidders[0] === currentPlayerId;
-      G.board.highestBid = (isSoleRemainingBidder && currentPlayer.coins === 0) ? 0 : card.minBid;
+      const isFirstPlayerOfRound = Object.values(G.players).every(p => !p.hasWonAuction);
+      const effectiveTeamId = getEffectiveTeamId(currentPlayer);
+      const isLionsFirstBonus = isFirstPlayerOfRound && effectiveTeamId === 'lions';
+      const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
+
+      if (isLionsFirstBonus) {
+        const activeOpponents = Object.keys(G.players).filter(id => id !== currentPlayerId && !G.players[id].hasWonAuction);
+        const richestOpponentCoins = Math.max(0, ...activeOpponents.map(id => G.players[id]?.coins || 0));
+
+        if (currentPlayer.coins >= effMax) {
+          // Target player they can afford max bid of and immediately pay max bid
+          G.board.highestBid = effMax;
+        } else if (currentPlayer.coins > richestOpponentCoins) {
+          // Lowest price possible that can't be bid up by any other player
+          const lockoutBid = Math.min(effMax, Math.max(card.minBid, richestOpponentCoins));
+          G.board.highestBid = Math.min(currentPlayer.coins, lockoutBid);
+        } else {
+          G.board.highestBid = card.minBid;
+        }
+      } else {
+        G.board.highestBid = (isSoleRemainingBidder && currentPlayer.coins === 0) ? 0 : card.minBid;
+      }
       G.board.highestBidder = currentPlayerId;
       G.board.lastActionText = `Player ${displayId} (${currentPlayer.team ? currentPlayer.team.name : 'CPU'}) nominated ${card.name} for ${G.board.highestBid} coins.`;
       addLog(G, G.board.lastActionText);
@@ -772,7 +846,6 @@ const executeCpuMoveInternal = (G, ctx, events) => {
         addLog(G, `Jaylen Waddle Bonus: CPU Player ${displayId} gained +1 coin for placing a bid!`);
       }
 
-      const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
       if ((eligibleBidders.length === 1 && eligibleBidders[0] === currentPlayerId) || G.board.highestBid >= effMax) {
         resolveAuctionWin(G, currentPlayerId, card);
       }
@@ -1387,6 +1460,7 @@ export const DeflategateGame = {
         eventFlipRevealed: false,
         eventsRevealed: 0,
         auctionPlayers: [],
+        activeAuctionCardIndex: null,
         commandersMarkedCardIndex: null,
         currentBidder: null,
         highestBid: 0,
@@ -2189,6 +2263,20 @@ export const DeflategateGame = {
           addLog(G, G.board.jaguarsPopupNotification);
         }
 
+        // Deck progression shuffles at the start of new eras
+        if (G.board.round >= 4 && !G.board.phase2Shuffled) {
+          G.board.phase2Shuffled = true;
+          const shuffleFn = (random && random.Shuffle) ? random.Shuffle : (arr) => [...arr].sort(() => Math.random() - 0.5);
+          G.decks.activePlayers = shuffleFn([...G.decks.activePlayers, ...G.decks.phase2]);
+          addLog(G, `🏈 Phase 2 players shuffled into the player deck at Round 4!`);
+        }
+        if (G.board.round >= 7 && !G.board.hofShuffled) {
+          G.board.hofShuffled = true;
+          const shuffleFn = (random && random.Shuffle) ? random.Shuffle : (arr) => [...arr].sort(() => Math.random() - 0.5);
+          G.decks.activePlayers = shuffleFn([...G.decks.activePlayers, ...G.decks.hof]);
+          addLog(G, `⭐ Hall of Fame legends shuffled into the player deck at Round 7!`);
+        }
+
         // Reveal Event (with safety if deck runs low) - draws from top of deck (index 0)
         let ev = G.decks.event.shift();
         if (!ev) {
@@ -2225,7 +2313,7 @@ export const DeflategateGame = {
           }
         } else if (ev.category === 'legend_returns') {
           let chosenCard;
-          if (G.board.round <= 4 && PHASE_2_PLAYERS.length > 0) {
+          if (G.board.round <= 6 && PHASE_2_PLAYERS.length > 0) {
             chosenCard = { ...PHASE_2_PLAYERS[Math.floor(Math.random() * PHASE_2_PLAYERS.length)], uniqueId: `p2_leg_${Date.now()}` };
           } else if (HOF_PLAYERS.length > 0) {
             chosenCard = { ...HOF_PLAYERS[Math.floor(Math.random() * HOF_PLAYERS.length)], uniqueId: `hof_leg_${Date.now()}` };
@@ -2339,18 +2427,6 @@ export const DeflategateGame = {
           advanceFreeAgencyQueue(G);
         }
 
-        if (G.board.round >= 5 && !G.board.phase2Shuffled) {
-          G.board.phase2Shuffled = true;
-          const shuffleFn = (random && random.Shuffle) ? random.Shuffle : (arr) => [...arr].sort(() => Math.random() - 0.5);
-          G.decks.activePlayers = shuffleFn([...G.decks.activePlayers, ...G.decks.phase2]);
-          addLog(G, `🏈 Phase 2 players shuffled into the player deck at Round 5!`);
-        }
-        if (G.board.round >= 8 && !G.board.hofShuffled) {
-          G.board.hofShuffled = true;
-          const shuffleFn = (random && random.Shuffle) ? random.Shuffle : (arr) => [...arr].sort(() => Math.random() - 0.5);
-          G.decks.activePlayers = shuffleFn([...G.decks.activePlayers, ...G.decks.hof]);
-          addLog(G, `⭐ Hall of Fame legends shuffled into the player deck at Round 8!`);
-        }
 
         // Nominator & First Player Determination
         if (G.board.round === 1 || G.board.round1Nominator === null) {
@@ -2944,7 +3020,7 @@ export const DeflategateGame = {
           }
         },
         selectCard: ({ G, playerID }, cardIndex, actingPlayerId) => {
-          if (G.board.activeAuctionCardIndex !== null) return INVALID_MOVE;
+          if (G.board.activeAuctionCardIndex != null) return INVALID_MOVE;
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (String(targetPlayerId) !== String(G.board.nominator)) return INVALID_MOVE;
 
@@ -2978,7 +3054,7 @@ export const DeflategateGame = {
           addLog(G, G.board.lastActionText);
         },
         passNomination: ({ G, playerID, events }, actingPlayerId) => {
-          if (G.board.activeAuctionCardIndex !== null) return INVALID_MOVE;
+          if (G.board.activeAuctionCardIndex != null) return INVALID_MOVE;
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (String(targetPlayerId) !== String(G.board.nominator)) return INVALID_MOVE;
 
@@ -3037,13 +3113,14 @@ export const DeflategateGame = {
 
           const eligibleBidders = Object.keys(G.players).filter(id => !G.players[id].hasWonAuction);
           const isSoleRemainingBidder = eligibleBidders.length === 1 && eligibleBidders[0] === targetPlayerId;
+          const isSoleRemainingZeroCoins = isSoleRemainingBidder && G.players[targetPlayerId].coins === 0;
 
           const highestBidderPlayer = G.board.highestBidder !== null ? G.players[G.board.highestBidder] : null;
           const highestTeamId = highestBidderPlayer ? getEffectiveTeamId(highestBidderPlayer) : null;
           const bidIncrement = (highestTeamId === 'bears') ? 2 : 1;
 
           const minBid = G.board.highestBidder !== null
-            ? Math.max(card.minBid, G.board.highestBid + bidIncrement)
+            ? (isSoleRemainingZeroCoins ? 0 : Math.max(card.minBid, G.board.highestBid + bidIncrement))
             : (isSoleRemainingBidder ? 0 : card.minBid);
 
           if (amount < minBid) return INVALID_MOVE;
