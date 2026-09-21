@@ -1878,7 +1878,8 @@ export const DeflategateGame = {
 
       p.coins -= effMax;
       const displayId = parseInt(targetPlayerId) + 1;
-      if (replaceIndex >= 0 && replaceIndex < p.lineup.length) {
+      const isColts = getEffectiveTeamId(p) === 'colts';
+      if (!isColts && replaceIndex >= 0 && replaceIndex < p.lineup.length) {
         const discarded = p.lineup[replaceIndex];
         p.lineup[replaceIndex] = card;
         if (!G.decks.discard) G.decks.discard = [];
@@ -2680,7 +2681,8 @@ export const DeflategateGame = {
 
           p.coins -= effMax;
           const displayId = parseInt(targetPlayerId) + 1;
-          if (replaceIndex >= 0 && replaceIndex < p.lineup.length) {
+          const isColts = getEffectiveTeamId(p) === 'colts';
+          if (!isColts && replaceIndex >= 0 && replaceIndex < p.lineup.length) {
             const discarded = p.lineup[replaceIndex];
             p.lineup[replaceIndex] = card;
             if (!G.decks.discard) G.decks.discard = [];
@@ -3349,7 +3351,9 @@ export const DeflategateGame = {
                   G.decks.discard.splice(dIdx, 1);
                   billsPlayer.coins -= chosen.minBid;
                   billsPlayer.hasUsedBillsAbility = true;
-                  if (billsPlayer.lineup.length < 3) {
+                  const billsEffTeam = getEffectiveTeamId(billsPlayer);
+                  const maxLineup = (billsEffTeam === 'seahawks' ? 4 : 3) + (billsPlayer.extraLineupSlots || 0);
+                  if (billsEffTeam === 'colts' || billsPlayer.lineup.length < maxLineup) {
                     billsPlayer.lineup.push(chosen);
                   } else {
                     const psIdx = billsPlayer.lineup.findIndex(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
@@ -3423,8 +3427,9 @@ export const DeflategateGame = {
           const displayId = parseInt(billsId) + 1;
           addLog(G, `Bills Ability: Player ${displayId} bought ${card.name} from discard pile for ${card.minBid} coins.`);
 
-          const maxLineup = getEffectiveTeamId(billsPlayer) === 'seahawks' ? 4 : 3;
-          if (billsPlayer.lineup.length < maxLineup) {
+          const billsEffTeam = getEffectiveTeamId(billsPlayer);
+          const maxLineup = (billsEffTeam === 'seahawks' ? 4 : 3) + (billsPlayer.extraLineupSlots || 0);
+          if (billsEffTeam === 'colts' || billsPlayer.lineup.length < maxLineup) {
             billsPlayer.lineup.push(card);
           } else {
             G.pendingReplacement = { playerID: billsId, wonCard: card };

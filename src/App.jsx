@@ -13,9 +13,8 @@ const RulesModal = ({ isOpen, onClose }) => {
     { id: 'goal', label: 'Goal & Victory', icon: '🏆' },
     { id: 'phases', label: 'Round Flow', icon: '🔄' },
     { id: 'symbols', label: 'Card Symbols', icon: '🎴' },
-    { id: 'eras', label: 'Eras & HOF', icon: '⏳' },
-    { id: 'bidding', label: 'Bidding Rules', icon: '💰' },
-    { id: 'lineup', label: 'Lineups & Squad', icon: '👥' }
+    { id: 'phases_era', label: 'Phases', icon: '⏳' },
+    { id: 'bidding', label: 'Bidding Rules', icon: '💰' }
   ];
 
   return (
@@ -42,14 +41,14 @@ const RulesModal = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 scrollbar-thin border-b border-slate-800/80">
+        {/* Navigation Tabs - Hidden scrollbar while allowing smooth swipe/scroll */}
+        <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 border-b border-slate-800/80 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {tabs.map(t => (
             <button
               key={t.id}
               type="button"
               onClick={() => setActiveTab(t.id)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === t.id
                   ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-indigo-500/30'
                   : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-850'
@@ -70,7 +69,7 @@ const RulesModal = ({ isOpen, onClose }) => {
                   <span>🎯</span> The Primary Objective
                 </h3>
                 <p className="leading-relaxed">
-                  You are the General Manager of an NFL franchise competing in the high-stakes world of ball manipulation. Every franchise starts with a regulation football at <strong className="text-white">13.0 PSI</strong> (or custom configured PSI). Your goal is to <strong className="text-amber-400">deflate your ball down to 0 PSI</strong>!
+                  You are the General Manager of an NFL franchise competing in the high-stakes world of ball manipulation. Every franchise starts with a regulation football with a starting PSI determined by the team you select. Your goal is to <strong className="text-amber-400">deflate your ball down to 0 PSI</strong>!
                 </p>
               </div>
 
@@ -119,7 +118,7 @@ const RulesModal = ({ isOpen, onClose }) => {
                     <h4 className="text-sm font-black text-purple-300 uppercase">Event Phase</h4>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    A global Event card is drawn from the Event deck. Events alter round conditions—such as sudden inflation spikes, double card drafts, salary cap increases, market crashes, or interactive trade rumors.
+                    An event card is drawn from the event deck that will alter the game in some way that round.
                   </p>
                 </div>
 
@@ -129,14 +128,8 @@ const RulesModal = ({ isOpen, onClose }) => {
                     <h4 className="text-sm font-black text-amber-300 uppercase">Pre-Auction Phase</h4>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    New auction player cards for the round are revealed face-up. Pre-auction franchise abilities activate in sequence:
+                    New auction player cards for the round are revealed.
                   </p>
-                  <ul className="list-disc list-inside text-[11px] text-slate-400 mt-1 space-y-0.5">
-                    <li><strong className="text-slate-200">Raiders</strong>: Pay coins to dump PSI onto rivals.</li>
-                    <li><strong className="text-slate-200">Cardinals</strong>: Swap an unpicked auction player with the top of the deck.</li>
-                    <li><strong className="text-slate-200">Chiefs</strong>: Once per game, claim a revealed player for their minimum cost without bidding.</li>
-                    <li><strong className="text-slate-200">Commanders</strong>: Mark a player so the First Player cannot nominate or bid on them until acquiring another card.</li>
-                  </ul>
                 </div>
 
                 <div className="bg-slate-950 border border-blue-800/60 p-3.5 rounded-2xl">
@@ -145,17 +138,17 @@ const RulesModal = ({ isOpen, onClose }) => {
                     <h4 className="text-sm font-black text-blue-300 uppercase">Auction Phase</h4>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Teams take turns nominating revealed players and placing bids. Bidding proceeds clockwise until all players have passed or a player pays the Maximum Bid. Each franchise acquires one player per round (or two during Double Draft).
+                    Teams bid on revealed players until each team has acquired 1 new player.
                   </p>
                 </div>
 
                 <div className="bg-slate-950 border border-emerald-800/60 p-3.5 rounded-2xl">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="bg-emerald-900/80 text-emerald-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-emerald-700">Phase 4</span>
-                    <h4 className="text-sm font-black text-emerald-300 uppercase">Refresh Phase (End of Round)</h4>
+                    <h4 className="text-sm font-black text-emerald-300 uppercase">Refresh Phase</h4>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Franchises collect their baseline coin income (plus card income bonuses). All active recurring abilities (<strong className="text-emerald-400">🔄</strong>) trigger, deflating PSI or executing team traits. The round counter advances and First Player rotates clockwise.
+                    Teams collect all their end of round (🔄) bonuses which usually involve collecting coins and deflating PSI. The round counter advances and the First Player rotates clockwise.
                   </p>
                 </div>
               </div>
@@ -201,77 +194,52 @@ const RulesModal = ({ isOpen, onClose }) => {
                   </p>
                 </div>
               </div>
-
-              <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">⭐</span>
-                  <h4 className="text-xs font-black text-yellow-300 uppercase">Special Passive & Conditional Powers</h4>
-                </div>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Certain players possess unique custom game-breaking mechanics:
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-300 mt-2">
-                  <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
-                    <strong className="text-yellow-400">Isaiah Pacheco</strong>: Discards self on purchase, shuffles the deck, and draws a brand new replacement player!
-                  </div>
-                  <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
-                    <strong className="text-yellow-400">Brock Purdy</strong>: "Mr. Irrelevant"—huge +5 Coins and -3 PSI bonus if bought as one of the last two players in a round!
-                  </div>
-                  <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
-                    <strong className="text-yellow-400">DJ Moore</strong>: Salary-cap hero—only teams with ≤10 coins are permitted to nominate or bid on him!
-                  </div>
-                  <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
-                    <strong className="text-yellow-400">Brandon Aiyuk</strong>: Max Bid reward—upgrades permanent recurring income from 2 to 4 coins/round if bought at Max!
-                  </div>
-                </div>
-              </div>
             </div>
           )}
 
-          {activeTab === 'eras' && (
+          {activeTab === 'phases_era' && (
             <div className="space-y-4">
-              <p className="text-xs text-slate-400 italic">
-                As the 10-round season unfolds, player caliber evolves through three tiers:
-              </p>
+              <div className="bg-gradient-to-r from-blue-950/40 to-indigo-950/40 border border-blue-500/40 p-3.5 rounded-2xl">
+                <p className="text-xs sm:text-sm font-bold text-blue-200">
+                  Better cards will be shuffled into the player deck throughout the game.
+                </p>
+              </div>
 
               <div className="grid grid-cols-1 gap-3">
                 <div className="bg-slate-950 border border-blue-500/50 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="bg-blue-900/80 text-blue-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-blue-600">Phase 1</span>
-                      <h4 className="text-sm font-black text-blue-400 uppercase">Foundation Era (Rounds 1–3)</h4>
+                      <span className="bg-blue-900/80 text-blue-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-blue-600">Beginning of the game</span>
+                      <h4 className="text-sm font-black text-blue-400 uppercase">Phase 1</h4>
                     </div>
-                    <p className="text-xs text-slate-300 mt-1">
+                    <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
                       Budget-friendly starters, steady baseline coin generators, and consistent single-point deflators. Essential for building your early economic engine.
                     </p>
                   </div>
-                  <span className="text-xs font-mono font-bold text-blue-400 shrink-0 bg-blue-950/60 px-2.5 py-1 rounded-lg border border-blue-800">Min 1–3 Coins</span>
                 </div>
 
                 <div className="bg-slate-950 border border-purple-500/50 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="bg-purple-900/80 text-purple-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-purple-600">Phase 2</span>
-                      <h4 className="text-sm font-black text-purple-400 uppercase">Escalation Era (Rounds 4–6)</h4>
+                      <span className="bg-purple-900/80 text-purple-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-purple-600">Enters round 4</span>
+                      <h4 className="text-sm font-black text-purple-400 uppercase">Phase 2</h4>
                     </div>
-                    <p className="text-xs text-slate-300 mt-1">
+                    <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
                       Pro-bowl caliber stars with multi-point deflation swings, heavy instant burst rewards, and advanced roster synergies.
                     </p>
                   </div>
-                  <span className="text-xs font-mono font-bold text-purple-400 shrink-0 bg-purple-950/60 px-2.5 py-1 rounded-lg border border-purple-800">Min 4–7 Coins</span>
                 </div>
 
                 <div className="bg-slate-950 border border-amber-500/60 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="bg-gradient-to-r from-amber-500 to-yellow-400 text-black text-[10px] font-black uppercase px-2 py-0.5 rounded shadow">HOF LEGENDS</span>
-                      <h4 className="text-sm font-black text-amber-300 uppercase">Hall of Fame Era (Rounds 7–10)</h4>
+                      <span className="bg-gradient-to-r from-amber-500 to-yellow-400 text-black text-[10px] font-black uppercase px-2 py-0.5 rounded shadow">Enters round 7</span>
+                      <h4 className="text-sm font-black text-amber-300 uppercase">Hall of Fame</h4>
                     </div>
-                    <p className="text-xs text-slate-300 mt-1">
+                    <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
                       All-time NFL greats and legendary franchise icons! Massive game-defining abilities capable of double-digit deflation, opponent disruption, and championship clinch moves.
                     </p>
                   </div>
-                  <span className="text-xs font-mono font-bold text-amber-300 shrink-0 bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-800">Min 8+ Coins</span>
                 </div>
               </div>
             </div>
@@ -281,10 +249,10 @@ const RulesModal = ({ isOpen, onClose }) => {
             <div className="space-y-3.5">
               <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2">
                 <h4 className="text-xs font-black uppercase text-blue-400 flex items-center gap-1.5">
-                  <span>🔨</span> Nomination & Clockwise Turns
+                  <span>🔨</span> Nomination
                 </h4>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  The round's First Player (or current nominator) selects any unreserved player card from the auction block, automatically opening the bidding at that player's <strong className="text-yellow-400">Min Bid</strong>. Bidding moves clockwise around the table.
+                  The round's First Player selects any player from the auction block to bid on. They must bid on the player selected and bidding moves clockwise around the table.
                 </p>
               </div>
 
@@ -314,59 +282,6 @@ const RulesModal = ({ isOpen, onClose }) => {
                 </h4>
                 <p className="text-xs text-slate-300 leading-relaxed">
                   If every other eligible team has already acquired their player card for the round, and you have <strong className="text-white">0 Coins</strong>, you are protected! You may nominate and acquire the final remaining player card for <strong className="text-emerald-400">0 Coins</strong>.
-                </p>
-              </div>
-
-              <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-1.5">
-                <h4 className="text-xs font-black uppercase text-slate-300 flex items-center gap-1.5">
-                  <span>🎖️</span> Special Restrictions
-                </h4>
-                <ul className="list-disc list-inside text-[11px] text-slate-400 space-y-1">
-                  <li><strong className="text-slate-200">DJ Moore</strong>: Only teams with 10 or fewer coins may bid.</li>
-                  <li><strong className="text-slate-200">Commanders Target</strong>: The round's First Player cannot nominate or bid on the marked card until they acquire another player.</li>
-                  <li><strong className="text-slate-200">Bears Defense</strong>: Any player outbidding the Chicago Bears must raise by at least +2 coins.</li>
-                </ul>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'lineup' && (
-            <div className="space-y-4">
-              <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2">
-                <h4 className="text-xs font-black uppercase text-blue-400 flex items-center gap-1.5">
-                  <span>📋</span> 5-Player Active Lineup Limit
-                </h4>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Each franchise can dress up to <strong className="text-white">5 active players</strong>. Only players in your active lineup produce recurring coin income and per-round PSI deflation (<strong className="text-emerald-400">🔄</strong>) during the Refresh Phase!
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-1.5">
-                  <h4 className="text-xs font-black uppercase text-indigo-300 flex items-center gap-1.5">
-                    <span>📦</span> Practice Squad Roster
-                  </h4>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Additional players beyond your 5 active roster spots are placed into your <strong className="text-white">Practice Squad</strong> bench. Practice Squad players do not trigger recurring effects unless swapped into the active lineup.
-                  </p>
-                </div>
-
-                <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-1.5">
-                  <h4 className="text-xs font-black uppercase text-purple-300 flex items-center gap-1.5">
-                    <span>🔁</span> Roster Swapping & Cuts
-                  </h4>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    When you win a player with a full lineup, an interactive swap modal allows you to choose which player to bench or replace immediately.
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-1.5">
-                <h4 className="text-xs font-black uppercase text-yellow-300 flex items-center gap-1.5">
-                  <span>🏛️</span> Franchise Team Identities
-                </h4>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Every NFL franchise comes with an authentic team identity ability (e.g., Lions first-bid coin windfall, Jets max-bid deflation, Falcons card mulligan, Eagles PSI sabotage, Buccaneers copycat). Master your franchise power to outsmart the competition!
                 </p>
               </div>
             </div>
@@ -403,6 +318,8 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
   const [clientDismissedCardFlyTimestamp, setClientDismissedCardFlyTimestamp] = useState(null);
   const [clientDismissedTyreekTimestamp, setClientDismissedTyreekTimestamp] = useState(null);
   const [cardinalsMinimized, setCardinalsMinimized] = useState(false);
+  const [coltsExpandedMap, setColtsExpandedMap] = useState({});
+  const [coltsHoveredId, setColtsHoveredId] = useState(null);
 
   const displayPlayerNumber = (id) => (parseInt(id) + 1).toString();
 
@@ -1451,7 +1368,7 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                     Cost: {getEffectiveCardMaxBid(G.board.pendingFreeAgency.card, G.board.activeEvent)} Coins | Your Coins: {myPlayer.coins}
                   </p>
                 </div>
-                {myPlayer.lineup.length >= (getEffectiveTeamId(myPlayer) === 'seahawks' ? 4 : 3) + (myPlayer.extraLineupSlots || 0) && (
+                {getEffectiveTeamId(myPlayer) !== 'colts' && myPlayer.lineup.length >= (getEffectiveTeamId(myPlayer) === 'seahawks' ? 4 : 3) + (myPlayer.extraLineupSlots || 0) && (
                   <div className="text-left">
                     <p className="text-xs text-slate-400 mb-2 font-bold">Select an active player to replace if you sign:</p>
                     <div className="grid grid-cols-3 gap-2">
@@ -1478,7 +1395,7 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                       <>
                         <button
                           disabled={!canAfford}
-                          onClick={() => moves.freeAgencySign(selectedReplaceIdx, effectivePlayerID)}
+                          onClick={() => moves.freeAgencySign(getEffectiveTeamId(myPlayer) === 'colts' ? -1 : selectedReplaceIdx, effectivePlayerID)}
                           className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider ${
                             canAfford ? 'bg-purple-600 hover:bg-purple-500 text-white cursor-pointer shadow' : 'bg-slate-800 text-slate-600 cursor-not-allowed'
                           }`}
@@ -2580,6 +2497,7 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
             const effectiveTeam = p.copiedTeam ? p.copiedTeam : p.team;
             const isColts = effectiveTeam.id === 'colts';
             const isRams = effectiveTeam.id === 'rams';
+            const maxLineup = (effectiveTeam.id === 'seahawks' ? 4 : 3) + (p.extraLineupSlots || 0);
 
             const teamIdx = Object.keys(G.players).indexOf(id);
             const isRefreshPhase = ctx.phase === 'refreshPhase';
@@ -2721,101 +2639,135 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                   <div>
                     <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-2 border-b border-slate-800 pb-1 flex justify-between">
                       <span>Lineup</span>
-                      <span>({p.lineup.length}{isColts ? ' / ∞' : ' / 3'})</span>
+                      <span>({p.lineup.length}{isColts ? ' / ∞' : ` / ${maxLineup}`})</span>
                     </p>
-                    {/* Scrollable Container for Colts / Expanded Lineups */}
-                    <div className={`space-y-2 pr-0.5 ${isColts && p.lineup.length > 4 ? 'max-h-56 overflow-y-auto' : ''}`}>
-                      <ul className="space-y-2">
-                        {p.lineup.map((card, cidx) => {
-                          const isBroncosIgnored = card.broncosRoundAcquired === G.board.round;
-                          const hasRamsDouble = card.ramsDoubleToken;
-                          const canAttachRams = ramsSelectionMode && String(id) === String(effectivePlayerID) && card.phase !== 1 && !card.isPracticeSquad && !card.uniqueId?.startsWith('ps_');
+                    {(() => {
+                      const displayLineup = isColts ? [...p.lineup].reverse() : p.lineup;
+                      const isColtsExpanded = Boolean(coltsExpandedMap[id] || coltsHoveredId === id);
+                      const visibleLineup = (isColts && !isColtsExpanded && displayLineup.length > 4)
+                        ? displayLineup.slice(0, 4)
+                        : displayLineup;
 
-                          const isQbChoiceEvent = G.board.activeEvent?.category === 'qb_choice';
-                          const hasBothQbEffects = isQbChoiceEvent && card.position === 'QB' && card.effects?.some(e => e.type === 'coins') && card.effects?.some(e => e.type === 'deflate');
-                          const qbChoiceVal = G.board.qbChoices?.[card.uniqueId] || G.board.qbChoices?.[card.id] || (p.isCpu ? (p.psi > 10 ? 'deflate' : 'coins') : 'deflate');
+                      return (
+                        <div 
+                          className="relative"
+                          onMouseEnter={() => { if (isColts && displayLineup.length > 4) setColtsHoveredId(id); }}
+                          onMouseLeave={() => { if (isColts) setColtsHoveredId(null); }}
+                        >
+                          <div className={`space-y-2 pr-0.5 ${isColts && isColtsExpanded && displayLineup.length > 4 ? 'max-h-96 overflow-y-auto' : ''}`}>
+                            <ul className="space-y-2">
+                              {visibleLineup.map((card, cidx) => {
+                                const isBroncosIgnored = card.broncosRoundAcquired === G.board.round;
+                                const hasRamsDouble = card.ramsDoubleToken;
+                                const canAttachRams = ramsSelectionMode && String(id) === String(effectivePlayerID) && card.phase !== 1 && !card.isPracticeSquad && !card.uniqueId?.startsWith('ps_');
 
-                          return (
-                            <li 
-                              key={card.uniqueId || cidx} 
-                              className={`p-2.5 rounded-lg border flex flex-col justify-between gap-1.5 ${getCardPhaseStyle(card)} ${
-                                hasRamsDouble ? 'ring-2 ring-amber-400 border-amber-400' : ''
-                              }`}
-                            >
-                              <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] bg-slate-800 text-blue-400 font-bold px-1.5 py-0.5 rounded">{card.position || 'WR'}</span>
-                                  <p className="text-xs font-bold text-slate-200">{card.name}</p>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  {renderPhaseBadge(card.phase)}
-                                  {hasRamsDouble && (
-                                    <span className="text-[9px] bg-gradient-to-r from-amber-500 to-yellow-400 text-black font-black px-1.5 py-0.5 rounded uppercase shadow animate-pulse">
-                                      2X RAMS
-                                    </span>
-                                  )}
-                                  {isBroncosIgnored && (
-                                    <span className="text-[9px] bg-red-950 border border-red-700 text-red-300 font-bold px-1.5 py-0.5 rounded uppercase">
-                                      🚫 Ignored (1st Round)
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
+                                const isQbChoiceEvent = G.board.activeEvent?.category === 'qb_choice';
+                                const hasBothQbEffects = isQbChoiceEvent && card.position === 'QB' && card.effects?.some(e => e.type === 'coins') && card.effects?.some(e => e.type === 'deflate');
+                                const qbChoiceVal = G.board.qbChoices?.[card.uniqueId] || G.board.qbChoices?.[card.id] || (p.isCpu ? (p.psi > 10 ? 'deflate' : 'coins') : 'deflate');
 
-                              <div className="flex justify-between items-center text-right">
-                                <div className="text-left">{renderCardEffects(card.effects, card.specialText || card.customText)}</div>
-                                {canAttachRams && (
-                                  <button
-                                    onClick={() => {
-                                      moves.ramsApplyDoubleToken(card.uniqueId, effectivePlayerID);
-                                      setRamsSelectionMode(false);
-                                    }}
-                                    className="bg-amber-500 hover:bg-amber-400 text-black font-black px-2 py-1 rounded text-[10px] uppercase cursor-pointer"
+                                return (
+                                  <li 
+                                    key={card.uniqueId || card.id || cidx} 
+                                    className={`p-2.5 rounded-lg border flex flex-col justify-between gap-1.5 ${getCardPhaseStyle(card)} ${
+                                      hasRamsDouble ? 'ring-2 ring-amber-400 border-amber-400' : ''
+                                    }`}
                                   >
-                                    Attach 2x
-                                  </button>
-                                )}
-                              </div>
-
-                              {/* Refs Check Event: Quarterback Choice Toggle */}
-                              {hasBothQbEffects && (
-                                <div className="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
-                                  <span className="text-[10px] text-purple-400 font-bold">Refs Check:</span>
-                                  {String(id) === String(effectivePlayerID) ? (
-                                    <div className="flex gap-1">
-                                      <button
-                                        onClick={() => moves.setQbChoice(card.uniqueId || card.id, 'coins')}
-                                        className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all ${
-                                          qbChoiceVal === 'coins'
-                                            ? 'bg-yellow-400 text-black shadow'
-                                            : 'bg-slate-800 text-slate-400 hover:text-white'
-                                        }`}
-                                      >
-                                        🪙 Coins
-                                      </button>
-                                      <button
-                                        onClick={() => moves.setQbChoice(card.uniqueId || card.id, 'deflate')}
-                                        className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all ${
-                                          qbChoiceVal === 'deflate'
-                                            ? 'bg-red-500 text-white shadow'
-                                            : 'bg-slate-800 text-slate-400 hover:text-white'
-                                        }`}
-                                      >
-                                        🏈 Deflate
-                                      </button>
+                                    <div className="flex justify-between items-center">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] bg-slate-800 text-blue-400 font-bold px-1.5 py-0.5 rounded">{card.position || 'WR'}</span>
+                                        <p className="text-xs font-bold text-slate-200">{card.name}</p>
+                                        {isColts && cidx === 0 && !card.isPracticeSquad && !card.uniqueId?.startsWith('ps_') && (
+                                          <span className="text-[9px] bg-blue-900/80 border border-blue-600 text-blue-300 font-black px-1.5 py-0.5 rounded uppercase">
+                                            Latest
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        {renderPhaseBadge(card.phase)}
+                                        {hasRamsDouble && (
+                                          <span className="text-[9px] bg-gradient-to-r from-amber-500 to-yellow-400 text-black font-black px-1.5 py-0.5 rounded uppercase shadow animate-pulse">
+                                            2X RAMS
+                                          </span>
+                                        )}
+                                        {isBroncosIgnored && (
+                                          <span className="text-[9px] bg-red-950 border border-red-700 text-red-300 font-bold px-1.5 py-0.5 rounded uppercase">
+                                            🚫 Ignored (1st Round)
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
-                                  ) : (
-                                    <span className="text-[10px] font-mono font-bold text-slate-300 uppercase">
-                                      {qbChoiceVal.toUpperCase()}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
+
+                                    <div className="flex justify-between items-center text-right">
+                                      <div className="text-left">{renderCardEffects(card.effects, card.specialText || card.customText)}</div>
+                                      {canAttachRams && (
+                                        <button
+                                          onClick={() => {
+                                            moves.ramsApplyDoubleToken(card.uniqueId, effectivePlayerID);
+                                            setRamsSelectionMode(false);
+                                          }}
+                                          className="bg-amber-500 hover:bg-amber-400 text-black font-black px-2 py-1 rounded text-[10px] uppercase cursor-pointer"
+                                        >
+                                          Attach 2x
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {/* Refs Check Event: Quarterback Choice Toggle */}
+                                    {hasBothQbEffects && (
+                                      <div className="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                                        <span className="text-[10px] text-purple-400 font-bold">Refs Check:</span>
+                                        {String(id) === String(effectivePlayerID) ? (
+                                          <div className="flex gap-1">
+                                            <button
+                                              onClick={() => moves.setQbChoice(card.uniqueId || card.id, 'coins')}
+                                              className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all ${
+                                                qbChoiceVal === 'coins'
+                                                  ? 'bg-yellow-400 text-black shadow'
+                                                  : 'bg-slate-800 text-slate-400 hover:text-white'
+                                              }`}
+                                            >
+                                              🪙 Coins
+                                            </button>
+                                            <button
+                                              onClick={() => moves.setQbChoice(card.uniqueId || card.id, 'deflate')}
+                                              className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all ${
+                                                qbChoiceVal === 'deflate'
+                                                  ? 'bg-red-500 text-white shadow'
+                                                  : 'bg-slate-800 text-slate-400 hover:text-white'
+                                              }`}
+                                            >
+                                              🏈 Deflate
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <span className="text-[10px] font-mono font-bold text-slate-300 uppercase">
+                                            {qbChoiceVal.toUpperCase()}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                            {isColts && displayLineup.length > 4 && (
+                              <button
+                                type="button"
+                                onClick={() => setColtsExpandedMap(prev => ({ ...prev, [id]: !prev[id] }))}
+                                title={`Full Colts Squad (${displayLineup.length} players):\n` + displayLineup.map((c, i) => `${i + 1}. ${c.name} (${c.position || 'WR'})`).join('\n')}
+                                className="w-full text-center py-1.5 px-2 mt-2 rounded-lg bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-700/60 text-[11px] font-black text-indigo-300 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                              >
+                                <span>
+                                  {isColtsExpanded
+                                    ? `▲ Collapse Squad (Showing all ${displayLineup.length})`
+                                    : `▼ +${displayLineup.length - 4} More on Squad (Hover / Click to View All)`}
+                                </span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
