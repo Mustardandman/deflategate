@@ -201,45 +201,39 @@ const RulesModal = ({ isOpen, onClose }) => {
             <div className="space-y-4">
               <div className="bg-gradient-to-r from-blue-950/40 to-indigo-950/40 border border-blue-500/40 p-3.5 rounded-2xl">
                 <p className="text-xs sm:text-sm font-bold text-blue-200">
-                  Better cards will be shuffled into the player deck throughout the game.
+                  Better player cards will be shuffled into the player deck throughout the game.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 gap-3">
-                <div className="bg-slate-950 border border-blue-500/50 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="bg-blue-900/80 text-blue-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-blue-600">Beginning of the game</span>
-                      <h4 className="text-sm font-black text-blue-400 uppercase">Phase 1</h4>
-                    </div>
-                    <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                      Budget-friendly starters, steady baseline coin generators, and consistent single-point deflators. Essential for building your early economic engine.
-                    </p>
+                <div className="bg-slate-950 border border-blue-500/50 p-4 rounded-2xl space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-black text-blue-400 uppercase">Phase 1</h4>
+                    <span className="bg-blue-900/80 text-blue-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-blue-600">Beginning of the game</span>
                   </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Budget-friendly starters, steady baseline coin generators, and consistent single-point deflators. Essential for building your early economic engine.
+                  </p>
                 </div>
 
-                <div className="bg-slate-950 border border-purple-500/50 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="bg-purple-900/80 text-purple-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-purple-600">Enters round 4</span>
-                      <h4 className="text-sm font-black text-purple-400 uppercase">Phase 2</h4>
-                    </div>
-                    <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                      Pro-bowl caliber stars with multi-point deflation swings, heavy instant burst rewards, and advanced roster synergies.
-                    </p>
+                <div className="bg-slate-950 border border-purple-500/50 p-4 rounded-2xl space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-black text-purple-400 uppercase">Phase 2</h4>
+                    <span className="bg-purple-900/80 text-purple-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-purple-600">Enters round 4</span>
                   </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Pro-bowl caliber stars with multi-point deflation swings, heavy instant burst rewards, and advanced roster synergies.
+                  </p>
                 </div>
 
-                <div className="bg-slate-950 border border-amber-500/60 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="bg-gradient-to-r from-amber-500 to-yellow-400 text-black text-[10px] font-black uppercase px-2 py-0.5 rounded shadow">Enters round 7</span>
-                      <h4 className="text-sm font-black text-amber-300 uppercase">Hall of Fame</h4>
-                    </div>
-                    <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                      All-time NFL greats and legendary franchise icons! Massive game-defining abilities capable of double-digit deflation, opponent disruption, and championship clinch moves.
-                    </p>
+                <div className="bg-slate-950 border border-amber-500/60 p-4 rounded-2xl space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-black text-amber-300 uppercase">Hall of Fame</h4>
+                    <span className="bg-gradient-to-r from-amber-500 to-yellow-400 text-black text-[10px] font-black uppercase px-2 py-0.5 rounded shadow">Enters round 7</span>
                   </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    All-time NFL greats and legendary franchise icons! Massive game-defining abilities capable of double-digit deflation, opponent disruption, and championship clinch moves.
+                  </p>
                 </div>
               </div>
             </div>
