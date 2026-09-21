@@ -282,3 +282,22 @@ Playtest #17: (Complete)
    - "Team Legend Returns" event awards Phase 2 cards on rounds 1–6 and Hall of Fame legends on rounds 7+.
    - CPU anticipation savings adjusted to Round 3 (approaching Phase 2) and Round 6 (approaching HOF).
 -------------------
+Playtest #18: (Complete)
+1. Washington Commanders Team Ability:
+   - Fixed and polished for both Human and CPU players.
+   - Activates in preAuctionPhase after auction player cards are revealed.
+   - Allows marking an auction player so the current First Player (and opening nominator) cannot nominate or bid on that player this round.
+   - If the Commanders themselves are the First/Nominating team for the round, the ability does not trigger and is logged as skipped.
+   - When the First Player acquires any player card this round, the restriction lifts immediately and the marked card behaves normally for all franchises.
+   - Added interactive Commanders selection modal for human players and strategic high-value target selection for CPU Commanders.
+   - Added visual badges ("🚫 Blocked for First Player" and "🎖️ Commanders Targeted") and disabled nomination/bidding states.
+2. Non-Team-Specific General Rules & Guide Section:
+   - Added comprehensive, beautifully formatted RulesModal accessible both from the Starting/Lobby screen ("📖 How to Play & Rules Guide") and in-game header ("📖 Rules Guide").
+   - Covers:
+     - Primary Objective: Deflating PSI to 0 to win immediately, or lowest PSI at end of 10 rounds, plus tiebreaker rules.
+     - 4 Round Phases: Event Phase, Pre-Auction Phase, Auction Phase, and Refresh Phase.
+     - Card Symbols & Effects: ⚡ Instant (triggers on purchase only), 🔄 Recurring (triggers every round in Refresh), and ⭐ Special/custom card conditions.
+     - Era Progression: Phase 1 (Rounds 1–3), Phase 2 (Rounds 4–6), and Hall of Fame Legends (Rounds 7–10).
+     - Bidding Rules & Edge Cases: Nominations, clockwise turns, Buy Max instant acquisition, Pass is final, the Sole Remaining 0-Coin rule, DJ Moore restriction, and Bears defense.
+     - Lineups & Practice Squad: 5-player active roster limit, Practice Squad benching, roster cuts/swaps, and franchise identities.
+-------------------

@@ -4,7 +4,392 @@ import { Local, SocketIO } from 'boardgame.io/multiplayer';
 import { DeflategateGame, getEffectiveTeamId, getEffectiveCardMaxBid } from './Game';
 import { TEAMS } from './GameData';
 
+// Comprehensive Deflategate Rules & Guide Modal
+const RulesModal = ({ isOpen, onClose }) => {
+  const [activeTab, setActiveTab] = useState('goal');
+  if (!isOpen) return null;
+
+  const tabs = [
+    { id: 'goal', label: 'Goal & Victory', icon: '🏆' },
+    { id: 'phases', label: 'Round Flow', icon: '🔄' },
+    { id: 'symbols', label: 'Card Symbols', icon: '🎴' },
+    { id: 'eras', label: 'Eras & HOF', icon: '⏳' },
+    { id: 'bidding', label: 'Bidding Rules', icon: '💰' },
+    { id: 'lineup', label: 'Lineups & Squad', icon: '👥' }
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-slate-900 border-2 border-indigo-500/80 p-5 sm:p-7 rounded-3xl max-w-3xl w-full shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl sm:text-3xl">📖</span>
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-400 uppercase tracking-wide">
+                Deflategate Official Guide & Rules
+              </h2>
+              <p className="text-xs text-slate-400">Master the auction, manage your cap, and deflate your ball to victory</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-400 hover:text-white font-black text-xl p-2 cursor-pointer transition-colors"
+            title="Close Guide"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 scrollbar-thin border-b border-slate-800/80">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === t.id
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-indigo-500/30'
+                  : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+              }`}
+            >
+              <span>{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Contents */}
+        <div className="overflow-y-auto flex-1 pr-1 space-y-4 text-xs sm:text-sm text-slate-300">
+          {activeTab === 'goal' && (
+            <div className="space-y-4">
+              <div className="bg-gradient-to-r from-blue-950/40 to-purple-950/40 border border-blue-500/40 p-4 rounded-2xl">
+                <h3 className="text-base font-black text-blue-300 uppercase tracking-wide flex items-center gap-2 mb-1">
+                  <span>🎯</span> The Primary Objective
+                </h3>
+                <p className="leading-relaxed">
+                  You are the General Manager of an NFL franchise competing in the high-stakes world of ball manipulation. Every franchise starts with a regulation football at <strong className="text-white">13.0 PSI</strong> (or custom configured PSI). Your goal is to <strong className="text-amber-400">deflate your ball down to 0 PSI</strong>!
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2">
+                  <h4 className="text-xs font-black uppercase text-emerald-400 flex items-center gap-1.5">
+                    <span>⚡</span> Instant Knockout Victory
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    The very instant any team's PSI reaches <strong className="text-emerald-400">0 PSI</strong> (or below), the game ends immediately and that franchise is crowned Champion!
+                  </p>
+                </div>
+
+                <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2">
+                  <h4 className="text-xs font-black uppercase text-yellow-400 flex items-center gap-1.5">
+                    <span>⏱️</span> 10-Round Final Whistle
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    If no team reaches 0 PSI by the end of Round 10, the team with the <strong className="text-yellow-400">Lowest Total PSI</strong> wins the game!
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2">
+                <h4 className="text-xs font-black uppercase text-purple-300 flex items-center gap-1.5">
+                  <span>⚖️</span> Official Tiebreaker Rules
+                </h4>
+                <ol className="list-decimal list-inside text-xs text-slate-400 space-y-1">
+                  <li><strong className="text-slate-200">Most Remaining Coins</strong> wins the tiebreaker.</li>
+                  <li>If still tied, the team with the <strong className="text-slate-200">Highest Total Roster Acquisition Value</strong> wins.</li>
+                </ol>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'phases' && (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-400 italic">
+                Each of the 10 game rounds is played across four distinct sequential phases:
+              </p>
+
+              <div className="space-y-2.5">
+                <div className="bg-slate-950 border border-purple-800/60 p-3.5 rounded-2xl">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-purple-900/80 text-purple-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-purple-700">Phase 1</span>
+                    <h4 className="text-sm font-black text-purple-300 uppercase">Event Phase</h4>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    A global Event card is drawn from the Event deck. Events alter round conditions—such as sudden inflation spikes, double card drafts, salary cap increases, market crashes, or interactive trade rumors.
+                  </p>
+                </div>
+
+                <div className="bg-slate-950 border border-amber-800/60 p-3.5 rounded-2xl">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-amber-900/80 text-amber-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-amber-700">Phase 2</span>
+                    <h4 className="text-sm font-black text-amber-300 uppercase">Pre-Auction Phase</h4>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    New auction player cards for the round are revealed face-up. Pre-auction franchise abilities activate in sequence:
+                  </p>
+                  <ul className="list-disc list-inside text-[11px] text-slate-400 mt-1 space-y-0.5">
+                    <li><strong className="text-slate-200">Raiders</strong>: Pay coins to dump PSI onto rivals.</li>
+                    <li><strong className="text-slate-200">Cardinals</strong>: Swap an unpicked auction player with the top of the deck.</li>
+                    <li><strong className="text-slate-200">Chiefs</strong>: Once per game, claim a revealed player for their minimum cost without bidding.</li>
+                    <li><strong className="text-slate-200">Commanders</strong>: Mark a player so the First Player cannot nominate or bid on them until acquiring another card.</li>
+                  </ul>
+                </div>
+
+                <div className="bg-slate-950 border border-blue-800/60 p-3.5 rounded-2xl">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-blue-900/80 text-blue-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-blue-700">Phase 3</span>
+                    <h4 className="text-sm font-black text-blue-300 uppercase">Auction Phase</h4>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Teams take turns nominating revealed players and placing bids. Bidding proceeds clockwise until all players have passed or a player pays the Maximum Bid. Each franchise acquires one player per round (or two during Double Draft).
+                  </p>
+                </div>
+
+                <div className="bg-slate-950 border border-emerald-800/60 p-3.5 rounded-2xl">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-emerald-900/80 text-emerald-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-emerald-700">Phase 4</span>
+                    <h4 className="text-sm font-black text-emerald-300 uppercase">Refresh Phase (End of Round)</h4>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Franchises collect their baseline coin income (plus card income bonuses). All active recurring abilities (<strong className="text-emerald-400">🔄</strong>) trigger, deflating PSI or executing team traits. The round counter advances and First Player rotates clockwise.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'symbols' && (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-400 italic">
+                Pay close attention to card icons when bidding—timing is everything!
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="bg-slate-950 border-2 border-amber-500/50 p-4 rounded-2xl space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">⚡</span>
+                    <div>
+                      <h4 className="text-sm font-black text-amber-400 uppercase">Lightning Bolt: Instant Effect</h4>
+                      <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-700/60 px-1.5 py-0.2 rounded font-mono font-bold uppercase">Triggers on Buy</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Triggers <strong className="text-white">immediately and only once</strong> at the exact moment you win or acquire the card in the auction!
+                  </p>
+                  <p className="text-[11px] text-slate-400 italic">
+                    ⚡ Instant effects do <strong className="text-amber-300">NOT</strong> repeat during the end-of-round Refresh Phase.
+                  </p>
+                </div>
+
+                <div className="bg-slate-950 border-2 border-emerald-500/50 p-4 rounded-2xl space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🔄</span>
+                    <div>
+                      <h4 className="text-sm font-black text-emerald-400 uppercase">Recurring Arrow: Refresh Effect</h4>
+                      <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-700/60 px-1.5 py-0.2 rounded font-mono font-bold uppercase">Triggers Every Round</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Triggers <strong className="text-white">at the end of every round</strong> during the Refresh Phase, for as long as this player stays in your Active Lineup!
+                  </p>
+                  <p className="text-[11px] text-slate-400 italic">
+                    🔄 Generates recurring coin revenue and steady per-round PSI deflation.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">⭐</span>
+                  <h4 className="text-xs font-black text-yellow-300 uppercase">Special Passive & Conditional Powers</h4>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Certain players possess unique custom game-breaking mechanics:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-300 mt-2">
+                  <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
+                    <strong className="text-yellow-400">Isaiah Pacheco</strong>: Discards self on purchase, shuffles the deck, and draws a brand new replacement player!
+                  </div>
+                  <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
+                    <strong className="text-yellow-400">Brock Purdy</strong>: "Mr. Irrelevant"—huge +5 Coins and -3 PSI bonus if bought as one of the last two players in a round!
+                  </div>
+                  <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
+                    <strong className="text-yellow-400">DJ Moore</strong>: Salary-cap hero—only teams with ≤10 coins are permitted to nominate or bid on him!
+                  </div>
+                  <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
+                    <strong className="text-yellow-400">Brandon Aiyuk</strong>: Max Bid reward—upgrades permanent recurring income from 2 to 4 coins/round if bought at Max!
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'eras' && (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-400 italic">
+                As the 10-round season unfolds, player caliber evolves through three tiers:
+              </p>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div className="bg-slate-950 border border-blue-500/50 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-blue-900/80 text-blue-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-blue-600">Phase 1</span>
+                      <h4 className="text-sm font-black text-blue-400 uppercase">Foundation Era (Rounds 1–3)</h4>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Budget-friendly starters, steady baseline coin generators, and consistent single-point deflators. Essential for building your early economic engine.
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-blue-400 shrink-0 bg-blue-950/60 px-2.5 py-1 rounded-lg border border-blue-800">Min 1–3 Coins</span>
+                </div>
+
+                <div className="bg-slate-950 border border-purple-500/50 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-purple-900/80 text-purple-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-purple-600">Phase 2</span>
+                      <h4 className="text-sm font-black text-purple-400 uppercase">Escalation Era (Rounds 4–6)</h4>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Pro-bowl caliber stars with multi-point deflation swings, heavy instant burst rewards, and advanced roster synergies.
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-purple-400 shrink-0 bg-purple-950/60 px-2.5 py-1 rounded-lg border border-purple-800">Min 4–7 Coins</span>
+                </div>
+
+                <div className="bg-slate-950 border border-amber-500/60 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-gradient-to-r from-amber-500 to-yellow-400 text-black text-[10px] font-black uppercase px-2 py-0.5 rounded shadow">HOF LEGENDS</span>
+                      <h4 className="text-sm font-black text-amber-300 uppercase">Hall of Fame Era (Rounds 7–10)</h4>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1">
+                      All-time NFL greats and legendary franchise icons! Massive game-defining abilities capable of double-digit deflation, opponent disruption, and championship clinch moves.
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-amber-300 shrink-0 bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-800">Min 8+ Coins</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'bidding' && (
+            <div className="space-y-3.5">
+              <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2">
+                <h4 className="text-xs font-black uppercase text-blue-400 flex items-center gap-1.5">
+                  <span>🔨</span> Nomination & Clockwise Turns
+                </h4>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  The round's First Player (or current nominator) selects any unreserved player card from the auction block, automatically opening the bidding at that player's <strong className="text-yellow-400">Min Bid</strong>. Bidding moves clockwise around the table.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-1.5">
+                  <h4 className="text-xs font-black uppercase text-amber-400 flex items-center gap-1.5">
+                    <span>⚡</span> Buy Max Instant Win
+                  </h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Every card has an official <strong className="text-white">Max Bid</strong>. Placing a bid equal to the card's Max Bid immediately wins the card on the spot and ends bidding on that player!
+                  </p>
+                </div>
+
+                <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-1.5">
+                  <h4 className="text-xs font-black uppercase text-red-400 flex items-center gap-1.5">
+                    <span>🛑</span> Pass is Final
+                  </h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    When you click <strong className="text-white">Pass</strong> on a nominated player, you cannot re-enter the bidding for that specific player this round.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-r from-amber-950/40 to-slate-900 border border-amber-500/50 p-4 rounded-2xl space-y-1.5">
+                <h4 className="text-xs font-black uppercase text-amber-400 flex items-center gap-1.5">
+                  <span>🪙</span> The Sole Remaining 0-Coin Rule
+                </h4>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  If every other eligible team has already acquired their player card for the round, and you have <strong className="text-white">0 Coins</strong>, you are protected! You may nominate and acquire the final remaining player card for <strong className="text-emerald-400">0 Coins</strong>.
+                </p>
+              </div>
+
+              <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-1.5">
+                <h4 className="text-xs font-black uppercase text-slate-300 flex items-center gap-1.5">
+                  <span>🎖️</span> Special Restrictions
+                </h4>
+                <ul className="list-disc list-inside text-[11px] text-slate-400 space-y-1">
+                  <li><strong className="text-slate-200">DJ Moore</strong>: Only teams with 10 or fewer coins may bid.</li>
+                  <li><strong className="text-slate-200">Commanders Target</strong>: The round's First Player cannot nominate or bid on the marked card until they acquire another player.</li>
+                  <li><strong className="text-slate-200">Bears Defense</strong>: Any player outbidding the Chicago Bears must raise by at least +2 coins.</li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'lineup' && (
+            <div className="space-y-4">
+              <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2">
+                <h4 className="text-xs font-black uppercase text-blue-400 flex items-center gap-1.5">
+                  <span>📋</span> 5-Player Active Lineup Limit
+                </h4>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Each franchise can dress up to <strong className="text-white">5 active players</strong>. Only players in your active lineup produce recurring coin income and per-round PSI deflation (<strong className="text-emerald-400">🔄</strong>) during the Refresh Phase!
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-1.5">
+                  <h4 className="text-xs font-black uppercase text-indigo-300 flex items-center gap-1.5">
+                    <span>📦</span> Practice Squad Roster
+                  </h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Additional players beyond your 5 active roster spots are placed into your <strong className="text-white">Practice Squad</strong> bench. Practice Squad players do not trigger recurring effects unless swapped into the active lineup.
+                  </p>
+                </div>
+
+                <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-1.5">
+                  <h4 className="text-xs font-black uppercase text-purple-300 flex items-center gap-1.5">
+                    <span>🔁</span> Roster Swapping & Cuts
+                  </h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    When you win a player with a full lineup, an interactive swap modal allows you to choose which player to bench or replace immediately.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-1.5">
+                <h4 className="text-xs font-black uppercase text-yellow-300 flex items-center gap-1.5">
+                  <span>🏛️</span> Franchise Team Identities
+                </h4>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Every NFL franchise comes with an authentic team identity ability (e.g., Lions first-bid coin windfall, Jets max-bid deflation, Falcons card mulligan, Eagles PSI sabotage, Buccaneers copycat). Master your franchise power to outsmart the competition!
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-slate-800 pt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-6 py-2.5 rounded-xl uppercase tracking-wider shadow cursor-pointer transition-all"
+          >
+            Close Guide ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans: initialNumHumans }) => {
+  const [showRules, setShowRules] = useState(false);
   const [showLog, setShowLog] = useState(true);
   const [peekLineupModal, setPeekLineupModal] = useState(false);
   const [customBid, setCustomBid] = useState(0);
@@ -54,6 +439,8 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
     activeTurnPlayerId = String(G.board.pendingCardinals.playerID);
   } else if (G.board.pendingChiefs) {
     activeTurnPlayerId = String(G.board.pendingChiefs.playerID);
+  } else if (G.board.pendingCommanders) {
+    activeTurnPlayerId = String(G.board.pendingCommanders.playerID);
   } else if (ctx.phase === 'auctionPhase') {
     if (G.board.activeAuctionCardIndex === null) {
       activeTurnPlayerId = String(G.board.nominator);
@@ -1628,6 +2015,62 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
         </div>
       )}
 
+      {/* Commanders Ability Interactive Selection Modal */}
+      {G.board.pendingCommanders && String(G.board.pendingCommanders.playerID) === String(effectivePlayerID) && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border-2 border-amber-500/90 p-5 sm:p-7 rounded-3xl max-w-2xl w-full shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+              <span className="text-3xl">🎖️</span>
+              <div>
+                <h3 className="text-lg sm:text-xl font-black text-amber-400 uppercase tracking-wide">
+                  Washington Commanders Franchise Ability
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Select 1 revealed auction player to mark. The First Player (<strong className="text-white">Player {parseInt(G.board.firstPlayer) + 1} - {G.players[G.board.firstPlayer]?.team?.name}</strong>) will be blocked from nominating or bidding on this player until they acquire another card!
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto flex-1 pr-1 max-h-[55vh]">
+              {G.board.auctionPlayers && G.board.auctionPlayers.map((card, idx) => {
+                if (!card) return null;
+                return (
+                  <div
+                    key={card.uniqueId || idx}
+                    className="bg-slate-950 border border-slate-800 hover:border-amber-400/80 p-3.5 rounded-2xl flex flex-col justify-between transition-all hover:scale-[1.02] shadow"
+                  >
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-mono text-xs font-bold text-yellow-400 bg-yellow-950/60 px-2 py-0.5 rounded border border-yellow-800/50">
+                          Min: {card.minBid}
+                        </span>
+                        <span className="bg-slate-850 px-2 py-0.5 rounded text-blue-300 text-xs font-mono font-black border border-slate-700">
+                          {card.position || 'WR'}
+                        </span>
+                        <span className="font-mono text-xs text-slate-300 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-750">
+                          Max: {getEffectiveCardMaxBid(card, G.board.activeEvent)}
+                        </span>
+                      </div>
+                      <h4 className="text-base font-black text-white">{card.name}</h4>
+                      <div className="mt-1 text-xs">
+                        {renderCardEffects(card.effects, card.specialText || card.customText)}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => moves.commandersMarkCard(idx, effectivePlayerID)}
+                      className="mt-3 w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-black text-xs py-2.5 rounded-xl uppercase tracking-wider cursor-pointer shadow transition-all"
+                    >
+                      🎖️ Mark {card.name}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Eagles Inflation Banner Prompt */}
       {G.board.pendingEagles && String(G.board.pendingEagles.playerID) === String(effectivePlayerID) && (
         <div className="bg-gradient-to-r from-emerald-950/80 to-slate-900 border-2 border-emerald-500 p-5 rounded-2xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 animate-pulse">
@@ -1683,6 +2126,15 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* Rules Guide Button */}
+          <button 
+            type="button"
+            onClick={() => setShowRules(true)}
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 text-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs shadow flex items-center gap-1.5 cursor-pointer transition-all"
+          >
+            <span>📖</span> Rules Guide
+          </button>
+
           {/* Jaguars Ability Secret Deck Inspector Button */}
           {isJaguars && (
             <button 
@@ -1777,10 +2229,12 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                 const isSelected = G.board.activeAuctionCardIndex === idx;
                 const isCommandersMarked = G.board.commandersMarkedCardIndex === idx;
                 const isDjMooreBlockedForMe = card.id === 'dj_moore' && myPlayer?.coins > 10;
+                const remainingCardsCount = G.board.auctionPlayers.filter(c => c !== null).length;
+                const isCommandersBlockedForMe = isCommandersMarked && String(effectivePlayerID) === String(G.board.firstPlayer) && remainingCardsCount > 1;
                 const eligibleBidders = Object.keys(G.players).filter(id => !G.players[id].hasWonAuction);
                 const isSoleRemainingBidder = eligibleBidders.length === 1 && eligibleBidders[0] === effectivePlayerID;
                 const canAffordCard = (isSoleRemainingBidder && myPlayer?.coins === 0) || (myPlayer?.coins >= card.minBid);
-                const canSelect = isMyTurnToNominate && G.board.activeAuctionCardIndex === null && !isDjMooreBlockedForMe && canAffordCard;
+                const canSelect = isMyTurnToNominate && G.board.activeAuctionCardIndex === null && !isDjMooreBlockedForMe && !isCommandersBlockedForMe && canAffordCard;
                 const canChiefsClaim = chiefsClaimActive && myPlayer.coins >= card.minBid;
 
                 return (
@@ -1790,13 +2244,14 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                       if (chiefsClaimActive && canChiefsClaim) {
                         moves.chiefsClaimCard(idx, effectivePlayerID);
                         setChiefsClaimActive(false);
-                      } else if (canSelect) {
+                      } else if (canSelect && !isCommandersBlockedForMe) {
                         moves.selectCard(idx, effectivePlayerID); 
                       }
                     }}
                     className={`border-2 p-3.5 sm:p-4 rounded-2xl transition-all flex flex-col justify-between min-h-[12.5rem] sm:min-h-[13.5rem] select-none relative ${getCardPhaseStyle(card)} ${
                       isSelected ? 'border-yellow-400 shadow-[0_0_20px_rgba(234,179,8,0.4)] bg-slate-850 ring-2 ring-yellow-400 scale-[1.02]' :
                       chiefsClaimActive && canChiefsClaim ? 'border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.4)] cursor-pointer ring-2 ring-amber-400 animate-pulse' :
+                      isCommandersBlockedForMe ? 'opacity-50 border-red-900/80 cursor-not-allowed bg-red-950/20' :
                       canSelect ? 'border-yellow-400 bg-yellow-950/20 ring-2 ring-yellow-400/80 shadow-[0_0_22px_rgba(234,179,8,0.5)] animate-pulse cursor-pointer hover:border-yellow-300 hover:scale-[1.03]' :
                       isDjMooreBlockedForMe ? 'opacity-70 border-red-900/60 cursor-not-allowed' :
                       isMyTurnToNominate && !canAffordCard ? 'opacity-40 border-slate-800 cursor-not-allowed' :
@@ -1836,8 +2291,12 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                           {card.name}
                         </span>
                         {isCommandersMarked && (
-                          <span className="text-[10px] bg-red-900 text-red-200 border border-red-600 px-1.5 py-0.5 rounded font-bold uppercase">
-                            Targeted
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                            isCommandersBlockedForMe
+                              ? 'bg-red-800 text-white border border-red-500 animate-pulse'
+                              : 'bg-red-950 text-red-300 border border-red-800'
+                          }`}>
+                            {isCommandersBlockedForMe ? '🚫 Blocked for First Player' : '🎖️ Commanders Targeted'}
                           </span>
                         )}
                       </div>
@@ -1867,6 +2326,12 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                       {canSelect && (
                         <span className="text-[11px] sm:text-xs bg-yellow-400 text-black px-2.5 py-1 rounded-md font-black tracking-wider uppercase block shadow hover:bg-yellow-300">
                           👉 Click to Nominate
+                        </span>
+                      )}
+
+                      {isCommandersBlockedForMe && isMyTurnToNominate && (
+                        <span className="text-[10px] sm:text-xs bg-red-950 text-red-400 border border-red-800 px-2.5 py-0.5 rounded-md font-bold block shadow">
+                          🚫 Blocked for First Player
                         </span>
                       )}
 
@@ -1985,9 +2450,18 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
 
                 {isMyTurn && (() => {
                   const isDjMooreBlockedForBid = activeCard?.id === 'dj_moore' && myPlayer?.coins > 10;
+                  const remainingAuctionCards = G.board.auctionPlayers ? G.board.auctionPlayers.filter(c => c !== null).length : 0;
+                  const isCommandersBlockedForBid = G.board.commandersMarkedCardIndex !== null &&
+                    G.board.activeAuctionCardIndex === G.board.commandersMarkedCardIndex &&
+                    String(effectivePlayerID) === String(G.board.firstPlayer) &&
+                    remainingAuctionCards > 1;
                   return (
                     <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-3 w-full md:w-auto">
-                      {isDjMooreBlockedForBid ? (
+                      {isCommandersBlockedForBid ? (
+                        <span className="text-xs font-black text-red-400 uppercase tracking-wider bg-red-950/80 border border-red-800 px-3 py-1.5 rounded-lg text-center">
+                          🚫 Commanders Restriction: You are the First Player and cannot bid on this player! Please Pass.
+                        </span>
+                      ) : isDjMooreBlockedForBid ? (
                         <span className="text-xs font-black text-red-400 uppercase tracking-wider bg-red-950/80 border border-red-800 px-3 py-1.5 rounded-lg text-center">
                           🚫 DJ Moore Restriction: Only teams with ≤10 coins may bid (You have {myPlayer.coins} Coins)
                         </span>
@@ -2006,13 +2480,13 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                       <div className="flex flex-wrap gap-3 items-center justify-center">
                         <button 
                           onClick={() => moves.pass(effectivePlayerID)}
-                          disabled={G.board.highestBidder === null}
+                          disabled={G.board.highestBidder === null && !isCommandersBlockedForBid}
                           className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all ${
-                            G.board.highestBidder !== null
+                            (G.board.highestBidder !== null || isCommandersBlockedForBid)
                               ? 'bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 cursor-pointer'
                               : 'bg-slate-800 text-slate-600 border border-slate-850 cursor-not-allowed opacity-50'
                           }`}
-                          title={G.board.highestBidder === null ? 'Nominator must place the opening bid' : 'Pass on this player'}
+                          title={G.board.highestBidder === null && !isCommandersBlockedForBid ? 'Nominator must place the opening bid' : 'Pass on this player'}
                         >
                           Pass
                         </button>
@@ -2050,12 +2524,14 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                         <button 
                           onClick={() => moves.bid(customBid, effectivePlayerID)}
                           disabled={
-                            isSoleRemainingZeroCoins
-                              ? false
-                              : (isDjMooreBlockedForBid || myPlayer.coins < customBid || customBid < nextBid || customBid > maxAllowedBid)
+                            isCommandersBlockedForBid || (
+                              isSoleRemainingZeroCoins
+                                ? false
+                                : (isDjMooreBlockedForBid || myPlayer.coins < customBid || customBid < nextBid || customBid > maxAllowedBid)
+                            )
                           }
                           className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all ${
-                            isSoleRemainingZeroCoins || (!isDjMooreBlockedForBid && myPlayer.coins >= customBid && customBid >= nextBid && customBid <= maxAllowedBid)
+                            !isCommandersBlockedForBid && (isSoleRemainingZeroCoins || (!isDjMooreBlockedForBid && myPlayer.coins >= customBid && customBid >= nextBid && customBid <= maxAllowedBid))
                               ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/25 cursor-pointer'
                               : 'bg-slate-800 text-slate-600 cursor-not-allowed'
                           }`}
@@ -2066,13 +2542,19 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                         {/* Dynamic Buy Max Button: Capped at effMaxBid, disabled & greyed out if coins < effMaxBid */}
                         <button 
                           onClick={() => moves.bid(effMaxBid, effectivePlayerID)}
-                          disabled={isDjMooreBlockedForBid || myPlayer.coins < effMaxBid || effMaxBid < nextBid}
+                          disabled={isCommandersBlockedForBid || isDjMooreBlockedForBid || myPlayer.coins < effMaxBid || effMaxBid < nextBid}
                           className={`px-4 py-2.5 rounded-xl text-xs font-black shadow transition-all ${
-                            !isDjMooreBlockedForBid && myPlayer.coins >= effMaxBid && effMaxBid >= nextBid
+                            !isCommandersBlockedForBid && !isDjMooreBlockedForBid && myPlayer.coins >= effMaxBid && effMaxBid >= nextBid
                               ? 'bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-black cursor-pointer'
                               : 'bg-slate-800 text-slate-600 border border-slate-850 cursor-not-allowed opacity-50'
                           }`}
-                          title={myPlayer.coins < effMaxBid ? `Requires ${effMaxBid} coins to Buy Max` : `Buy Max for ${effMaxBid} coins`}
+                          title={
+                            isCommandersBlockedForBid 
+                              ? 'First Player blocked from bidding on marked player' 
+                              : myPlayer.coins < effMaxBid 
+                                ? `Requires ${effMaxBid} coins to Buy Max` 
+                                : `Buy Max for ${effMaxBid} coins`
+                          }
                         >
                           Buy Max ({effMaxBid}{G.board.activeEvent?.category === 'overpaid' ? ' ▲' : ''})
                         </button>
@@ -2367,12 +2849,15 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
           )}
         </div>
       </div>
+      {/* In-Game Rules Guide Modal */}
+      <RulesModal isOpen={showRules} onClose={() => setShowRules(false)} />
     </div>
   );
 };
 
 const App = () => {
   const [inGame, setInGame] = useState(false);
+  const [showRules, setShowRules] = useState(false);
   const [playMode, setPlayMode] = useState('local_vs_cpu'); // 'local_vs_cpu', 'pvp_cpu', 'pass_and_play', 'online'
   const [numPlayers, setNumPlayers] = useState(4);
   const [numHumansChoice, setNumHumansChoice] = useState(2);
@@ -2553,12 +3038,23 @@ const App = () => {
           )}
 
           <button 
+            type="button"
+            onClick={() => setShowRules(true)}
+            className="w-full bg-slate-950 hover:bg-slate-850 border border-slate-750 hover:border-slate-500 text-slate-200 font-bold text-xs py-3 rounded-2xl shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>📖</span> How to Play & Rules Guide
+          </button>
+
+          <button 
             onClick={() => setInGame(true)}
             className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black text-lg py-4 rounded-2xl shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             START GAME 🏈
           </button>
         </div>
+
+        {/* Lobby Rules Guide Modal */}
+        <RulesModal isOpen={showRules} onClose={() => setShowRules(false)} />
       </div>
     );
   }

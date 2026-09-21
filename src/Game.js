@@ -176,6 +176,14 @@ export const resolveAuctionWin = (G, playerID, card) => {
     addLog(G, `Broncos Ability: ${card.name} acquired this round; its recurring effects will be ignored in this round's refresh.`);
   }
 
+  // Commanders Ability: Once the First Player acquires any player this round, the restriction lifts immediately
+  if (String(playerID) === String(G.board.firstPlayer) && G.board.commandersMarkedCardIndex !== null) {
+    const markedCard = G.board.auctionPlayers ? G.board.auctionPlayers[G.board.commandersMarkedCardIndex] : null;
+    const cardName = markedCard ? markedCard.name : 'The marked player';
+    addLog(G, `🎖️ Commanders Mark Lifted: First Player ${displayId} acquired a card. ${cardName} is now unlocked for all teams!`);
+    G.board.commandersMarkedCardIndex = null;
+  }
+
   // If winner has reached maxWinsThisRound and was nominator, pass nominator rights to next player without enough wins
   if (p.hasWonAuction && String(playerID) === String(G.board.nominator)) {
     const numP = Object.keys(G.players).length;
@@ -190,6 +198,9 @@ export const resolveAuctionWin = (G, playerID, card) => {
 
   // Remove card from auction block
   if (G.board.activeAuctionCardIndex !== null && G.board.auctionPlayers) {
+    if (G.board.activeAuctionCardIndex === G.board.commandersMarkedCardIndex) {
+      G.board.commandersMarkedCardIndex = null;
+    }
     G.board.auctionPlayers[G.board.activeAuctionCardIndex] = null;
   }
   G.board.activeAuctionCardIndex = null;
@@ -547,6 +558,27 @@ export const scoreCardForPlayer = (G, playerID, card) => {
   return rawScore;
 };
 
+export const chooseCpuCommandersMarkCard = (G, commandersId) => {
+  const firstPlayerId = G.board.firstPlayer;
+  if (!firstPlayerId || firstPlayerId === commandersId) return -1;
+  const availableCards = G.board.auctionPlayers;
+  if (!availableCards || availableCards.length === 0) return -1;
+
+  let bestIdx = -1;
+  let highestScore = -Infinity;
+
+  availableCards.forEach((card, idx) => {
+    if (!card) return;
+    const targetScore = scoreCardForPlayer(G, firstPlayerId, card);
+    if (targetScore > highestScore) {
+      highestScore = targetScore;
+      bestIdx = idx;
+    }
+  });
+
+  return bestIdx !== -1 ? bestIdx : 0;
+};
+
 export const chooseCpuNominationCard = (G, currentPlayerId) => {
   const currentPlayer = G.players[currentPlayerId];
   const remainingCardsCount = G.board.auctionPlayers.filter(c => c !== null).length;
@@ -558,7 +590,7 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
   G.board.auctionPlayers.forEach((c, idx) => {
     if (!c) return;
     if (c.id === 'dj_moore' && currentPlayer.coins > 10) return;
-    if (currentPlayerId === G.board.firstPlayer && idx === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
+    if (String(currentPlayerId) === String(G.board.firstPlayer) && idx === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
       return;
     }
     // Must be able to afford the opening minimum bid (unless sole remaining bidder with 0 coins)
@@ -638,7 +670,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   const remainingCardsCount = G.board.auctionPlayers.filter(c => c !== null).length;
-  if (currentPlayerId === G.board.firstPlayer && cardIndex === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
+  if (String(currentPlayerId) === String(G.board.firstPlayer) && cardIndex === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
     return { shouldBid: false, bidAmount: 0 };
   }
   if (card.id === 'dj_moore' && currentPlayer.coins > 10) {
@@ -1488,6 +1520,8 @@ export const DeflategateGame = {
         pendingCardinalsQueue: [],
         pendingChiefs: null,
         pendingChiefsQueue: [],
+        pendingCommanders: null,
+        pendingCommandersQueue: [],
         pendingBills: null,
         pendingBillsQueue: [],
         pendingEagles: null,
@@ -1667,6 +1701,30 @@ export const DeflategateGame = {
       p.ramsTokenAttached = true;
       const displayId = parseInt(targetPlayerId) + 1;
       addLog(G, `🐏 Rams Ability: Player ${displayId} attached 2x Token to ${targetCard.name}!`);
+    },
+    commandersMarkCard: ({ G, playerID, events }, auctionCardIndex, actingPlayerId) => {
+      if (!G.board.pendingCommanders) return INVALID_MOVE;
+      const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
+      if (String(G.board.pendingCommanders.playerID) !== String(targetPlayerId)) return INVALID_MOVE;
+      if (auctionCardIndex < 0 || auctionCardIndex >= G.board.auctionPlayers.length) return INVALID_MOVE;
+      const card = G.board.auctionPlayers[auctionCardIndex];
+      if (!card) return INVALID_MOVE;
+
+      G.board.commandersMarkedCardIndex = auctionCardIndex;
+      const displayId = parseInt(targetPlayerId) + 1;
+      const firstDisplayId = parseInt(G.board.firstPlayer) + 1;
+      addLog(G, `🎖️ Commanders Ability: Player ${displayId} marked ${card.name}. First Player (Player ${firstDisplayId}) cannot nominate or bid on this player!`);
+
+      if (G.board.pendingCommandersQueue && G.board.pendingCommandersQueue.length > 0) {
+        G.board.pendingCommanders = G.board.pendingCommandersQueue.shift();
+      } else {
+        G.board.pendingCommanders = null;
+      }
+
+      if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
+        G.board.preAuctionComplete = true;
+        if (events && events.endPhase) events.endPhase();
+      }
     },
     buyPracticeSquad: ({ G, playerID, events }, actingPlayerId) => {
       if (!G.board.pendingNewCapLimit) return INVALID_MOVE;
@@ -2691,15 +2749,9 @@ export const DeflategateGame = {
           }
         }
 
-        // Commanders marked card logic
-        const commandersPlayerId = Object.keys(G.players).find(id => getEffectiveTeamId(G.players[id]) === 'commanders');
-        if (commandersPlayerId) {
-          const markIdx = Math.floor(Math.random() * G.board.auctionPlayers.length);
-          G.board.commandersMarkedCardIndex = markIdx;
-          addLog(G, `Commanders Ability: Marked card index ${markIdx + 1} (${G.board.auctionPlayers[markIdx]?.name}). First Player cannot bid on it!`);
-        } else {
-          G.board.commandersMarkedCardIndex = null;
-        }
+        G.board.commandersMarkedCardIndex = null;
+        G.board.pendingCommanders = null;
+        G.board.pendingCommandersQueue = [];
 
         Object.values(G.players).forEach(p => {
           p.hasWonAuction = false;
@@ -2800,8 +2852,36 @@ export const DeflategateGame = {
           G.board.pendingChiefs = G.board.pendingChiefsQueue.shift();
         }
 
+        // Check Commanders Ability (queue multi-teams)
+        const commandersTeams = Object.keys(G.players).filter(id => getEffectiveTeamId(G.players[id]) === 'commanders');
+        commandersTeams.forEach(commandersId => {
+          // Rule: This effect doesn't happen when the Commanders themselves are the first/nominating team
+          if (String(commandersId) === String(G.board.firstPlayer)) {
+            const displayId = parseInt(commandersId) + 1;
+            addLog(G, `Commanders Ability Skipped: Player ${displayId} (Commanders) is the First Player this round.`);
+            return;
+          }
+          const commandersPlayer = G.players[commandersId];
+          if (commandersPlayer.isCpu) {
+            const chosenIdx = chooseCpuCommandersMarkCard(G, commandersId);
+            if (chosenIdx !== -1) {
+              G.board.commandersMarkedCardIndex = chosenIdx;
+              const card = G.board.auctionPlayers[chosenIdx];
+              const displayId = parseInt(commandersId) + 1;
+              const firstDisplayId = parseInt(G.board.firstPlayer) + 1;
+              addLog(G, `🎖️ Commanders Ability: CPU Player ${displayId} marked ${card.name}. First Player (Player ${firstDisplayId}) cannot nominate or bid on this player!`);
+            }
+          } else {
+            if (!G.board.pendingCommandersQueue) G.board.pendingCommandersQueue = [];
+            G.board.pendingCommandersQueue.push({ playerID: commandersId });
+          }
+        });
+        if (G.board.pendingCommandersQueue && G.board.pendingCommandersQueue.length > 0) {
+          G.board.pendingCommanders = G.board.pendingCommandersQueue.shift();
+        }
+
         // If no human interactive prompts are pending, proceed to auction phase
-        if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs) {
+        if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
           G.board.preAuctionComplete = true;
           if (events && events.endPhase) events.endPhase();
         }
@@ -2827,7 +2907,7 @@ export const DeflategateGame = {
             G.board.pendingRaiders = null;
           }
 
-          if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs) {
+          if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
             G.board.preAuctionComplete = true;
             if (events && events.endPhase) events.endPhase();
           }
@@ -2850,7 +2930,7 @@ export const DeflategateGame = {
             G.board.pendingCardinals = null;
           }
 
-          if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs) {
+          if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
             G.board.preAuctionComplete = true;
             if (events && events.endPhase) events.endPhase();
           }
@@ -2861,7 +2941,7 @@ export const DeflategateGame = {
           } else {
             G.board.pendingCardinals = null;
           }
-          if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs) {
+          if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
             G.board.preAuctionComplete = true;
             if (events && events.endPhase) events.endPhase();
           }
@@ -2888,7 +2968,7 @@ export const DeflategateGame = {
             G.board.pendingChiefs = null;
           }
 
-          if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs) {
+          if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
             G.board.preAuctionComplete = true;
             if (events && events.endPhase) events.endPhase();
           }
@@ -2899,7 +2979,31 @@ export const DeflategateGame = {
           } else {
             G.board.pendingChiefs = null;
           }
-          if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs) {
+          if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
+            G.board.preAuctionComplete = true;
+            if (events && events.endPhase) events.endPhase();
+          }
+        },
+        commandersMarkCard: ({ G, playerID, events }, auctionCardIndex, actingPlayerId) => {
+          if (!G.board.pendingCommanders) return INVALID_MOVE;
+          const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
+          if (String(G.board.pendingCommanders.playerID) !== String(targetPlayerId)) return INVALID_MOVE;
+          if (auctionCardIndex < 0 || auctionCardIndex >= G.board.auctionPlayers.length) return INVALID_MOVE;
+          const card = G.board.auctionPlayers[auctionCardIndex];
+          if (!card) return INVALID_MOVE;
+
+          G.board.commandersMarkedCardIndex = auctionCardIndex;
+          const displayId = parseInt(targetPlayerId) + 1;
+          const firstDisplayId = parseInt(G.board.firstPlayer) + 1;
+          addLog(G, `🎖️ Commanders Ability: Player ${displayId} marked ${card.name}. First Player (Player ${firstDisplayId}) cannot nominate or bid on this player!`);
+
+          if (G.board.pendingCommandersQueue && G.board.pendingCommandersQueue.length > 0) {
+            G.board.pendingCommanders = G.board.pendingCommandersQueue.shift();
+          } else {
+            G.board.pendingCommanders = null;
+          }
+
+          if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
             G.board.preAuctionComplete = true;
             if (events && events.endPhase) events.endPhase();
           }
@@ -3040,7 +3144,7 @@ export const DeflategateGame = {
           }
 
           const remainingCardsCount = G.board.auctionPlayers.filter(c => c !== null).length;
-          if (targetPlayerId === G.board.firstPlayer && cardIndex === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
+          if (String(targetPlayerId) === String(G.board.firstPlayer) && cardIndex === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
             return INVALID_MOVE;
           }
 
@@ -3107,7 +3211,7 @@ export const DeflategateGame = {
           }
 
           const remainingCardsCount = G.board.auctionPlayers.filter(c => c !== null).length;
-          if (targetPlayerId === G.board.firstPlayer && G.board.activeAuctionCardIndex === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
+          if (String(targetPlayerId) === String(G.board.firstPlayer) && G.board.activeAuctionCardIndex === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
             return INVALID_MOVE;
           }
 
