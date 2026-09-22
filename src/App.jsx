@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Client } from 'boardgame.io/react';
 import { Local, SocketIO } from 'boardgame.io/multiplayer';
 import { DeflategateGame, getEffectiveTeamId, getEffectiveCardMaxBid } from './Game';
@@ -297,6 +297,69 @@ const RulesModal = ({ isOpen, onClose }) => {
   );
 };
 
+// Animated slot-machine style counter for instant Coins and PSI updates
+const RollingSlotCounter = ({ value, isPsi = false, className = '' }) => {
+  const [displayValue, setDisplayValue] = useState(value);
+  const [animating, setAnimating] = useState(false);
+  const [diffBadge, setDiffBadge] = useState(null);
+  const prevValRef = useRef(value);
+
+  useEffect(() => {
+    const prev = prevValRef.current;
+    if (prev !== value) {
+      const diff = value - prev;
+      prevValRef.current = value;
+      setDiffBadge(diff);
+      setAnimating(true);
+
+      const steps = 6;
+      const stepDuration = 40;
+      let currentStep = 0;
+
+      const interval = setInterval(() => {
+        currentStep++;
+        if (currentStep >= steps) {
+          setDisplayValue(value);
+          setAnimating(false);
+          clearInterval(interval);
+        } else {
+          const progress = currentStep / steps;
+          const interpolated = prev + diff * progress;
+          setDisplayValue(isPsi ? Math.round(interpolated * 10) / 10 : Math.round(interpolated));
+        }
+      }, stepDuration);
+
+      const badgeTimer = setTimeout(() => {
+        setDiffBadge(null);
+      }, 1800);
+
+      return () => {
+        clearInterval(interval);
+        clearTimeout(badgeTimer);
+      };
+    }
+  }, [value, isPsi]);
+
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <span className={`${className} ${animating ? 'scale-105 font-mono tracking-wider' : 'font-mono'} transition-transform`}>
+        {isPsi ? (typeof displayValue === 'number' ? displayValue.toFixed(1) : displayValue) : Math.round(displayValue)}
+      </span>
+      {diffBadge !== null && (
+        <span
+          className={`absolute -top-3.5 right-0 text-[10px] font-black font-mono px-1 py-0.2 rounded-full animate-bounce ${
+            diffBadge > 0
+              ? (isPsi ? 'bg-red-900 text-red-300 border border-red-700' : 'bg-yellow-900 text-yellow-300 border border-yellow-700')
+              : (isPsi ? 'bg-emerald-900 text-emerald-300 border border-emerald-700' : 'bg-slate-800 text-slate-300 border border-slate-700')
+          }`}
+        >
+          {diffBadge > 0 ? `+${isPsi ? diffBadge.toFixed(1) : diffBadge}` : `${isPsi ? diffBadge.toFixed(1) : diffBadge}`}
+        </span>
+      )}
+    </div>
+  );
+};
+
 const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans: initialNumHumans }) => {
   const [showRules, setShowRules] = useState(false);
   const [showLog, setShowLog] = useState(true);
@@ -314,6 +377,8 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
   const [cardinalsMinimized, setCardinalsMinimized] = useState(false);
   const [coltsExpandedMap, setColtsExpandedMap] = useState({});
   const [coltsHoveredId, setColtsHoveredId] = useState(null);
+  const [activeToast, setActiveToast] = useState(null);
+  const lastToastIdRef = useRef(null);
 
   const displayPlayerNumber = (id) => (parseInt(id) + 1).toString();
 
@@ -405,18 +470,42 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
   const effMaxBid = activeCard ? getEffectiveCardMaxBid(activeCard, G.board.activeEvent) : 0;
   const maxAllowedBid = activeCard && myPlayer ? (isSoleRemainingZeroCoins ? 0 : Math.min(myPlayer.coins, effMaxBid)) : 0;
 
+  const activeCardId = activeCard?.uniqueId || G.board.activeAuctionCardIndex;
+  const lastActiveCardRef = useRef(null);
+
   useEffect(() => {
-    if (isSoleRemainingZeroCoins) {
-      setCustomBid(0);
-    } else {
-      if (nextBid > 0 && customBid < nextBid) {
+    if (activeCardId !== lastActiveCardRef.current) {
+      lastActiveCardRef.current = activeCardId;
+      if (isSoleRemainingZeroCoins) {
+        setCustomBid(0);
+      } else if (nextBid > 0) {
         setCustomBid(nextBid);
       }
-      if (maxAllowedBid > 0 && customBid > maxAllowedBid) {
-        setCustomBid(maxAllowedBid);
+    } else {
+      if (isSoleRemainingZeroCoins) {
+        setCustomBid(0);
+      } else {
+        if (nextBid > 0 && customBid < nextBid) {
+          setCustomBid(nextBid);
+        }
+        if (maxAllowedBid > 0 && customBid > maxAllowedBid) {
+          setCustomBid(maxAllowedBid);
+        }
       }
     }
-  }, [nextBid, maxAllowedBid, isSoleRemainingZeroCoins]);
+  }, [activeCardId, nextBid, maxAllowedBid, isSoleRemainingZeroCoins]);
+
+  // Transient 1.8s toast for CPU / franchise abilities
+  useEffect(() => {
+    if (G.board.abilityNotification && G.board.abilityNotification.id !== lastToastIdRef.current) {
+      lastToastIdRef.current = G.board.abilityNotification.id;
+      setActiveToast(G.board.abilityNotification);
+      const timer = setTimeout(() => {
+        setActiveToast(null);
+      }, 1800);
+      return () => clearTimeout(timer);
+    }
+  }, [G.board.abilityNotification]);
 
   // Automatic timer progression for refresh phase team-by-team animation
   useEffect(() => {
@@ -460,9 +549,9 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
 
   // Falcons Phase Check for Mulligan
   let currentPhaseKey = 'p1';
-  if (G.board.round >= 5 && G.board.round <= 7) currentPhaseKey = 'p2';
-  if (G.board.round >= 8) currentPhaseKey = 'p3';
-  const canMulligan = effectiveTeam && effectiveTeam.id === 'falcons' && isMyTurnToNominate && !myPlayer?.falconsPhaseUses?.[currentPhaseKey];
+  if (G.board.round >= 4 && G.board.round <= 6) currentPhaseKey = 'p2';
+  if (G.board.round >= 7) currentPhaseKey = 'p3';
+  const canMulligan = effectiveTeam && effectiveTeam.id === 'falcons' && ctx.phase === 'auctionPhase' && G.board.activeAuctionCardIndex === null && !myPlayer?.hasWonAuction && !myPlayer?.falconsPhaseUses?.[currentPhaseKey];
 
   // Automated turn stepper for Skip buttons
   useEffect(() => {
@@ -1263,85 +1352,6 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
         </div>
       )}
 
-      {/* Bonus Auction Modal (Player Demands a Trade) */}
-      {G.board.bonusAuction && G.board.bonusAuction.active && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border-2 border-amber-500 p-6 md:p-8 rounded-3xl max-w-xl w-full text-center shadow-2xl space-y-4 animate-bounce-short">
-            <span className="text-4xl block">📣</span>
-            <span className="text-xs font-black uppercase tracking-widest bg-amber-900/60 text-amber-300 px-3 py-1 rounded-full border border-amber-700">
-              Bonus Auction: Player Demands a Trade
-            </span>
-            <h2 className="text-2xl font-black text-white uppercase tracking-wide">
-              {G.board.bonusAuction.card?.name}
-            </h2>
-            <p className="text-xs text-slate-300">
-              This bonus auction does not count toward your normal 1-player acquisition limit for this round!
-            </p>
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center">
-              <div className="flex justify-between items-center text-xs font-bold mb-2 gap-1.5">
-                <span className="whitespace-nowrap shrink-0 text-yellow-400">Min: {G.board.bonusAuction.card?.minBid}</span>
-                <span className="shrink-0 bg-slate-900 px-2 py-0.5 rounded text-blue-400 font-mono font-black border border-slate-800">{G.board.bonusAuction.card?.position}</span>
-                <span className={`whitespace-nowrap shrink-0 font-mono ${G.board.activeEvent?.category === 'overpaid' ? 'text-amber-300 font-black' : 'text-slate-400'}`}>
-                  Max: {getEffectiveCardMaxBid(G.board.bonusAuction.card, G.board.activeEvent)}
-                  {G.board.activeEvent?.category === 'overpaid' && <span className="ml-1 text-amber-400 font-black">▲</span>}
-                </span>
-              </div>
-              <div className="my-2">{renderCardEffects(G.board.bonusAuction.card?.effects)}</div>
-              <div className="mt-3 pt-3 border-t border-slate-800 flex justify-around">
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Current High Bid</span>
-                  <span className="text-xl font-black text-yellow-400 font-mono">{G.board.bonusAuction.highestBid} Coins</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-bold block">High Bidder</span>
-                  <span className="text-base font-black text-white">
-                    {G.board.bonusAuction.highestBidder !== null
-                      ? `Player ${parseInt(G.board.bonusAuction.highestBidder) + 1} (${G.players[G.board.bonusAuction.highestBidder]?.team?.name})`
-                      : 'None'}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3 pt-2">
-              {(() => {
-                const effMax = getEffectiveCardMaxBid(G.board.bonusAuction.card, G.board.activeEvent);
-                const nextB = G.board.bonusAuction.highestBidder !== null ? G.board.bonusAuction.highestBid + 1 : G.board.bonusAuction.card.minBid;
-                const canBid = myPlayer.coins >= nextB;
-                const canMax = myPlayer.coins >= effMax;
-                return (
-                  <>
-                    <button
-                      disabled={!canBid}
-                      onClick={() => moves.bonusAuctionBid(nextB, effectivePlayerID)}
-                      className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider ${
-                        canBid ? 'bg-amber-500 hover:bg-amber-400 text-black cursor-pointer shadow' : 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                      }`}
-                    >
-                      Bid {nextB} Coins
-                    </button>
-                    <button
-                      disabled={!canMax}
-                      onClick={() => moves.bonusAuctionBid(effMax, effectivePlayerID)}
-                      className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider ${
-                        canMax ? 'bg-yellow-400 hover:bg-yellow-300 text-black cursor-pointer shadow' : 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                      }`}
-                    >
-                      Buy Max ({effMax})
-                    </button>
-                    <button
-                      onClick={() => moves.bonusAuctionPass(effectivePlayerID)}
-                      className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl text-xs uppercase cursor-pointer"
-                    >
-                      Pass
-                    </button>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Free Agency Modal */}
       {G.board.pendingFreeAgency && G.board.pendingFreeAgency.card && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -2029,6 +2039,20 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
         </div>
       )}
 
+      {/* Transient Franchise Ability Toast */}
+      {activeToast && (
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 bg-slate-900/95 border-2 border-amber-400 text-white px-4 py-3 rounded-2xl shadow-[0_0_25px_rgba(251,191,36,0.4)] backdrop-blur-md animate-bounce-short">
+          <span className="text-2xl">{activeToast.icon || '⚡'}</span>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">Franchise Ability</span>
+              <span className="text-xs font-bold text-slate-300">({activeToast.teamName})</span>
+            </div>
+            <p className="text-xs font-semibold text-white">{activeToast.title}: {activeToast.message}</p>
+          </div>
+        </div>
+      )}
+
       {/* Header Bar */}
       <header className="flex flex-col md:flex-row justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-lg gap-4">
         <div>
@@ -2057,6 +2081,19 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
             </button>
           )}
 
+          {G.board.abilityNotification && (
+            <div className="bg-gradient-to-r from-amber-950/70 to-slate-900 border border-amber-500/80 p-3 rounded-xl max-w-sm text-left shadow-lg">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-base">{G.board.abilityNotification.icon || '⚡'}</span>
+                <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider">
+                  Franchise Ability: {G.board.abilityNotification.teamName}
+                </span>
+              </div>
+              <p className="text-xs font-bold text-white leading-tight">{G.board.abilityNotification.title}</p>
+              <p className="text-[11px] text-slate-300 italic leading-snug mt-0.5">{G.board.abilityNotification.message}</p>
+            </div>
+          )}
+
           {G.board.activeEvent && (
             <div className="bg-gradient-to-r from-purple-900/50 to-indigo-900/50 border border-purple-800 p-4 rounded-xl max-w-md w-full md:w-auto text-left md:text-right">
               <p className="text-xs text-purple-400 font-extrabold uppercase tracking-wider">Active Round Event</p>
@@ -2078,6 +2115,22 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
         {/* Auction Block Section */}
         {(ctx.phase === 'auctionPhase' || ctx.phase === 'preAuctionPhase') && (
           <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+            {/* Trade Demand Auction Banner */}
+            {G.board.isTradeDemandBidding && (
+              <div className="p-3.5 bg-gradient-to-r from-amber-950/80 via-amber-900/60 to-amber-950/80 border-2 border-amber-500 rounded-2xl flex items-center justify-between text-amber-200 shadow-[0_0_20px_rgba(245,158,11,0.3)]">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl animate-bounce">📣</span>
+                  <div>
+                    <span className="text-xs font-black uppercase tracking-wider block text-amber-400">Special Auction Event</span>
+                    <span className="text-sm font-bold text-white">Player Demands a Trade — 1 Exclusive Player Available!</span>
+                  </div>
+                </div>
+                <span className="text-xs bg-amber-500/20 text-amber-300 font-mono font-bold px-3 py-1 rounded-full border border-amber-500/40">
+                  Bonus Round Acquisition (Doesn't consume round quota)
+                </span>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
               <div className="flex items-center gap-3">
                 <h2 className="text-xl font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
@@ -2614,19 +2667,22 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                   }`}>
                     <div className="text-center">
                       <span className="text-[10px] font-bold text-yellow-500 uppercase tracking-wider block">Coins</span>
-                      <span className={`text-xl font-black font-mono transition-all ${
-                        isRefreshActiveTeam ? 'text-yellow-300 scale-110' : 'text-slate-100'
-                      }`}>
-                        {displayCoins}
-                      </span>
+                      <RollingSlotCounter
+                        value={displayCoins}
+                        className={`text-xl font-black transition-all ${
+                          isRefreshActiveTeam ? 'text-yellow-300 scale-110' : 'text-slate-100'
+                        }`}
+                      />
                     </div>
                     <div className="text-center border-l border-slate-850">
                       <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider block">PSI</span>
-                      <span className={`text-xl font-black font-mono transition-all ${
-                        isRefreshActiveTeam ? 'text-red-300 scale-110' : 'text-slate-100'
-                      }`}>
-                        {displayPsi.toFixed(1)}
-                      </span>
+                      <RollingSlotCounter
+                        value={displayPsi}
+                        isPsi={true}
+                        className={`text-xl font-black transition-all ${
+                          isRefreshActiveTeam ? 'text-red-300 scale-110' : 'text-slate-100'
+                        }`}
+                      />
                     </div>
                   </div>
 
