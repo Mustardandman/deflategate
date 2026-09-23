@@ -55,8 +55,8 @@ export const triggerAbilityNotification = (G, playerID, teamId, title, message) 
   const icon = icons[teamId] || '⚡';
   const p = G.players[playerID];
   const teamName = p?.team?.name || (teamId ? teamId.toUpperCase() : 'TEAM');
-  G.board.abilityNotification = {
-    id: Date.now() + Math.random(),
+  const notif = {
+    id: `${Date.now()}_${Math.random()}`,
     playerID,
     teamId,
     teamName,
@@ -65,6 +65,12 @@ export const triggerAbilityNotification = (G, playerID, teamId, title, message) 
     icon,
     timestamp: Date.now()
   };
+  G.board.abilityNotification = notif;
+  if (!G.board.abilityNotificationHistory) G.board.abilityNotificationHistory = [];
+  G.board.abilityNotificationHistory.unshift(notif);
+  if (G.board.abilityNotificationHistory.length > 25) {
+    G.board.abilityNotificationHistory = G.board.abilityNotificationHistory.slice(0, 25);
+  }
 };
 
 export const checkDolphinsEmergencyCoins = (G, playerID) => {
@@ -255,16 +261,19 @@ export const resolveAuctionWin = (G, playerID, card) => {
     G.board.commandersMarkedCardIndex = null;
   }
 
-  // If winner was nominator, pass nominator rights clockwise to next player with fewest wins
-  if (String(playerID) === String(G.board.nominator)) {
-    const numP = Object.keys(G.players).length;
-    const eligiblePlayers = Object.keys(G.players).filter(id => (G.players[id].cardsWonThisRound || 0) < maxWinsThisRound);
+  // Pass nominator rights clockwise to next player with fewest wins if nominator won or is now maxed
+  const numP = Object.keys(G.players).length;
+  const eligiblePlayers = Object.keys(G.players).filter(id => (G.players[id].cardsWonThisRound || 0) < maxWinsThisRound);
+  
+  if (eligiblePlayers.length > 0) {
+    const currentNom = String(G.board.nominator);
+    const nominatorMustPass = String(playerID) === currentNom || (G.players[currentNom]?.cardsWonThisRound || 0) >= maxWinsThisRound;
     
-    if (eligiblePlayers.length > 0) {
+    if (nominatorMustPass) {
       const minWins = Math.min(...eligiblePlayers.map(id => G.players[id].cardsWonThisRound || 0));
       let found = null;
       for (let i = 1; i <= numP; i++) {
-        const candidate = ((parseInt(playerID) + i) % numP).toString();
+        const candidate = ((parseInt(currentNom) + i) % numP).toString();
         if ((G.players[candidate]?.cardsWonThisRound || 0) === minWins && (G.players[candidate]?.cardsWonThisRound || 0) < maxWinsThisRound) {
           found = candidate;
           break;
@@ -272,7 +281,7 @@ export const resolveAuctionWin = (G, playerID, card) => {
       }
       if (!found) {
         for (let i = 1; i <= numP; i++) {
-          const candidate = ((parseInt(playerID) + i) % numP).toString();
+          const candidate = ((parseInt(currentNom) + i) % numP).toString();
           if ((G.players[candidate]?.cardsWonThisRound || 0) < maxWinsThisRound) {
             found = candidate;
             break;
@@ -1273,10 +1282,33 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
 const executeCpuMoveInternal = (G, ctx, events) => {
   if (G.pendingReplacement) return;
-  const currentPlayerId = ctx.currentPlayer;
-  const currentPlayer = G.players[currentPlayerId];
+
+  // Determine who is actively taking the turn
+  let actingPlayerId = ctx.currentPlayer;
+  if (G.board.activeAuctionCardIndex === null) {
+    // When no card is nominated, the nominator acts
+    actingPlayerId = String(G.board.nominator);
+    // Safety check: if nominator has already won, pick next eligible bidder
+    const eligibleBidders = Object.keys(G.players).filter(id => !G.players[id].hasWonAuction);
+    if (G.players[actingPlayerId]?.hasWonAuction && eligibleBidders.length > 0) {
+      actingPlayerId = eligibleBidders[0];
+      G.board.nominator = actingPlayerId;
+    }
+  } else {
+    // During an active card auction:
+    // If ctx.currentPlayer has won or passed, find next active bidder
+    const eligibleBidders = Object.keys(G.players).filter(id => !G.players[id].hasWonAuction);
+    const activeBidders = eligibleBidders.filter(id => !G.board.passedAuctionPlayers?.includes(id));
+    if (activeBidders.length === 0) return;
+    if (!activeBidders.includes(String(actingPlayerId))) {
+      actingPlayerId = activeBidders[0];
+    }
+  }
+
+  const currentPlayer = G.players[actingPlayerId];
   if (!currentPlayer || !currentPlayer.isCpu) return;
 
+  const currentPlayerId = actingPlayerId;
   const displayId = parseInt(currentPlayerId) + 1;
 
   // Case 1: No active card nominated yet
@@ -1488,9 +1520,12 @@ export const processRivalryStep = (G) => {
       }
     });
     if (targetId !== null) {
+      const giverName = giver.team?.name ? `${giver.team.name} (Player ${parseInt(giverId) + 1})` : `Player ${parseInt(giverId) + 1}`;
+      const targetPlayer = G.players[targetId];
+      const targetName = targetPlayer?.team?.name ? `${targetPlayer.team.name} (Player ${parseInt(targetId) + 1})` : `Player ${parseInt(targetId) + 1}`;
       giver.psi = Math.max(0, giver.psi - 1);
       applyPsiInflated(G, targetId, 1);
-      addLog(G, `Rivalry: CPU Player ${parseInt(giverId) + 1} gave 1 PSI to Player ${parseInt(targetId) + 1}.`);
+      addLog(G, `⚔️ Rivalry: ${giverName} gave 1 PSI to ${targetName}.`);
     }
     G.board.pendingRivalry.step++;
     if (G.board.pendingRivalry.step < order.length) {
@@ -1983,6 +2018,7 @@ export const DeflategateGame = {
         tradeDemandCard: null,
         pendingRegularAuctionPlayers: null,
         abilityNotification: null,
+        abilityNotificationHistory: [],
         auctionPlayers: [],
         activeAuctionCardIndex: null,
         commandersMarkedCardIndex: null,
@@ -2268,9 +2304,11 @@ export const DeflategateGame = {
       const target = G.players[targetId];
       if (!giver || !target) return INVALID_MOVE;
 
+      const giverName = giver.team?.name ? `${giver.team.name} (Player ${parseInt(giverId) + 1})` : `Player ${parseInt(giverId) + 1}`;
+      const targetName = target?.team?.name ? `${target.team.name} (Player ${parseInt(targetId) + 1})` : `Player ${parseInt(targetId) + 1}`;
       giver.psi = Math.max(0, giver.psi - 1);
       applyPsiInflated(G, targetId, 1);
-      addLog(G, `Rivalry: Player ${parseInt(giverId) + 1} gave 1 PSI to Player ${parseInt(targetId) + 1}.`);
+      addLog(G, `⚔️ Rivalry: ${giverName} gave 1 PSI to ${targetName}.`);
 
       G.board.pendingRivalry.step++;
       if (G.board.pendingRivalry.step < order.length) {
@@ -3065,9 +3103,11 @@ export const DeflategateGame = {
           const target = G.players[targetId];
           if (!giver || !target) return INVALID_MOVE;
 
+          const giverName = giver.team?.name ? `${giver.team.name} (Player ${parseInt(giverId) + 1})` : `Player ${parseInt(giverId) + 1}`;
+          const targetName = target?.team?.name ? `${target.team.name} (Player ${parseInt(targetId) + 1})` : `Player ${parseInt(targetId) + 1}`;
           giver.psi = Math.max(0, giver.psi - 1);
           applyPsiInflated(G, targetId, 1);
-          addLog(G, `Rivalry: Player ${parseInt(giverId) + 1} gave 1 PSI to Player ${parseInt(targetId) + 1}.`);
+          addLog(G, `⚔️ Rivalry: ${giverName} gave 1 PSI to ${targetName}.`);
 
           G.board.pendingRivalry.step++;
           if (G.board.pendingRivalry.step < order.length) {
@@ -3601,7 +3641,7 @@ export const DeflategateGame = {
         }
       },
       moves: {
-        replaceLineupCard: ({ G, playerID }, discardIndex) => {
+        replaceLineupCard: ({ G, playerID, events }, discardIndex) => {
           const targetPlayerId = G.players[playerID] ? playerID : Object.keys(G.players)[0];
           if (!G.pendingReplacement || String(G.pendingReplacement.playerID) !== String(targetPlayerId)) {
             return INVALID_MOVE;
@@ -3619,8 +3659,9 @@ export const DeflategateGame = {
           const displayId = parseInt(targetPlayerId) + 1;
           addLog(G, `Player ${displayId} replaced ${discarded.name} with ${newCard.name}.`);
           G.pendingReplacement = null;
+          if (events && events.endTurn) events.endTurn();
         },
-        discardWonCard: ({ G, playerID }) => {
+        discardWonCard: ({ G, playerID, events }) => {
           const targetPlayerId = G.players[playerID] ? playerID : Object.keys(G.players)[0];
           if (!G.pendingReplacement || String(G.pendingReplacement.playerID) !== String(targetPlayerId)) {
             return INVALID_MOVE;
@@ -3634,6 +3675,7 @@ export const DeflategateGame = {
           const displayId = parseInt(targetPlayerId) + 1;
           addLog(G, `Player ${displayId} chose to discard acquired card ${wonCard.name}.`);
           G.pendingReplacement = null;
+          if (events && events.endTurn) events.endTurn();
         },
         setQbChoice: ({ G, playerID }, cardUniqueId, choice) => {
           if (!G.board.qbChoices) G.board.qbChoices = {};

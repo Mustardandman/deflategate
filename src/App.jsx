@@ -379,6 +379,10 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
   const [coltsHoveredId, setColtsHoveredId] = useState(null);
   const [activeToast, setActiveToast] = useState(null);
   const lastToastIdRef = useRef(null);
+  const [replaceLocked, setReplaceLocked] = useState(false);
+  const [replaceLockCountdown, setReplaceLockCountdown] = useState(0);
+  const [dismissedAbilityIds, setDismissedAbilityIds] = useState([]);
+  const [abilityCarouselIdx, setAbilityCarouselIdx] = useState(0);
 
   const displayPlayerNumber = (id) => (parseInt(id) + 1).toString();
 
@@ -543,9 +547,37 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
   }, [G.board.tyreekHillAlert, clientDismissedTyreekTimestamp, moves]);
 
   const humanHasWonInRound = myPlayer && myPlayer.hasWonAuction;
-  const currentPlayerObj = G.players[ctx.currentPlayer];
-  const isCpuTurn = currentPlayerObj && currentPlayerObj.isCpu;
+  const isPendingReplacementForMe = Boolean(G.pendingReplacement && String(G.pendingReplacement.playerID) === String(effectivePlayerID));
+
+  // Determine who is actively taking the turn (nominator when activeAuctionCardIndex === null, else ctx.currentPlayer)
+  const activeActingPlayerId = (ctx.phase === 'auctionPhase' && G.board.activeAuctionCardIndex === null)
+    ? String(G.board.nominator)
+    : String(ctx.currentPlayer);
+  const isCpuTurn = Boolean(G.players[activeActingPlayerId]?.isCpu);
   const isMyTurnToNominate = ctx.phase === 'auctionPhase' && G.board.activeAuctionCardIndex === null && String(G.board.nominator) === String(effectivePlayerID);
+
+  // 800ms Misclick protection delay when replacement modal pops up
+  useEffect(() => {
+    if (isPendingReplacementForMe) {
+      setReplaceLocked(true);
+      setReplaceLockCountdown(800);
+      const interval = setInterval(() => {
+        setReplaceLockCountdown(prev => Math.max(0, prev - 100));
+      }, 100);
+      const timer = setTimeout(() => {
+        setReplaceLocked(false);
+        setReplaceLockCountdown(0);
+        clearInterval(interval);
+      }, 800);
+      return () => {
+        clearTimeout(timer);
+        clearInterval(interval);
+      };
+    } else {
+      setReplaceLocked(false);
+      setReplaceLockCountdown(0);
+    }
+  }, [isPendingReplacementForMe, G.pendingReplacement?.wonCard?.uniqueId]);
 
   // Falcons Phase Check for Mulligan
   let currentPhaseKey = 'p1';
@@ -568,7 +600,7 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
     }
 
     if (skipMode === 'myTurn') {
-      if (ctx.currentPlayer === effectivePlayerID || humanHasWonInRound) {
+      if (activeActingPlayerId === effectivePlayerID || humanHasWonInRound) {
         setSkipMode(null);
         return;
       }
@@ -583,7 +615,7 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
     } else if (skipMode === 'refresh' && !humanHasWonInRound) {
       setSkipMode(null);
     }
-  }, [skipMode, ctx.currentPlayer, ctx.phase, isCpuTurn, G.pendingReplacement, humanHasWonInRound, effectivePlayerID, moves]);
+  }, [skipMode, activeActingPlayerId, ctx.phase, isCpuTurn, G.pendingReplacement, humanHasWonInRound, effectivePlayerID, moves]);
 
   // Formatter for player card effects with larger fonts, high readability, and specialText badges
   const renderCardEffects = (effects, specialText) => {
@@ -882,7 +914,6 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
 
   const isEventFlipped = G.board.eventFlipRevealed && G.board.activeEvent;
   const isMyTurn = ctx.currentPlayer === effectivePlayerID;
-  const isPendingReplacementForMe = G.pendingReplacement && String(G.pendingReplacement.playerID) === String(effectivePlayerID);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-4 md:p-8 flex flex-col gap-6 font-sans">
@@ -1225,16 +1256,18 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                 {Object.keys(G.players).filter(id => id !== effectivePlayerID).map(oppId => {
                   const opp = G.players[oppId];
+                  const oppName = opp?.team?.name || `Team ${displayPlayerNumber(oppId)}`;
+                  const oppPsi = opp && typeof opp.psi === 'number' ? opp.psi.toFixed(1) : opp?.psi || 0;
                   return (
                     <button
                       key={oppId}
                       onClick={() => moves.rivalryGivePsi(oppId, effectivePlayerID)}
-                      className="bg-slate-950 border border-slate-800 hover:border-red-500 p-4 rounded-xl flex flex-col items-center justify-center gap-1 hover:bg-slate-850 cursor-pointer transition-all shadow"
+                      className="bg-slate-950 border border-slate-800 hover:border-red-500 p-4 rounded-xl flex flex-col items-center justify-center gap-1.5 hover:bg-slate-850 cursor-pointer transition-all shadow group"
                     >
+                      <span className="text-sm font-black text-white group-hover:text-red-300">{oppName}</span>
                       <span className="text-xs font-mono text-slate-400 font-bold">Player {displayPlayerNumber(oppId)}</span>
-                      <span className="text-sm font-black text-white">{opp?.team?.name}</span>
-                      <span className="text-xs text-red-400 font-mono font-bold">{opp && typeof opp.psi === 'number' ? opp.psi.toFixed(1) : opp?.psi || 0} PSI</span>
-                      <span className="mt-2 text-[10px] bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded font-bold uppercase">Give 1 PSI</span>
+                      <span className="text-xs text-red-400 font-mono font-extrabold">{oppPsi} PSI</span>
+                      <span className="mt-1 text-[10px] bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded font-bold uppercase">Give 1 PSI</span>
                     </button>
                   );
                 })}
@@ -1860,16 +1893,32 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
               );
             })()}
 
-            <p className="text-slate-300 text-xs mb-3 text-left font-semibold">
-              Select one of your current active players to cut and replace:
-            </p>
+            {replaceLocked ? (
+              <div className="mb-4 p-3 bg-amber-950/80 border border-amber-500/80 rounded-2xl flex items-center justify-between text-amber-300 text-xs font-bold animate-pulse shadow-md">
+                <span className="flex items-center gap-2">
+                  <span className="text-base">🛡️</span>
+                  <span>Misclick Protection Active: Selection unlocks in {(replaceLockCountdown / 1000).toFixed(1)}s</span>
+                </span>
+                <span className="font-mono text-sm">⏳</span>
+              </div>
+            ) : (
+              <div className="mb-4 p-2.5 bg-emerald-950/70 border border-emerald-500/50 rounded-xl text-emerald-300 text-xs font-semibold flex items-center gap-2">
+                <span>✅ Protection Unlocked: Select one of your current active players to cut and replace:</span>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
               {myPlayer.lineup.map((card, idx) => (
                 <div 
                   key={card.uniqueId || idx} 
-                  onClick={() => moves.replaceLineupCard(idx, effectivePlayerID)}
-                  className="bg-slate-950 border-2 border-slate-800 hover:border-red-500 p-4 rounded-2xl cursor-pointer transition-all hover:scale-105 flex flex-col justify-between text-left"
+                  onClick={() => {
+                    if (!replaceLocked) moves.replaceLineupCard(idx, effectivePlayerID);
+                  }}
+                  className={`bg-slate-950 border-2 p-4 rounded-2xl flex flex-col justify-between text-left transition-all ${
+                    replaceLocked
+                      ? 'border-slate-800 opacity-60 cursor-not-allowed pointer-events-none'
+                      : 'border-slate-800 hover:border-red-500 cursor-pointer hover:scale-105'
+                  }`}
                 >
                   <div>
                     <div className="flex justify-between items-center mb-1">
@@ -1879,8 +1928,15 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                     <h3 className="font-bold text-white text-base mt-1">{card.name}</h3>
                     <div className="mt-2">{renderCardEffects(card.effects, card.specialText || card.customText)}</div>
                   </div>
-                  <button className="mt-4 w-full bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/50 py-1.5 rounded-xl font-bold text-xs transition-colors cursor-pointer">
-                    Replace Card
+                  <button 
+                    disabled={replaceLocked}
+                    className={`mt-4 w-full py-1.5 rounded-xl font-bold text-xs transition-colors ${
+                      replaceLocked
+                        ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                        : 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/50 cursor-pointer'
+                    }`}
+                  >
+                    {replaceLocked ? 'Unlocking...' : 'Replace Card'}
                   </button>
                 </div>
               ))}
@@ -1890,8 +1946,15 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
             {getEffectiveTeamId(myPlayer) === 'bengals' && (
               <div className="border-t border-slate-800 pt-4 flex justify-between items-center">
                 <button 
-                  onClick={() => moves.discardWonCard(effectivePlayerID)}
-                  className="bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 px-5 rounded-xl text-xs uppercase tracking-wider shadow cursor-pointer flex items-center gap-2"
+                  disabled={replaceLocked}
+                  onClick={() => {
+                    if (!replaceLocked) moves.discardWonCard(effectivePlayerID);
+                  }}
+                  className={`font-black py-2.5 px-5 rounded-xl text-xs uppercase tracking-wider shadow flex items-center gap-2 ${
+                    replaceLocked
+                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                      : 'bg-orange-600 hover:bg-orange-500 text-white cursor-pointer'
+                  }`}
                 >
                   🗑️ Discard Acquired Player
                 </button>
@@ -2164,51 +2227,126 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
         </div>
       </header>
 
-      {/* Lions Top Announcement Banner */}
-      {G.board.abilityNotification && G.board.abilityNotification.teamId === 'lions' && (
-        <div className="bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-700 text-slate-950 font-black p-4 rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.5)] border-2 border-yellow-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in slide-in-from-top-4 duration-300">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl animate-bounce">🦁</span>
-            <div>
-              <span className="text-[10px] uppercase tracking-widest font-black text-amber-950 block">Franchise Ability Activated: Lions</span>
-              <span className="text-base sm:text-lg font-extrabold text-white drop-shadow">{G.board.abilityNotification.message}</span>
-            </div>
-          </div>
-          <span className="bg-slate-950/40 text-amber-200 font-mono text-xs font-bold px-3 py-1.5 rounded-full border border-amber-300/30 whitespace-nowrap self-end sm:self-auto">
-            Round {G.board.round} First Claim 👑
-          </span>
-        </div>
-      )}
+      {/* Unified Franchise Ability Announcement Banner (Dismissible per-client, carousel for history) */}
+      {(() => {
+        const history = G.board.abilityNotificationHistory || (G.board.abilityNotification ? [G.board.abilityNotification] : []);
+        const activeNotifs = history.filter(n => !dismissedAbilityIds.includes(n.id));
+        if (activeNotifs.length === 0) return null;
 
-      {/* Jets Top Announcement Banner */}
-      {G.board.abilityNotification && G.board.abilityNotification.teamId === 'jets' && (
-        <div className="bg-gradient-to-r from-emerald-700 via-green-600 to-emerald-800 text-white font-black p-4 rounded-2xl shadow-[0_0_25px_rgba(16,185,129,0.5)] border-2 border-emerald-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in slide-in-from-top-4 duration-300">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl animate-bounce">✈️</span>
-            <div>
-              <span className="text-[10px] uppercase tracking-widest font-black text-emerald-200 block">Franchise Ability Activated: Jets</span>
-              <span className="text-base sm:text-lg font-extrabold text-white drop-shadow">{G.board.abilityNotification.message}</span>
-            </div>
-          </div>
-          <span className="bg-slate-950/40 text-emerald-200 font-mono text-xs font-bold px-3 py-1.5 rounded-full border border-emerald-300/30 whitespace-nowrap self-end sm:self-auto">
-            ⚡ Max Bid Boost: -4 PSI Deflated!
-          </span>
-        </div>
-      )}
+        const safeIndex = Math.min(abilityCarouselIdx, activeNotifs.length - 1);
+        const currentNotif = activeNotifs[safeIndex] || activeNotifs[0];
+        if (!currentNotif) return null;
 
-      {/* Raiders Top Announcement Banner */}
-      {G.board.abilityNotification && G.board.abilityNotification.teamId === 'raiders' && (
-        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-zinc-900 text-white font-black p-4 rounded-2xl shadow-[0_0_25px_rgba(148,163,184,0.4)] border-2 border-slate-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in slide-in-from-top-4 duration-300">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl animate-bounce">☠️</span>
-            <div>
-              <span className="text-[10px] uppercase tracking-widest font-black text-slate-300 block">Franchise Ability Activated: Raiders</span>
-              <span className="text-base sm:text-lg font-extrabold text-white drop-shadow">{G.board.abilityNotification.message}</span>
+        return (
+          <div className="bg-gradient-to-r from-amber-950/95 via-slate-900 to-amber-950/95 border-2 border-amber-500 text-white p-4 sm:p-5 rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.35)] backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in slide-in-from-top-3 duration-200">
+            <div className="flex items-center gap-3.5 flex-1 min-w-0">
+              <span className="text-3xl shrink-0 animate-bounce">{currentNotif.icon || '⚡'}</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className="text-[10px] uppercase tracking-widest font-black text-amber-300 bg-amber-950/90 border border-amber-500/50 px-2.5 py-0.5 rounded-full">
+                    Franchise Ability: {currentNotif.teamName}
+                  </span>
+                  <span className="text-xs font-bold text-slate-300">
+                    {currentNotif.title}
+                  </span>
+                  {activeNotifs.length > 1 && (
+                    <span className="text-[10px] font-mono text-amber-300/90 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                      {safeIndex + 1} of {activeNotifs.length}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm sm:text-base font-extrabold text-white leading-snug">
+                  {currentNotif.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+              {/* Carousel navigation controls if multiple abilities active */}
+              {activeNotifs.length > 1 && (
+                <div className="flex items-center bg-slate-950 border border-amber-500/40 rounded-xl overflow-hidden shadow">
+                  <button
+                    onClick={() => setAbilityCarouselIdx(prev => Math.max(0, prev - 1))}
+                    disabled={safeIndex === 0}
+                    className="px-2.5 py-1.5 text-xs font-bold hover:bg-amber-500/20 disabled:opacity-30 disabled:hover:bg-transparent text-amber-300 cursor-pointer transition-colors"
+                    title="View Newer Notification"
+                  >
+                    ◀ Newer
+                  </button>
+                  <span className="px-2 py-1 text-[11px] font-mono font-bold text-slate-300 border-x border-slate-800">
+                    {safeIndex + 1}/{activeNotifs.length}
+                  </span>
+                  <button
+                    onClick={() => setAbilityCarouselIdx(prev => Math.min(activeNotifs.length - 1, prev + 1))}
+                    disabled={safeIndex === activeNotifs.length - 1}
+                    className="px-2.5 py-1.5 text-xs font-bold hover:bg-amber-500/20 disabled:opacity-30 disabled:hover:bg-transparent text-amber-300 cursor-pointer transition-colors"
+                    title="View Older Notification"
+                  >
+                    Older ▶
+                  </button>
+                </div>
+              )}
+
+              {/* Dismiss Button (per client screen) */}
+              <button
+                onClick={() => {
+                  setDismissedAbilityIds(prev => [...prev, currentNotif.id]);
+                  if (safeIndex > 0 && safeIndex >= activeNotifs.length - 1) {
+                    setAbilityCarouselIdx(Math.max(0, safeIndex - 1));
+                  }
+                }}
+                className="bg-slate-800 hover:bg-red-950/80 text-slate-300 hover:text-red-300 border border-slate-700 hover:border-red-600 px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center gap-1.5"
+                title="Dismiss from your screen"
+              >
+                <span>✕</span> Dismiss
+              </button>
             </div>
           </div>
-          <span className="bg-slate-950/60 text-slate-300 font-mono text-xs font-bold px-3 py-1.5 rounded-full border border-slate-500/40 whitespace-nowrap self-end sm:self-auto">
-            ☠️ PSI Menace Transferred
-          </span>
+        );
+      })()}
+
+      {/* Rivalry Event Top Announcement Banner & Direct Choices */}
+      {G.board.pendingRivalry && !G.board.eventFlipRevealed && (
+        <div className="bg-gradient-to-r from-red-950 via-slate-900 to-red-950 border-2 border-red-500 p-4 sm:p-5 rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.4)] flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-3.5">
+            <span className="text-3xl animate-bounce">⚔️</span>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-black uppercase tracking-widest bg-red-900/80 text-red-300 border border-red-700 px-2.5 py-0.5 rounded-full">
+                  Round {G.board.round} Event: Rivalry
+                </span>
+                <span className="text-xs text-red-200 font-bold">Transfer 1 PSI</span>
+              </div>
+              <p className="text-sm font-bold text-white">
+                {String(G.board.pendingRivalry.currentGiverId) === String(effectivePlayerID)
+                  ? `Your turn (${myPlayer.team?.name})! Select an opponent below to give 1 PSI (-1 your PSI, +1 opponent PSI).`
+                  : `Waiting for ${G.players[G.board.pendingRivalry.currentGiverId]?.team?.name || `Player ${parseInt(G.board.pendingRivalry.currentGiverId || '0') + 1}`} to choose an opponent...`}
+              </p>
+            </div>
+          </div>
+
+          {String(G.board.pendingRivalry.currentGiverId) === String(effectivePlayerID) && (
+            <div className="flex flex-wrap items-center gap-2 justify-end w-full md:w-auto">
+              <span className="text-xs text-slate-300 font-bold mr-1">Choose Target:</span>
+              {Object.keys(G.players).filter(id => id !== effectivePlayerID).map(oppId => {
+                const opp = G.players[oppId];
+                const oppName = opp?.team?.name || `Player ${displayPlayerNumber(oppId)}`;
+                const oppPsi = opp && typeof opp.psi === 'number' ? opp.psi.toFixed(1) : opp?.psi || 0;
+                return (
+                  <button
+                    key={oppId}
+                    onClick={() => moves.rivalryGivePsi(oppId, effectivePlayerID)}
+                    className="bg-red-600 hover:bg-red-500 text-white font-black px-3.5 py-2 rounded-xl text-xs uppercase tracking-wider shadow cursor-pointer transition-all transform hover:scale-105 flex items-center gap-1.5"
+                  >
+                    <span>Give to {oppName}</span>
+                    <span className="text-[10px] bg-red-950/80 px-1.5 py-0.5 rounded font-mono font-bold text-red-200">
+                      {oppPsi} PSI
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -2603,7 +2741,12 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                       )}
 
                       <button 
-                        onClick={() => { if (humanHasWonInRound) setSkipMode('refresh'); }}
+                        onClick={() => {
+                          if (humanHasWonInRound) {
+                            setSkipMode('refresh');
+                            if (isCpuTurn) moves.stepCpuTurn();
+                          }
+                        }}
                         disabled={!humanHasWonInRound}
                         title={humanHasWonInRound ? 'Skip remaining CPU auction turns to Refresh Phase' : 'Acquire a player first to enable Skip to Refresh Phase'}
                         className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
@@ -2666,7 +2809,12 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                   )}
 
                   <button 
-                    onClick={() => { if (humanHasWonInRound) setSkipMode('refresh'); }}
+                    onClick={() => {
+                      if (humanHasWonInRound) {
+                        setSkipMode('refresh');
+                        if (isCpuTurn) moves.stepCpuTurn();
+                      }
+                    }}
                     disabled={!humanHasWonInRound}
                     title={humanHasWonInRound ? 'Skip remaining CPU auction turns to Refresh Phase' : 'Acquire a player first to enable Skip to Refresh Phase'}
                     className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
