@@ -380,7 +380,6 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
   const [activeToast, setActiveToast] = useState(null);
   const lastToastIdRef = useRef(null);
   const [replaceLocked, setReplaceLocked] = useState(false);
-  const [replaceLockCountdown, setReplaceLockCountdown] = useState(0);
   const [dismissedAbilityIds, setDismissedAbilityIds] = useState([]);
   const [abilityCarouselIdx, setAbilityCarouselIdx] = useState(0);
 
@@ -556,26 +555,16 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
   const isCpuTurn = Boolean(G.players[activeActingPlayerId]?.isCpu);
   const isMyTurnToNominate = ctx.phase === 'auctionPhase' && G.board.activeAuctionCardIndex === null && String(G.board.nominator) === String(effectivePlayerID);
 
-  // 800ms Misclick protection delay when replacement modal pops up
+  // 800ms mouse delay when replacement modal pops up to prevent accidental misclicks
   useEffect(() => {
     if (isPendingReplacementForMe) {
       setReplaceLocked(true);
-      setReplaceLockCountdown(800);
-      const interval = setInterval(() => {
-        setReplaceLockCountdown(prev => Math.max(0, prev - 100));
-      }, 100);
       const timer = setTimeout(() => {
         setReplaceLocked(false);
-        setReplaceLockCountdown(0);
-        clearInterval(interval);
       }, 800);
-      return () => {
-        clearTimeout(timer);
-        clearInterval(interval);
-      };
+      return () => clearTimeout(timer);
     } else {
       setReplaceLocked(false);
-      setReplaceLockCountdown(0);
     }
   }, [isPendingReplacementForMe, G.pendingReplacement?.wonCard?.uniqueId]);
 
@@ -1893,19 +1882,9 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
               );
             })()}
 
-            {replaceLocked ? (
-              <div className="mb-4 p-3 bg-amber-950/80 border border-amber-500/80 rounded-2xl flex items-center justify-between text-amber-300 text-xs font-bold animate-pulse shadow-md">
-                <span className="flex items-center gap-2">
-                  <span className="text-base">🛡️</span>
-                  <span>Misclick Protection Active: Selection unlocks in {(replaceLockCountdown / 1000).toFixed(1)}s</span>
-                </span>
-                <span className="font-mono text-sm">⏳</span>
-              </div>
-            ) : (
-              <div className="mb-4 p-2.5 bg-emerald-950/70 border border-emerald-500/50 rounded-xl text-emerald-300 text-xs font-semibold flex items-center gap-2">
-                <span>✅ Protection Unlocked: Select one of your current active players to cut and replace:</span>
-              </div>
-            )}
+            <p className="text-slate-300 text-xs mb-3 text-left font-semibold">
+              Select one of your current active players to cut and replace:
+            </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
               {myPlayer.lineup.map((card, idx) => (
@@ -1936,7 +1915,7 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                         : 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/50 cursor-pointer'
                     }`}
                   >
-                    {replaceLocked ? 'Unlocking...' : 'Replace Card'}
+                    Replace Card
                   </button>
                 </div>
               ))}
