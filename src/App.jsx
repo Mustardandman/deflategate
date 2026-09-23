@@ -3,6 +3,7 @@ import { Client } from 'boardgame.io/react';
 import { Local, SocketIO } from 'boardgame.io/multiplayer';
 import { DeflategateGame, getEffectiveTeamId, getEffectiveCardMaxBid, isGenuinePlayerCard } from './Game';
 import { TEAMS } from './GameData';
+import { MobileDeflategateBoard } from './components/MobileDeflategateBoard';
 
 // Comprehensive Deflategate Rules & Guide Modal
 const RulesModal = ({ isOpen, onClose }) => {
@@ -360,7 +361,7 @@ const RollingSlotCounter = ({ value, isPsi = false, className = '' }) => {
   );
 };
 
-const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans: initialNumHumans }) => {
+const DesktopDeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans: initialNumHumans, setIsMobile }) => {
   const [showRules, setShowRules] = useState(false);
   const [showLog, setShowLog] = useState(true);
   const [peekLineupModal, setPeekLineupModal] = useState(false);
@@ -2169,6 +2170,18 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
           >
             <span>📖</span> Rules Guide
           </button>
+
+          {/* Mobile View Switcher */}
+          {setIsMobile && (
+            <button 
+              type="button"
+              onClick={() => setIsMobile(true)}
+              className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-300 font-bold px-3 py-2.5 rounded-xl text-xs shadow flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
+              title="Preview Mobile / iPhone Layout"
+            >
+              <span>📱</span> Mobile View
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-3 w-full lg:w-auto ml-auto">
@@ -3157,6 +3170,20 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
       <RulesModal isOpen={showRules} onClose={() => setShowRules(false)} />
     </div>
   );
+};
+
+const DeflategateBoard = (props) => {
+  const [isMobileView, setIsMobileView] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const isMobileWidth = window.innerWidth <= 768;
+    const isIPhoneOrMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+    return isMobileWidth || isIPhoneOrMobile;
+  });
+
+  if (isMobileView) {
+    return <MobileDeflategateBoard {...props} setIsMobile={setIsMobileView} />;
+  }
+  return <DesktopDeflategateBoard {...props} setIsMobile={setIsMobileView} />;
 };
 
 const App = () => {
