@@ -335,3 +335,12 @@ Playtest #19: (Complete)
   12. Dynamic Game End Horizon: Calculated dynamically (Rounds 7–9 vs 10) based on table deflation velocity, closest runaway winner, and Eagles inflation resistance.
   13. Colts Roster Protection: Implemented -50 valuation penalty on recurring negatives to prevent permanent lineup poisoning.
   14. 32-Franchise Strategic CPU AI: Customized valuation weights, strategic archetypes, outbid farming, and rival pass trapping across all 32 NFL franchises.
+  ----------------
+  Playtest #20:
+  bills ability added a practice squad from the discard. shouldn't be allowed. Only phase 1, 2, or HOF. Should have a logic to choose to use the power now or wait till later. Don't always grab the first phase 1 player that enters the discard.
+Falcons only used their ability once
+Teams are spending too much money at the start of the game, they all go broke and then if I save my money I can buy whoever I want the next two rounds
+Have the Vikings team ability get highlighted whenever they are under 27 psi
+Lions ability should trigger a banner at the top that says they were able to acquire the first player that round
+When Isaiah Pacheco is acquired by a human, and the human has to select who to replace on their roster, show the new card that Isaiah Pacheco is getting replaced with so the human can make a choice about what would be best to replace. Don't just display the card name also display the card it self with all the details. Also seems like teams are devalueing Isaiah Pacheco and would rather take a Ezekiel Elliott than Isaiah.
+Rounds 5 and 6 it was too easy for teams to acquire the good 4 deflate every turn cards. Not sure why, deflate should be valued higher at the end of the game

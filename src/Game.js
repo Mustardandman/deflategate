@@ -15,6 +15,12 @@ export const getEffectiveTeamId = (p) => {
   return p.copiedTeam ? p.copiedTeam.id : (p.team ? p.team.id : '');
 };
 
+export const isGenuinePlayerCard = (c) => {
+  if (!c) return false;
+  if (c.isPracticeSquad || c.id === 'practice_squad' || c.uniqueId?.startsWith('ps_')) return false;
+  return c.phase === 1 || c.phase === 2 || c.phase === 3 || c.isHof || c.phase === 'hof';
+};
+
 const addLog = (G, text) => {
   if (!G.logs) G.logs = [];
   G.logs.unshift({ id: Date.now() + Math.random(), text, round: G.board.round });
@@ -217,8 +223,8 @@ export const resolveAuctionWin = (G, playerID, card) => {
     if (effectiveTeamId === 'lions') {
       const numP = Object.keys(G.players).length;
       applyCoinsGained(G, playerID, numP);
-      addLog(G, `🦁 Lions Ability: First player to claim an auction card! Gained +${numP} coins.`);
-      triggerAbilityNotification(G, playerID, 'lions', 'Lions: First to Claim Bonus', `First to claim an auction card this round! Gained +${numP} coins.`);
+      addLog(G, `🦁 Lions Ability: Player ${displayId} (${p.team?.name || 'Lions'}) acquired the 1st player of Round ${G.board.round}! Gained +${numP} coins.`);
+      triggerAbilityNotification(G, playerID, 'lions', 'Lions: First Claimed Player!', `Player ${displayId} (${p.team?.name || 'Lions'}) claimed the 1st player of Round ${G.board.round} and gained +${numP} coins!`);
     }
   }
 
@@ -402,6 +408,39 @@ export const resolveAuctionWin = (G, playerID, card) => {
       addLog(G, `Player ${displayId} must select a lineup card to replace with ${card.name}.`);
     }
   }
+
+  // Check CPU Falcons Mulligan opportunity between card acquisitions:
+  // If opponents have won top players and remaining cards on the block are mediocre scraps for Falcons,
+  // CPU Falcons triggers mulligan to refresh remaining slots.
+  let phaseKey = 'p1';
+  if (G.board.round >= 4 && G.board.round <= 6) phaseKey = 'p2';
+  if (G.board.round >= 7) phaseKey = 'p3';
+
+  const falconsCpuIds = Object.keys(G.players).filter(id => {
+    const pl = G.players[id];
+    return pl && pl.isCpu && !pl.hasWonAuction && getEffectiveTeamId(pl) === 'falcons' && !pl.falconsPhaseUses?.[phaseKey];
+  });
+
+  falconsCpuIds.forEach(fId => {
+    const falconsPlayer = G.players[fId];
+    const remainingCards = (G.board.auctionPlayers || []).filter(c => c !== null);
+    const opponentsWonCount = Object.keys(G.players).filter(id => id !== fId && G.players[id].hasWonAuction).length;
+    if (opponentsWonCount >= 1 && remainingCards.length > 0 && falconsPlayer.coins >= 3) {
+      const bestScore = Math.max(...remainingCards.map(c => scoreCardForPlayer(c, falconsPlayer, G)));
+      if (bestScore < 16) {
+        if (!G.decks.discard) G.decks.discard = [];
+        G.decks.discard.push(...remainingCards);
+        G.board.auctionPlayers = G.board.auctionPlayers.map(c => {
+          if (c === null) return null;
+          return G.decks.activePlayers && G.decks.activePlayers.length > 0 ? G.decks.activePlayers.pop() : null;
+        });
+        falconsPlayer.falconsPhaseUses[phaseKey] = true;
+        const fDisplayId = parseInt(fId) + 1;
+        triggerAbilityNotification(G, fId, 'falcons', 'Falcons Mulligan', `CPU Player ${fDisplayId} mulliganed remaining cards! Fresh draft prospects revealed.`);
+        addLog(G, `🦅 Falcons Ability: CPU Player ${fDisplayId} mulliganed remaining auction cards! New players revealed.`);
+      }
+    }
+  });
 };
 
 // ============================================================================
@@ -610,8 +649,9 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   const effectiveTeamId = getEffectiveTeamId(p);
   const archetype = getCpuArchetype(p, playerID);
   
+  const currentRound = G?.board?.round || 1;
   const estimatedEndRound = G ? calculateEstimatedGameEndRound(G) : 10;
-  const roundsLeft = Math.max(1, estimatedEndRound - (G?.board?.round || 1));
+  const roundsLeft = Math.max(1, estimatedEndRound - currentRound);
 
   let deflateWeight = 1.6;
   let coinWeight = 1.0;
@@ -628,6 +668,16 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   } else if (archetype === 'wildcard') {
     deflateWeight = 1.3 + Math.random() * 0.8;
     coinWeight = 0.8 + Math.random() * 0.8;
+  }
+
+  // Playtest 20 User Directive: When the game is 1-2 turns away from being over,
+  // have teams value deflation much more than coins!
+  if (roundsLeft <= 2 || currentRound >= 8) {
+    deflateWeight *= 2.4;
+    coinWeight *= 0.35;
+  } else if (currentRound >= 5) {
+    deflateWeight *= 1.4;
+    coinWeight *= 0.85;
   }
 
   // Franchise-specific economic weight tuning:
@@ -701,6 +751,37 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   }
 
   let rawScore = (totalDeflate * deflateWeight) + (totalCoins * coinWeight);
+
+  // Playtest 20: Isaiah Pacheco Expected Value (Draws fresh card from active era deck)
+  if (card.id === 'isaiah_pacheco') {
+    if (currentRound >= 7) {
+      rawScore += 40.0; // HOF deck
+    } else if (currentRound >= 4) {
+      rawScore += 28.0; // Phase 2 deck
+    } else {
+      rawScore += 18.0; // Phase 1 deck
+    }
+  }
+
+  // Playtest 20: Puka Nacua Expected Value (Copies teammate's recurring effect each round)
+  if (card.id === 'puka_nacua') {
+    const bestLineupDeflate = p.lineup?.reduce((max, c) => {
+      const d = (c.effects || []).filter(e => e.perRound && e.type === 'deflate').reduce((sum, e) => sum + e.amount, 0);
+      return Math.max(max, d);
+    }, 0) || 0;
+    const bestLineupCoins = p.lineup?.reduce((max, c) => {
+      const co = (c.effects || []).filter(e => e.perRound && e.type === 'coins').reduce((sum, e) => sum + e.amount, 0);
+      return Math.max(max, co);
+    }, 0) || 0;
+    const estCopyValue = Math.max(16.0, (bestLineupDeflate * deflateWeight + bestLineupCoins * coinWeight) * roundsLeft);
+    rawScore += estCopyValue;
+  }
+
+  // Playtest 20: 4-Deflate Superstars Centerpiece bonus in Rounds 5+
+  const hasBigRecurringDeflate = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3);
+  if (hasBigRecurringDeflate && (currentRound >= 5 || roundsLeft <= 3)) {
+    rawScore += 14.0;
+  }
 
   // Franchise synergies:
   if (effectiveTeamId === 'texans' && card.position === 'QB') {
@@ -972,7 +1053,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
   const cardScore = scoreCardForPlayer(G, currentPlayerId, card);
   const archetype = getCpuArchetype(currentPlayer, currentPlayerId);
-  const isSuperstar = (card.phase === 'hof' || effMax >= 16 || cardScore >= 16 || card.id === 'patrick_mahomes' || card.id === 'christian_mccaffrey');
+  let isSuperstar = (card.phase === 'hof' || effMax >= 16 || cardScore >= 16 || card.id === 'patrick_mahomes' || card.id === 'christian_mccaffrey');
 
   // Playtest 19 Note 9: Worst Card Outbid Protection
   // If the human or another team nominates the worst card on the board for 1 coin,
@@ -1053,6 +1134,24 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  // Playtest 20: Early-Game Bankroll Management (Rounds 1-3)
+  // Prevents CPUs from blowing entire purse on ordinary Phase 1 players and going broke!
+  const isEarlyGame = G.board.round <= 3;
+  if (isEarlyGame && !teamExemptFromHoarding && !isSuperstar) {
+    const earlyReserve = Math.max(3, Math.round(currentPlayer.coins * 0.35));
+    savingsReserve = Math.max(savingsReserve, earlyReserve);
+  }
+
+  // Playtest 20: 4-Deflate Superstars & 1-2 Turns Endgame Urgency
+  const is4DeflateCard = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3);
+  const estimatedEnd = G ? calculateEstimatedGameEndRound(G) : 10;
+  const isEndgameTurns = (estimatedEnd - G.board.round <= 2) || G.board.round >= 7;
+
+  if (is4DeflateCard || (isEndgameTurns && card.effects?.some(e => e.type === 'deflate'))) {
+    isSuperstar = true;
+    savingsReserve = 0; // Never hoard savings when game-winning deflation is available!
+  }
+
   // Dolphins can spend down to 0 without reserve because of instant 3-coin bailout!
   const spendableCoins = (isSuperstar || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
@@ -1068,6 +1167,9 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const isCoinLeader = currentPlayer.coins > richestOpponentCoins;
 
   let baseValuation = Math.max(card.minBid, Math.min(effMax, Math.round(cardScore * 0.75 * scarcityMultiplier)));
+  if (is4DeflateCard && G.board.round >= 5) {
+    baseValuation = Math.max(baseValuation, Math.round(effMax * 0.85)); // Fight aggressively for 4-deflate cards!
+  }
 
   // Lions 1st-Player Aggression
   const isFirstPlayerOfRound = Object.values(G.players).every(p => !p.hasWonAuction);
@@ -1094,6 +1196,9 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   valuation = Math.min(valuation, spendableCoins);
+  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets') {
+    valuation = Math.min(valuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
+  }
 
   if (isLionsFirstBonus) {
     valuation = Math.min(effMax, currentPlayer.coins);
@@ -1160,9 +1265,12 @@ const executeCpuMoveInternal = (G, ctx, events) => {
       if (!currentPlayer.falconsPhaseUses[phaseKey]) {
         const remainingCards = G.board.auctionPlayers.filter(c => c !== null);
         const opponentsWonCount = Object.keys(G.players).filter(id => id !== currentPlayerId && G.players[id].hasWonAuction).length;
-        if (opponentsWonCount >= 1 && remainingCards.length > 0) {
+        const isEndOfPhaseRound = (G.board.round === 3 || G.board.round === 6 || G.board.round >= 9);
+        if (remainingCards.length > 0) {
           const bestScore = Math.max(...remainingCards.map(c => scoreCardForPlayer(c, currentPlayer, G)));
-          if (bestScore < 15 && currentPlayer.coins >= 4) {
+          const shouldMulligan = (opponentsWonCount >= 1 && bestScore < 16 && currentPlayer.coins >= 3) ||
+                                (isEndOfPhaseRound && bestScore < 18);
+          if (shouldMulligan) {
             const oldRemaining = G.board.auctionPlayers.filter(c => c !== null);
             if (!G.decks.discard) G.decks.discard = [];
             G.decks.discard.push(...oldRemaining);
@@ -3771,13 +3879,15 @@ export const DeflategateGame = {
             const billsPlayer = G.players[billsId];
             if (!billsPlayer.hasUsedBillsAbility) {
               if (billsPlayer.isCpu) {
-                const affordableCards = G.decks.discard.filter(c => c && c.minBid <= billsPlayer.coins);
+                const affordableCards = G.decks.discard.filter(c => isGenuinePlayerCard(c) && c.minBid <= billsPlayer.coins);
                 if (affordableCards.length > 0) {
-                  // Best Player Available (BPA): score all affordable discard cards
+                  // Best Player Available (BPA): score all affordable genuine discard cards
                   affordableCards.sort((a, b) => scoreCardForPlayer(b, billsPlayer, G) - scoreCardForPlayer(a, billsPlayer, G));
                   const bestDiscard = affordableCards[0];
                   const bestScore = scoreCardForPlayer(bestDiscard, billsPlayer, G);
-                  const minThreshold = G.board.round <= 3 ? 14 : 20;
+                  // Playtest 20 User Directive: Don't always grab the first Phase 1 player that enters discard!
+                  // Save once-per-game power for Phase 2 / HOF unless an elite centerpiece appears in early rounds.
+                  const minThreshold = G.board.round <= 3 ? 26 : (G.board.round <= 6 ? 20 : 14);
                   if (bestScore >= minThreshold) {
                     const dIdx = G.decks.discard.indexOf(bestDiscard);
                     G.decks.discard.splice(dIdx, 1);
@@ -3865,7 +3975,7 @@ export const DeflategateGame = {
           if (billsPlayer.hasUsedBillsAbility) return INVALID_MOVE;
 
           const card = G.decks.discard[discardIndex];
-          if (!card || billsPlayer.coins < card.minBid) return INVALID_MOVE;
+          if (!card || !isGenuinePlayerCard(card) || billsPlayer.coins < card.minBid) return INVALID_MOVE;
 
           G.decks.discard.splice(discardIndex, 1);
           billsPlayer.coins -= card.minBid;

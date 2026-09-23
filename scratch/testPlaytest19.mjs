@@ -193,10 +193,10 @@ console.log('Test 8: Bills BPA Discard Evaluation');
   state.players['0'].team = TEAMS.find(t => t.id === 'bills');
   state.players['0'].isCpu = true;
   state.players['0'].coins = 10;
-  state.board.round = 2;
+  state.board.round = 4;
 
-  const lowQualityCard = { name: 'Scrap Player', minBid: 1, maxBid: 3, effects: [{ type: 'coins', amount: 1 }] };
-  const highQualityCard = { name: 'Phase 1 Gem', minBid: 2, maxBid: 6, effects: [{ trigger: 'refresh', type: 'deflate', amount: 3 }] };
+  const lowQualityCard = { name: 'Scrap Player', phase: 1, minBid: 1, maxBid: 3, effects: [{ type: 'coins', amount: 1 }] };
+  const highQualityCard = { name: 'Phase 1 Gem', phase: 1, minBid: 2, maxBid: 6, effects: [{ trigger: 'refresh', type: 'deflate', amount: 3 }] };
   state.decks.discard = [lowQualityCard, highQualityCard];
 
   // Run postAuctionPhase.onBegin
