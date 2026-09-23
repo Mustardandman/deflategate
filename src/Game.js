@@ -1171,6 +1171,23 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     baseValuation = Math.max(baseValuation, Math.round(effMax * 0.85)); // Fight aggressively for 4-deflate cards!
   }
 
+  // Playtest 20 Tuning: Board Parity Principle (e.g. TJ Hockenson when all board cards are good)
+  // When multiple cards remain on board and all are roughly equal high-tier strength,
+  // the marginal value of winning THIS specific card over whoever is left is tiny (1-2 coins).
+  const isHighBoardParity = otherScores.length >= 2 && floorScore >= 12 && (cardScore - floorScore) <= 3.5;
+  if (isHighBoardParity && !is4DeflateCard) {
+    baseValuation = Math.max(card.minBid, Math.min(3, card.minBid + 1));
+  }
+
+  // Playtest 20 Tuning: Opportunity Cost & Tier Ranking (e.g. Jalen Coker when Drake London / AJ Brown are available)
+  // If significantly better cards exist on the board, mid-tier Phase 1 players (e.g. +2 coins or +1 deflate)
+  // are capped at 3-4 coins max so CPUs don't waste funds before bidding on the true superstars.
+  const betterCardsCount = otherScores.filter(s => s >= cardScore + 4).length;
+  const isMidTierPhase1 = card.phase === 1 && (card.maxBid <= 8 || card.effects?.every(e => (e.type === 'coins' ? e.amount <= 2 : e.amount <= 1)));
+  if (betterCardsCount >= 1 && isMidTierPhase1) {
+    baseValuation = Math.min(baseValuation, 4);
+  }
+
   // Lions 1st-Player Aggression
   const isFirstPlayerOfRound = Object.values(G.players).every(p => !p.hasWonAuction);
   const isLionsFirstBonus = isFirstPlayerOfRound && effectiveTeamId === 'lions';
@@ -1187,6 +1204,13 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
   const jitter = 0.90 + Math.random() * 0.20;
   let valuation = Math.min(effMax, Math.round(baseValuation * archetypeMult * jitter));
+
+  if (isHighBoardParity && !is4DeflateCard) {
+    valuation = Math.min(valuation, 3);
+  }
+  if (betterCardsCount >= 1 && isMidTierPhase1) {
+    valuation = Math.min(valuation, 4);
+  }
 
   if (isCoinLeader) {
     const monopolyCap = Math.max(card.minBid, richestOpponentCoins);

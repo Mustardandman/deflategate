@@ -336,11 +336,24 @@ Playtest #19: (Complete)
   13. Colts Roster Protection: Implemented -50 valuation penalty on recurring negatives to prevent permanent lineup poisoning.
   14. 32-Franchise Strategic CPU AI: Customized valuation weights, strategic archetypes, outbid farming, and rival pass trapping across all 32 NFL franchises.
   ----------------
-  Playtest #20:
-  bills ability added a practice squad from the discard. shouldn't be allowed. Only phase 1, 2, or HOF. Should have a logic to choose to use the power now or wait till later. Don't always grab the first phase 1 player that enters the discard.
-Falcons only used their ability once
-Teams are spending too much money at the start of the game, they all go broke and then if I save my money I can buy whoever I want the next two rounds
-Have the Vikings team ability get highlighted whenever they are under 27 psi
-Lions ability should trigger a banner at the top that says they were able to acquire the first player that round
-When Isaiah Pacheco is acquired by a human, and the human has to select who to replace on their roster, show the new card that Isaiah Pacheco is getting replaced with so the human can make a choice about what would be best to replace. Don't just display the card name also display the card it self with all the details. Also seems like teams are devalueing Isaiah Pacheco and would rather take a Ezekiel Elliott than Isaiah.
-Rounds 5 and 6 it was too easy for teams to acquire the good 4 deflate every turn cards. Not sure why, deflate should be valued higher at the end of the game
+  Playtest #20: (Complete)
+  - Completed / Fixed in Playtest #20:
+    1. Bills Discard Validation & Patience: Excluded practice squad cards from Bills discard market (`isGenuinePlayerCard`). In early rounds (R1–3), CPU Bills now hoard their 1-time ability unless a 4-deflate card or elite outlier enters the discard pile (score >= 26), ensuring the power is available for high-impact Phase 2 and HOF players in later rounds.
+    2. Falcons Phase Mulligan Usage: Updated Falcons mulligan from once per game to once per phase (Phase 1, Phase 2, Phase 3/HOF), tracking `falconsPhaseUses[currentPhaseKey]`.
+    3. Early-Game Bankroll Management: CPUs in Rounds 1–3 maintain a savings reserve (at least 35% of coins or 3 coins min) so they don't blow their entire purse on ordinary Phase 1 players and go broke, preventing players from hoarding coins and dominating later rounds unopposed.
+    4. Vikings PSI Under 27 Visual Highlighting: When Vikings have PSI < 27, their team ability card glows with a prominent yellow border, double-coins badge, and pulse animation.
+    5. Top Announcement Banners: Added prominent top announcement banners with custom franchise branding:
+       - Lions: Amber/gold banner when claiming the 1st card in a round (+N coins).
+       - Jets: Emerald green banner with ✈️ when paying max bid and deflating -4 PSI.
+       - Raiders: Slate/silver banner with ☠️ when transferring 1 PSI to an opponent.
+    6. Isaiah Pacheco Card Modal & EV:
+       - Replacement modal now renders the full card preview (name, position, phase, min/max bid, and detailed effects) of the newly drawn card before prompting the human to choose which roster player to cut.
+       - Elevated Isaiah Pacheco's base evaluation from 10 to era-scaled deck EV (18 in Phase 1, 28 in Phase 2, 40 in HOF), ensuring CPUs properly prioritize Pacheco over coin-bleed players like Ezekiel Elliott.
+    7. Endgame Deflation Escalation & 4-Deflate Superstars:
+       - In final 1–2 rounds (or Round 7+), deflation is valued dramatically over coins (1.75x–2.0x deflation weight, coins scaled down).
+       - 4-deflate recurring superstars bypass savings reserves, triggering aggressive bidding wars up to 85% of effective max bid in Rounds 5+.
+    8. Board Parity Principle (TJ Hockenson scenario): When all or most remaining players on the board are of roughly equal high-tier strength (`cardScore - floorScore <= 3.5`), CPUs recognize that substitute supply meets demand and cap valuations at 1–3 coins instead of entering a wasteful bidding war.
+    9. Opportunity Cost & Tier Ranking (Jalen Coker scenario): When superior options (+3 / +4 coins/round or elite deflaters like Drake London or AJ Brown) exist on the board, mid-tier Phase 1 players (e.g. +2 coins/round like Coker, base maxBid <= 8) are capped at 3–4 coins max, preventing CPUs from blowing 6 coins on mid-tier players due to artificial max-bid inflation from events like Overpaid.
+    10. Broncos First-Round Ignored Cards: Lineup cards for Broncos whose recurring effects are ignored during their acquisition round are highlighted with a prominent red border, ring, and red glow until after the first refresh summary is confirmed.
+    11. Combined & Condensed Current Turn & Bidding Section: Merged the duplicate top turn bar and bidding panel into a single, compact, unified section without redundant turn banners, while preserving `Next CPU action`, `Skip to my turn`, and `Skip to refresh phase`.
+    12. Header Layout Alignment: Firmly right-aligned the Active Round Event and Franchise Ability boxes with `justify-end ml-auto`.

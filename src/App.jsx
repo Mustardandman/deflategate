@@ -2113,27 +2113,28 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
       )}
 
       {/* Header Bar */}
-      <header className="flex flex-col md:flex-row justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-lg gap-4">
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 tracking-wide uppercase">DEFLATEGATE</h1>
-          <p className="text-slate-400 text-xs mt-1 uppercase font-bold tracking-widest">Round {G.board.round} / 10 | Phase: {ctx.phase}</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
+      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-slate-900 p-5 md:p-6 rounded-2xl border border-slate-800 shadow-lg gap-4">
+        <div className="flex items-center justify-between w-full lg:w-auto gap-4">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 tracking-wide uppercase">DEFLATEGATE</h1>
+            <p className="text-slate-400 text-xs mt-1 uppercase font-bold tracking-widest">Round {G.board.round} / 10 | Phase: {ctx.phase}</p>
+          </div>
           {/* Rules Guide Button */}
           <button 
             type="button"
             onClick={() => setShowRules(true)}
-            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 text-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs shadow flex items-center gap-1.5 cursor-pointer transition-all"
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 text-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs shadow flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
           >
             <span>📖</span> Rules Guide
           </button>
+        </div>
 
+        <div className="flex flex-wrap items-center justify-end gap-3 w-full lg:w-auto ml-auto">
           {/* Jaguars Ability Secret Deck Inspector Button */}
           {isJaguars && (
             <button 
               onClick={openJaguarsModal}
-              className="bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 border border-purple-500 text-white font-black px-4 py-2.5 rounded-xl text-xs shadow flex items-center gap-2 cursor-pointer transition-all"
+              className="bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 border border-purple-500 text-white font-black px-4 py-2.5 rounded-xl text-xs shadow flex items-center gap-2 cursor-pointer transition-all shrink-0"
             >
               🃏 Jaguars Secret Event Deck
               {!G.board.jaguarsAbilityUsed && <span className="bg-amber-400 text-black text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase">1-Use Ready</span>}
@@ -2141,7 +2142,7 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
           )}
 
           {G.board.abilityNotification && (
-            <div className="bg-gradient-to-r from-amber-950/70 to-slate-900 border border-amber-500/80 p-3 rounded-xl max-w-sm text-left shadow-lg">
+            <div className="bg-gradient-to-r from-amber-950/70 to-slate-900 border border-amber-500/80 p-3 rounded-xl max-w-sm text-left shadow-lg shrink-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-base">{G.board.abilityNotification.icon || '⚡'}</span>
                 <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider">
@@ -2154,7 +2155,7 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
           )}
 
           {G.board.activeEvent && (
-            <div className="bg-gradient-to-r from-purple-900/50 to-indigo-900/50 border border-purple-800 p-4 rounded-xl max-w-md w-full md:w-auto text-left md:text-right">
+            <div className="bg-gradient-to-r from-purple-900/50 to-indigo-900/50 border border-purple-800 p-4 rounded-xl max-w-md w-full sm:w-auto text-left sm:text-right shrink-0">
               <p className="text-xs text-purple-400 font-extrabold uppercase tracking-wider">Active Round Event</p>
               <p className="text-white font-bold text-lg">{G.board.activeEvent.name}</p>
               <p className="text-slate-300 text-xs mt-1 leading-normal italic">{G.board.activeEvent.effect}</p>
@@ -2169,12 +2170,44 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
           <div className="flex items-center gap-3">
             <span className="text-3xl animate-bounce">🦁</span>
             <div>
-              <span className="text-[10px] uppercase tracking-widest font-black text-amber-950 block">Franchise Ability Activated</span>
+              <span className="text-[10px] uppercase tracking-widest font-black text-amber-950 block">Franchise Ability Activated: Lions</span>
               <span className="text-base sm:text-lg font-extrabold text-white drop-shadow">{G.board.abilityNotification.message}</span>
             </div>
           </div>
           <span className="bg-slate-950/40 text-amber-200 font-mono text-xs font-bold px-3 py-1.5 rounded-full border border-amber-300/30 whitespace-nowrap self-end sm:self-auto">
             Round {G.board.round} First Claim 👑
+          </span>
+        </div>
+      )}
+
+      {/* Jets Top Announcement Banner */}
+      {G.board.abilityNotification && G.board.abilityNotification.teamId === 'jets' && (
+        <div className="bg-gradient-to-r from-emerald-700 via-green-600 to-emerald-800 text-white font-black p-4 rounded-2xl shadow-[0_0_25px_rgba(16,185,129,0.5)] border-2 border-emerald-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl animate-bounce">✈️</span>
+            <div>
+              <span className="text-[10px] uppercase tracking-widest font-black text-emerald-200 block">Franchise Ability Activated: Jets</span>
+              <span className="text-base sm:text-lg font-extrabold text-white drop-shadow">{G.board.abilityNotification.message}</span>
+            </div>
+          </div>
+          <span className="bg-slate-950/40 text-emerald-200 font-mono text-xs font-bold px-3 py-1.5 rounded-full border border-emerald-300/30 whitespace-nowrap self-end sm:self-auto">
+            ⚡ Max Bid Boost: -4 PSI Deflated!
+          </span>
+        </div>
+      )}
+
+      {/* Raiders Top Announcement Banner */}
+      {G.board.abilityNotification && G.board.abilityNotification.teamId === 'raiders' && (
+        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-zinc-900 text-white font-black p-4 rounded-2xl shadow-[0_0_25px_rgba(148,163,184,0.4)] border-2 border-slate-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl animate-bounce">☠️</span>
+            <div>
+              <span className="text-[10px] uppercase tracking-widest font-black text-slate-300 block">Franchise Ability Activated: Raiders</span>
+              <span className="text-base sm:text-lg font-extrabold text-white drop-shadow">{G.board.abilityNotification.message}</span>
+            </div>
+          </div>
+          <span className="bg-slate-950/60 text-slate-300 font-mono text-xs font-bold px-3 py-1.5 rounded-full border border-slate-500/40 whitespace-nowrap self-end sm:self-auto">
+            ☠️ PSI Menace Transferred
           </span>
         </div>
       )}
@@ -2387,89 +2420,21 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
           </div>
         )}
 
-        {/* Active Bidding Panel & Step-By-Step Controls */}
+        {/* Active Bidding & Turn Controls Panel */}
         {ctx.phase === 'auctionPhase' && (
-          <div className="bg-slate-900 p-6 rounded-2xl border-2 border-yellow-500/50 shadow-xl space-y-4">
-            {/* CPU Advancement & Turn Skip Control Bar */}
-            <div className={`p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-center gap-4 transition-all ${
-              G.board.activeAuctionCardIndex === null && isMyTurnToNominate
-                ? 'bg-gradient-to-r from-yellow-950/90 via-amber-950/80 to-slate-950 border-2 border-yellow-400 shadow-[0_0_25px_rgba(234,179,8,0.4)]'
-                : 'bg-slate-950 border-slate-800'
-            }`}>
-              <div className="flex items-center gap-3">
-                <span className={`w-3 h-3 rounded-full ${
-                  G.board.activeAuctionCardIndex === null && isMyTurnToNominate
-                    ? 'bg-yellow-400 ring-4 ring-yellow-400/40 animate-ping'
-                    : 'bg-yellow-500 animate-ping'
-                }`}></span>
-                <div>
-                  <h4 className="text-sm font-bold text-white">
-                    {G.board.activeAuctionCardIndex === null ? (
-                      isMyTurnToNominate ? (
-                        <span className="text-yellow-300 font-extrabold flex items-center gap-2">
-                          <span>⭐ Current Turn: Player {displayPlayerNumber(effectivePlayerID)} (YOU)</span>
-                          <span className="text-[10px] bg-yellow-400 text-black px-2 py-0.5 rounded font-black uppercase tracking-wider">Your Nomination</span>
-                        </span>
-                      ) : (
-                        <span>Current Turn: Player {displayPlayerNumber(G.board.nominator)} ({G.players[G.board.nominator]?.team?.name || 'Player'} {G.players[G.board.nominator]?.isCpu ? 'CPU' : ''})</span>
-                      )
-                    ) : (
-                      <span>Current Turn: Player {displayPlayerNumber(ctx.currentPlayer)} ({currentPlayerObj ? currentPlayerObj.team?.name : ''} {isCpuTurn ? 'CPU' : 'Player'})</span>
-                    )}
-                  </h4>
-                  <p className="text-xs text-slate-400 italic">
-                    {G.board.activeAuctionCardIndex === null
-                      ? (isMyTurnToNominate ? '⭐ It is your turn! Click any highlighted player card above to start the auction.' : `Awaiting Player ${displayPlayerNumber(G.board.nominator)} nomination...`)
-                      : (G.board.lastActionText || (isCpuTurn ? 'CPU is thinking...' : 'Awaiting player decision...'))}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                {isCpuTurn && (
-                  <button 
-                    onClick={() => moves.stepCpuTurn()}
-                    className="bg-yellow-500 hover:bg-yellow-400 text-black font-black px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider flex-1 sm:flex-none shadow cursor-pointer"
-                  >
-                    Next CPU Action ➔
-                  </button>
-                )}
-
-                {!humanHasWonInRound && isCpuTurn && (
-                  <button 
-                    onClick={() => setSkipMode('myTurn')}
-                    className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider flex-1 sm:flex-none border border-slate-700 cursor-pointer"
-                  >
-                    Skip to My Turn ⏩
-                  </button>
-                )}
-
-                {/* Skip to Refresh Phase button (Active only after human acquires a player in the round) */}
-                <button 
-                  onClick={() => { if (humanHasWonInRound) setSkipMode('refresh'); }}
-                  disabled={!humanHasWonInRound}
-                  title={humanHasWonInRound ? 'Skip remaining CPU auction turns to Refresh Phase' : 'Acquire a player first to enable Skip to Refresh Phase'}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex-1 sm:flex-none transition-all ${
-                    humanHasWonInRound
-                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg cursor-pointer'
-                      : 'bg-slate-800 text-slate-600 border border-slate-850 cursor-not-allowed opacity-50'
-                  }`}
-                >
-                  Skip to Refresh Phase ⏩
-                </button>
-              </div>
-            </div>
-
-            {/* Active Auction Card Info & Human Moves */}
-            {activeCard && (
-              <div className="flex flex-col md:flex-row justify-between items-center gap-6 pt-2">
-                <div className="flex items-center gap-4">
-                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center w-28">
+          <div className="bg-slate-900 p-5 rounded-2xl border-2 border-yellow-500/50 shadow-xl">
+            {activeCard ? (
+              /* Active Player Auction in Progress */
+              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                {/* Left: Bid Display & Card Details */}
+                <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-center w-24 sm:w-28 shrink-0">
                     <span className="text-[10px] font-bold text-yellow-500 uppercase tracking-wide">Current Bid</span>
-                    <p className="text-3xl font-black text-white font-mono mt-1">{G.board.highestBid}</p>
+                    <p className="text-2xl sm:text-3xl font-black text-white font-mono mt-0.5">{G.board.highestBid}</p>
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-white flex flex-wrap items-center gap-2">
-                      <span>Bidding on: <span className="text-blue-400">{activeCard.name}</span> <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono font-bold">({activeCard.position})</span></span>
+                    <h3 className="text-base sm:text-lg font-bold text-white flex flex-wrap items-center gap-2">
+                      <span>Bidding on: <span className="text-blue-400 font-extrabold">{activeCard.name}</span> <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono font-bold">({activeCard.position})</span></span>
                       <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border ${
                         G.board.activeEvent?.category === 'overpaid'
                           ? 'bg-amber-950/90 border-amber-500/80 text-amber-300 font-black'
@@ -2478,129 +2443,241 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                         Max: {effMaxBid}{G.board.activeEvent?.category === 'overpaid' ? ' ▲' : ''}
                       </span>
                     </h3>
-                    <p className="text-sm text-slate-400 mt-1">
-                      Highest Bidder:{' '}
-                      <span className="font-bold text-slate-200">
-                        {G.board.highestBidder !== null ? `${G.players[G.board.highestBidder]?.team?.name}` : 'None (Starts at ' + activeCard.minBid + ')'}
+                    <p className="text-xs sm:text-sm text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+                      <span>
+                        Highest Bidder:{' '}
+                        <span className="font-bold text-slate-200">
+                          {G.board.highestBidder !== null ? `${G.players[G.board.highestBidder]?.team?.name}` : 'None (Starts at ' + activeCard.minBid + ')'}
+                        </span>
                       </span>
+                      <span className="text-slate-600">•</span>
+                      <span className="text-slate-300 font-medium">
+                        {isMyTurn ? (
+                          <span className="text-emerald-400 font-bold">Your Turn</span>
+                        ) : (
+                          <span>Turn: Player {displayPlayerNumber(ctx.currentPlayer)} ({currentPlayerObj ? currentPlayerObj.team?.name : ''} {isCpuTurn ? 'CPU' : ''})</span>
+                        )}
+                      </span>
+                      {G.board.lastActionText && (
+                        <>
+                          <span className="text-slate-600">•</span>
+                          <span className="text-xs text-slate-400 italic">{G.board.lastActionText}</span>
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
 
-                {isMyTurn && (() => {
-                  const isDjMooreBlockedForBid = activeCard?.id === 'dj_moore' && myPlayer?.coins > 10;
-                  const remainingAuctionCards = G.board.auctionPlayers ? G.board.auctionPlayers.filter(c => c !== null).length : 0;
-                  const isCommandersBlockedForBid = G.board.commandersMarkedCardIndex !== null &&
-                    G.board.activeAuctionCardIndex === G.board.commandersMarkedCardIndex &&
-                    String(effectivePlayerID) === String(G.board.firstPlayer) &&
-                    remainingAuctionCards > 1;
-                  return (
-                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col items-center gap-3 w-full md:w-auto">
-                      {isCommandersBlockedForBid ? (
-                        <span className="text-xs font-black text-red-400 uppercase tracking-wider bg-red-950/80 border border-red-800 px-3 py-1.5 rounded-lg text-center">
-                          🚫 Commanders Restriction: You are the First Player and cannot bid on this player! Please Pass.
-                        </span>
-                      ) : isDjMooreBlockedForBid ? (
-                        <span className="text-xs font-black text-red-400 uppercase tracking-wider bg-red-950/80 border border-red-800 px-3 py-1.5 rounded-lg text-center">
-                          🚫 DJ Moore Restriction: Only teams with ≤10 coins may bid (You have {myPlayer.coins} Coins)
-                        </span>
-                      ) : (
-                        <span className="text-xs font-black text-green-400 uppercase tracking-wider">
-                          🚨 YOUR TURN TO BID
-                        </span>
-                      )}
+                {/* Right: Bidding Controls (if Human Turn) OR Progression/Skip Buttons (if CPU Turn / Awaiting) */}
+                <div className="w-full lg:w-auto">
+                  {isMyTurn ? (() => {
+                    const isDjMooreBlockedForBid = activeCard?.id === 'dj_moore' && myPlayer?.coins > 10;
+                    const remainingAuctionCards = G.board.auctionPlayers ? G.board.auctionPlayers.filter(c => c !== null).length : 0;
+                    const isCommandersBlockedForBid = G.board.commandersMarkedCardIndex !== null &&
+                      G.board.activeAuctionCardIndex === G.board.commandersMarkedCardIndex &&
+                      String(effectivePlayerID) === String(G.board.firstPlayer) &&
+                      remainingAuctionCards > 1;
+                    return (
+                      <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col items-center gap-2.5 w-full">
+                        {isCommandersBlockedForBid ? (
+                          <span className="text-xs font-black text-red-400 uppercase tracking-wider bg-red-950/80 border border-red-800 px-3 py-1.5 rounded-lg text-center">
+                            🚫 Commanders Restriction: You are First Player and cannot bid! Please Pass.
+                          </span>
+                        ) : isDjMooreBlockedForBid ? (
+                          <span className="text-xs font-black text-red-400 uppercase tracking-wider bg-red-950/80 border border-red-800 px-3 py-1.5 rounded-lg text-center">
+                            🚫 DJ Moore Restriction: Only teams with ≤10 coins may bid (You have {myPlayer.coins} Coins)
+                          </span>
+                        ) : (
+                          <span className="text-xs font-black text-green-400 uppercase tracking-wider">
+                            🚨 YOUR TURN TO BID
+                          </span>
+                        )}
 
-                      {activeCard?.id === 'tyreek_hill' && (
-                        <span className="text-[11px] font-extrabold text-amber-300 bg-amber-950/60 border border-amber-700/60 px-2 py-0.5 rounded text-center">
-                          ⚡ Tyreek Hill Speed Tax: Placed bid will deflate 1 PSI immediately!
-                        </span>
-                      )}
+                        {activeCard?.id === 'tyreek_hill' && (
+                          <span className="text-[11px] font-extrabold text-amber-300 bg-amber-950/60 border border-amber-700/60 px-2 py-0.5 rounded text-center">
+                            ⚡ Tyreek Hill Speed Tax: Placed bid will deflate 1 PSI immediately!
+                          </span>
+                        )}
 
-                      <div className="flex flex-wrap gap-3 items-center justify-center">
-                        <button 
-                          onClick={() => moves.pass(effectivePlayerID)}
-                          disabled={G.board.highestBidder === null && !isCommandersBlockedForBid}
-                          className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all ${
-                            (G.board.highestBidder !== null || isCommandersBlockedForBid)
-                              ? 'bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 cursor-pointer'
-                              : 'bg-slate-800 text-slate-600 border border-slate-850 cursor-not-allowed opacity-50'
-                          }`}
-                          title={G.board.highestBidder === null && !isCommandersBlockedForBid ? 'Nominator must place the opening bid' : 'Pass on this player'}
-                        >
-                          Pass
-                        </button>
-
-                        {/* Custom Bid Control Stepper with Min/Max boundaries */}
-                        <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl overflow-hidden">
+                        <div className="flex flex-wrap gap-2.5 items-center justify-center">
                           <button 
-                            onClick={() => setCustomBid(Math.max(nextBid, customBid - 1))}
-                            className="px-3 py-2 text-slate-400 hover:text-white font-black cursor-pointer text-xs select-none"
-                            title="Decrease Bid"
+                            onClick={() => moves.pass(effectivePlayerID)}
+                            disabled={G.board.highestBidder === null && !isCommandersBlockedForBid}
+                            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all ${
+                              (G.board.highestBidder !== null || isCommandersBlockedForBid)
+                                ? 'bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 cursor-pointer'
+                                : 'bg-slate-800 text-slate-600 border border-slate-850 cursor-not-allowed opacity-50'
+                            }`}
+                            title={G.board.highestBidder === null && !isCommandersBlockedForBid ? 'Nominator must place opening bid' : 'Pass on this player'}
                           >
-                            ◀
+                            Pass
                           </button>
-                          <input 
-                            type="number" 
-                            value={customBid}
-                            min={nextBid}
-                            max={maxAllowedBid}
-                            onChange={e => {
-                              const val = parseInt(e.target.value);
-                              if (isNaN(val)) return;
-                              setCustomBid(Math.min(maxAllowedBid, Math.max(nextBid, val)));
-                            }}
-                            className="w-14 bg-transparent text-center font-mono font-bold text-white text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          />
+
+                          {/* Stepper */}
+                          <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl overflow-hidden">
+                            <button 
+                              onClick={() => setCustomBid(Math.max(nextBid, customBid - 1))}
+                              className="px-2.5 py-1.5 text-slate-400 hover:text-white font-black cursor-pointer text-xs select-none"
+                              title="Decrease Bid"
+                            >
+                              ◀
+                            </button>
+                            <input 
+                              type="number" 
+                              value={customBid}
+                              min={nextBid}
+                              max={maxAllowedBid}
+                              onChange={e => {
+                                const val = parseInt(e.target.value);
+                                if (isNaN(val)) return;
+                                setCustomBid(Math.min(maxAllowedBid, Math.max(nextBid, val)));
+                              }}
+                              className="w-12 bg-transparent text-center font-mono font-bold text-white text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <button 
+                              onClick={() => setCustomBid(Math.min(maxAllowedBid, customBid + 1))}
+                              className="px-2.5 py-1.5 text-slate-400 hover:text-white font-black cursor-pointer text-xs select-none"
+                              title="Increase Bid"
+                            >
+                              ▶
+                            </button>
+                          </div>
+
                           <button 
-                            onClick={() => setCustomBid(Math.min(maxAllowedBid, customBid + 1))}
-                            className="px-3 py-2 text-slate-400 hover:text-white font-black cursor-pointer text-xs select-none"
-                            title="Increase Bid"
+                            onClick={() => moves.bid(customBid, effectivePlayerID)}
+                            disabled={
+                              isCommandersBlockedForBid || (
+                                isSoleRemainingZeroCoins
+                                  ? false
+                                  : (isDjMooreBlockedForBid || myPlayer.coins < customBid || customBid < nextBid || customBid > maxAllowedBid)
+                              )
+                            }
+                            className={`px-4 py-2 rounded-xl font-bold text-xs transition-all ${
+                              !isCommandersBlockedForBid && (isSoleRemainingZeroCoins || (!isDjMooreBlockedForBid && myPlayer.coins >= customBid && customBid >= nextBid && customBid <= maxAllowedBid))
+                                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/25 cursor-pointer'
+                                : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                            }`}
                           >
-                            ▶
+                            {isSoleRemainingZeroCoins ? 'Acquire for 0 Coins' : `Bid ${customBid} Coins`}
+                          </button>
+
+                          <button 
+                            onClick={() => moves.bid(effMaxBid, effectivePlayerID)}
+                            disabled={isCommandersBlockedForBid || isDjMooreBlockedForBid || myPlayer.coins < effMaxBid || effMaxBid < nextBid}
+                            className={`px-3.5 py-2 rounded-xl text-xs font-black shadow transition-all ${
+                              !isCommandersBlockedForBid && !isDjMooreBlockedForBid && myPlayer.coins >= effMaxBid && effMaxBid >= nextBid
+                                ? 'bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-black cursor-pointer'
+                                : 'bg-slate-800 text-slate-600 border border-slate-850 cursor-not-allowed opacity-50'
+                            }`}
+                            title={
+                              isCommandersBlockedForBid 
+                                ? 'First Player blocked from bidding on marked player' 
+                                : myPlayer.coins < effMaxBid 
+                                  ? `Requires ${effMaxBid} coins to Buy Max` 
+                                  : `Buy Max for ${effMaxBid} coins`
+                            }
+                          >
+                            Buy Max ({effMaxBid}{G.board.activeEvent?.category === 'overpaid' ? ' ▲' : ''})
                           </button>
                         </div>
-
-                        <button 
-                          onClick={() => moves.bid(customBid, effectivePlayerID)}
-                          disabled={
-                            isCommandersBlockedForBid || (
-                              isSoleRemainingZeroCoins
-                                ? false
-                                : (isDjMooreBlockedForBid || myPlayer.coins < customBid || customBid < nextBid || customBid > maxAllowedBid)
-                            )
-                          }
-                          className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all ${
-                            !isCommandersBlockedForBid && (isSoleRemainingZeroCoins || (!isDjMooreBlockedForBid && myPlayer.coins >= customBid && customBid >= nextBid && customBid <= maxAllowedBid))
-                              ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/25 cursor-pointer'
-                              : 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                          }`}
-                        >
-                          {isSoleRemainingZeroCoins ? 'Acquire for 0 Coins' : `Bid ${customBid} Coins`}
-                        </button>
-
-                        {/* Dynamic Buy Max Button: Capped at effMaxBid, disabled & greyed out if coins < effMaxBid */}
-                        <button 
-                          onClick={() => moves.bid(effMaxBid, effectivePlayerID)}
-                          disabled={isCommandersBlockedForBid || isDjMooreBlockedForBid || myPlayer.coins < effMaxBid || effMaxBid < nextBid}
-                          className={`px-4 py-2.5 rounded-xl text-xs font-black shadow transition-all ${
-                            !isCommandersBlockedForBid && !isDjMooreBlockedForBid && myPlayer.coins >= effMaxBid && effMaxBid >= nextBid
-                              ? 'bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-black cursor-pointer'
-                              : 'bg-slate-800 text-slate-600 border border-slate-850 cursor-not-allowed opacity-50'
-                          }`}
-                          title={
-                            isCommandersBlockedForBid 
-                              ? 'First Player blocked from bidding on marked player' 
-                              : myPlayer.coins < effMaxBid 
-                                ? `Requires ${effMaxBid} coins to Buy Max` 
-                                : `Buy Max for ${effMaxBid} coins`
-                          }
-                        >
-                          Buy Max ({effMaxBid}{G.board.activeEvent?.category === 'overpaid' ? ' ▲' : ''})
-                        </button>
                       </div>
+                    );
+                  })() : (
+                    <div className="flex flex-wrap gap-2 justify-end w-full">
+                      {isCpuTurn && (
+                        <button 
+                          onClick={() => moves.stepCpuTurn()}
+                          className="bg-yellow-500 hover:bg-yellow-400 text-black font-black px-4 py-2 rounded-xl text-xs uppercase tracking-wider shadow cursor-pointer"
+                        >
+                          Next CPU Action ➔
+                        </button>
+                      )}
+
+                      {!humanHasWonInRound && isCpuTurn && (
+                        <button 
+                          onClick={() => setSkipMode('myTurn')}
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider border border-slate-700 cursor-pointer"
+                        >
+                          Skip to My Turn ⏩
+                        </button>
+                      )}
+
+                      <button 
+                        onClick={() => { if (humanHasWonInRound) setSkipMode('refresh'); }}
+                        disabled={!humanHasWonInRound}
+                        title={humanHasWonInRound ? 'Skip remaining CPU auction turns to Refresh Phase' : 'Acquire a player first to enable Skip to Refresh Phase'}
+                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                          humanHasWonInRound
+                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg cursor-pointer'
+                            : 'bg-slate-800 text-slate-600 border border-slate-850 cursor-not-allowed opacity-50'
+                        }`}
+                      >
+                        Skip to Refresh Phase ⏩
+                      </button>
                     </div>
-                  );
-                })()}
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Nomination Phase: Awaiting Nomination */
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <span className={`w-3 h-3 rounded-full ${
+                    isMyTurnToNominate
+                      ? 'bg-yellow-400 ring-4 ring-yellow-400/40 animate-ping'
+                      : 'bg-yellow-500 animate-ping'
+                  }`}></span>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">
+                      {isMyTurnToNominate ? (
+                        <span className="text-yellow-300 font-extrabold flex items-center gap-2">
+                          <span>⭐ Your Turn to Nominate</span>
+                          <span className="text-[10px] bg-yellow-400 text-black px-2 py-0.5 rounded font-black uppercase tracking-wider">Select a Card Above</span>
+                        </span>
+                      ) : (
+                        <span>Awaiting Player {displayPlayerNumber(G.board.nominator)} ({G.players[G.board.nominator]?.team?.name || 'Player'} {G.players[G.board.nominator]?.isCpu ? 'CPU' : ''}) to nominate...</span>
+                      )}
+                    </h4>
+                    <p className="text-xs text-slate-400 italic">
+                      {isMyTurnToNominate 
+                        ? 'Click any highlighted player card on the auction block above to start bidding.' 
+                        : (G.board.lastActionText || (isCpuTurn ? 'CPU is selecting a card to nominate...' : 'Awaiting nomination...'))}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
+                  {isCpuTurn && (
+                    <button 
+                      onClick={() => moves.stepCpuTurn()}
+                      className="bg-yellow-500 hover:bg-yellow-400 text-black font-black px-4 py-2 rounded-xl text-xs uppercase tracking-wider shadow cursor-pointer"
+                    >
+                      Next CPU Action ➔
+                    </button>
+                  )}
+
+                  {!humanHasWonInRound && isCpuTurn && (
+                    <button 
+                      onClick={() => setSkipMode('myTurn')}
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider border border-slate-700 cursor-pointer"
+                    >
+                      Skip to My Turn ⏩
+                    </button>
+                  )}
+
+                  <button 
+                    onClick={() => { if (humanHasWonInRound) setSkipMode('refresh'); }}
+                    disabled={!humanHasWonInRound}
+                    title={humanHasWonInRound ? 'Skip remaining CPU auction turns to Refresh Phase' : 'Acquire a player first to enable Skip to Refresh Phase'}
+                    className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                      humanHasWonInRound
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg cursor-pointer'
+                        : 'bg-slate-800 text-slate-600 border border-slate-850 cursor-not-allowed opacity-50'
+                    }`}
+                  >
+                    Skip to Refresh Phase ⏩
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -2803,7 +2880,7 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                           <div className={`space-y-2 pr-0.5 ${isColts && isColtsExpanded && displayLineup.length > 4 ? 'max-h-96 overflow-y-auto' : ''}`}>
                             <ul className="space-y-2">
                               {visibleLineup.map((card, cidx) => {
-                                const isBroncosIgnored = card.broncosRoundAcquired === G.board.round;
+                                const isBroncosIgnored = Boolean(card.broncosRoundAcquired);
                                 const hasRamsDouble = card.ramsDoubleToken;
                                 const canAttachRams = ramsSelectionMode && String(id) === String(effectivePlayerID) && card.phase !== 1 && !card.isPracticeSquad && !card.uniqueId?.startsWith('ps_');
 
@@ -2814,7 +2891,9 @@ const DeflategateBoard = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans:
                                 return (
                                   <li 
                                     key={card.uniqueId || card.id || cidx} 
-                                    className={`p-2.5 rounded-lg border flex flex-col justify-between gap-1.5 ${getCardPhaseStyle(card)} ${
+                                    className={`p-2.5 rounded-lg border flex flex-col justify-between gap-1.5 transition-all ${getCardPhaseStyle(card)} ${
+                                      isBroncosIgnored ? 'border-2 border-red-500 ring-2 ring-red-500/60 shadow-[0_0_14px_rgba(239,68,68,0.5)]' : ''
+                                    } ${
                                       hasRamsDouble ? 'ring-2 ring-amber-400 border-amber-400' : ''
                                     }`}
                                   >
