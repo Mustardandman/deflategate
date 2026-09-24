@@ -3261,7 +3261,7 @@ export const DeflategateGame = {
           G.board.eventNotification = null;
         }
       },
-      endIf: ({ G }) => G.board.eventConfirmed === true && !G.board.pendingRivalry && !G.board.pendingTradeRumors && !G.board.bonusAuction && !G.board.pendingFreeAgency && !G.board.pendingNewCapLimit,
+      endIf: ({ G }) => G.board.eventConfirmed === true && !G.board.pendingRivalry && !G.board.pendingTradeRumors && !G.board.tradeRumorsSummary && !G.board.bonusAuction && !G.board.pendingFreeAgency && !G.board.pendingNewCapLimit,
       next: 'preAuctionPhase'
     },
 
@@ -3457,6 +3457,9 @@ export const DeflategateGame = {
         }
       },
       moves: {
+        dismissTradeRumorsSummary: ({ G }) => {
+          G.board.tradeRumorsSummary = null;
+        },
         dismissJaguarsPopup: ({ G }) => {
           G.board.jaguarsPopupNotification = null;
         },
@@ -3641,8 +3644,11 @@ export const DeflategateGame = {
         }
       },
       moves: {
-        replaceLineupCard: ({ G, playerID, events }, discardIndex) => {
-          const targetPlayerId = G.players[playerID] ? playerID : Object.keys(G.players)[0];
+        dismissTradeRumorsSummary: ({ G }) => {
+          G.board.tradeRumorsSummary = null;
+        },
+        replaceLineupCard: ({ G, playerID, events }, discardIndex, actingPlayerId) => {
+          const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (!G.pendingReplacement || String(G.pendingReplacement.playerID) !== String(targetPlayerId)) {
             return INVALID_MOVE;
           }
@@ -4151,8 +4157,8 @@ export const DeflategateGame = {
             if (events && events.endPhase) events.endPhase();
           }
         },
-        replaceLineupCard: ({ G, playerID, events }, discardIndex) => {
-          const targetPlayerId = G.players[playerID] ? playerID : Object.keys(G.players)[0];
+        replaceLineupCard: ({ G, playerID, events }, discardIndex, actingPlayerId) => {
+          const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (!G.pendingReplacement || String(G.pendingReplacement.playerID) !== String(targetPlayerId)) {
             return INVALID_MOVE;
           }
