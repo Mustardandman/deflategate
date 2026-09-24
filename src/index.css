@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .font-display {
+    font-family: 'Barlow Condensed', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  .font-tech {
+    font-family: 'Chakra Petch', monospace, sans-serif;
+  }
+  .font-body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
 @keyframes flyIn {
   0% {
     opacity: 0;
@@ -19,4 +31,37 @@
 
 .animate-fly-card {
   animation: flyIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Subtle metallic card tier borders */
+.card-tier-p1 {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.card-tier-p2 {
+  border: 1px solid rgba(168, 85, 247, 0.55);
+  box-shadow: 0 4px 16px -2px rgba(168, 85, 247, 0.25), inset 0 1px 0 rgba(216, 180, 254, 0.2);
+}
+
+.card-tier-hof {
+  border: 1px solid rgba(245, 158, 11, 0.7);
+  box-shadow: 0 4px 20px -2px rgba(245, 158, 11, 0.3), inset 0 1px 0 rgba(253, 230, 138, 0.3);
+}
+
+/* Custom dark scrollbars for tabletop trays */
+.tabletop-scroll::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.tabletop-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 9999px;
+}
+.tabletop-scroll::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.7);
+  border-radius: 9999px;
+}
+.tabletop-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.9);
 }
