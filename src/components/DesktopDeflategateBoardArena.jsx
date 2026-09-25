@@ -821,7 +821,7 @@ export const DesktopDeflategateBoardArena = ({
       </header>
 
       {/* 2. TOP TIER: UNIFORM TEAM PEDESTALS (User request: uniform clean neutral color, your team differentiated, yellow star for 1st player, clear passed/won badges) */}
-      <section className="h-28 shrink-0 px-4 py-2 border-b border-slate-800 bg-slate-950/80 overflow-x-auto tabletop-scroll flex items-center gap-2.5">
+      <section className="h-24 shrink-0 px-3 py-1.5 border-b border-slate-800 bg-slate-950/80 overflow-x-auto tabletop-scroll flex items-center gap-2">
         {Object.keys(G.players).map(pId => {
           const p = G.players[pId];
           const isMe = pId === effectivePlayerID;
@@ -836,7 +836,7 @@ export const DesktopDeflategateBoardArena = ({
             <div
               key={pId}
               onClick={() => setPeekLineupModal(pId)}
-              className={`h-full min-w-[190px] max-w-[230px] flex-1 p-2 rounded-xl border flex flex-col justify-between transition-all cursor-pointer relative ${
+              className={`h-full min-w-[190px] max-w-[230px] flex-1 p-1.5 sm:p-2 rounded-xl border flex flex-col justify-between transition-all cursor-pointer relative ${
                 hasWon
                   ? 'border-red-600 ring-2 ring-red-500/80 bg-red-950/25 shadow-[0_0_15px_rgba(220,38,38,0.2)]'
                   : isMe 
@@ -912,10 +912,10 @@ export const DesktopDeflategateBoardArena = ({
       </section>
 
       {/* 3. CENTER TIER: EXPANDED DRAFT & AUCTION ARENA */}
-      <main className="flex-1 min-h-0 flex gap-3 p-3 overflow-hidden">
+      <main className="flex-1 min-h-0 flex gap-2.5 p-2 sm:p-2.5 overflow-hidden">
         
         {/* EXPANDED DRAFT & AUCTION STAGE (User request: maximize width to fit more players without scrolling) */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-slate-900/60 rounded-3xl border border-slate-800 p-2 overflow-hidden justify-between">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-slate-900/60 rounded-2xl border border-slate-800 p-1.5 sm:p-2 overflow-hidden justify-between">
           
           {/* Phase 2: Pre-Auction Reveal View */}
           {ctx.phase === 'preAuctionPhase' && (
@@ -931,14 +931,14 @@ export const DesktopDeflategateBoardArena = ({
               </div>
 
               {/* Full Draft Cards Gallery (2-row multi-column grid) */}
-              <div className="grid grid-rows-2 grid-flow-col auto-cols-[minmax(190px,230px)] gap-x-2 gap-y-1.5 h-full max-h-[300px] overflow-x-auto tabletop-scroll w-full py-0.5 px-0.5">
+              <div className="grid grid-rows-2 grid-flow-col auto-cols-[minmax(185px,225px)] gap-x-2 gap-y-1 h-full max-h-[300px] overflow-x-auto tabletop-scroll w-full p-0.5">
                 {G.board.auctionPlayers && G.board.auctionPlayers.map((card, idx) => {
                   if (!card) return null;
                   return (
                     <div
                       key={card.uniqueId || idx}
                       onClick={() => setInspectedCard(card)}
-                      className={`h-full min-h-[108px] max-h-[135px] p-2 rounded-xl flex flex-col justify-between text-left shrink-0 cursor-pointer hover:border-slate-500 transition-all ${getCardPhaseStyle(card)}`}
+                      className={`h-full min-h-0 p-1.5 sm:p-2 rounded-xl flex flex-col justify-between text-left shrink-0 cursor-pointer hover:border-slate-500 transition-all ${getCardPhaseStyle(card)}`}
                     >
                       <div>
                         <div className="flex justify-between items-center text-[10px] font-mono font-bold leading-none mb-0.5">
@@ -969,7 +969,7 @@ export const DesktopDeflategateBoardArena = ({
 
               <button
                 onClick={() => moves.proceedToAuction()}
-                className="py-2.5 px-6 rounded-xl font-bold text-sm uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-500 shadow-lg cursor-pointer"
+                className="py-2 px-6 rounded-xl font-bold text-sm uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-500 shadow-lg cursor-pointer"
               >
                 Proceed to Auction Phase 🔨
               </button>
@@ -981,13 +981,13 @@ export const DesktopDeflategateBoardArena = ({
             <div className="h-full flex flex-col justify-between min-h-0">
               
               {/* Full Cards Gallery (2-row multi-column grid: top banner removed per user request for vertical space) */}
-              <div className="flex-1 min-h-0 grid grid-rows-2 grid-flow-col auto-cols-[minmax(190px,230px)] gap-x-2 gap-y-1 overflow-x-auto tabletop-scroll py-0.5 px-0.5">
+              <div className="flex-1 min-h-0 grid grid-rows-2 grid-flow-col auto-cols-[minmax(185px,225px)] gap-x-2 gap-y-1 overflow-x-auto tabletop-scroll p-0.5">
                 {G.board.auctionPlayers && G.board.auctionPlayers.map((card, idx) => {
                   if (!card) {
                     return (
                       <div 
                         key={`sold-${idx}`} 
-                        className="h-full min-h-[108px] max-h-[135px] p-2 rounded-xl flex items-center justify-center border border-dashed border-slate-800/80 text-slate-500 text-xs italic bg-slate-950/40"
+                        className="h-full min-h-0 p-1.5 sm:p-2 rounded-xl flex items-center justify-center border border-dashed border-slate-800/80 text-slate-500 text-xs italic bg-slate-950/40"
                       >
                         Sold
                       </div>
@@ -1009,7 +1009,7 @@ export const DesktopDeflategateBoardArena = ({
                           setInspectedCard(card);
                         }
                       }}
-                      className={`h-full min-h-[108px] max-h-[135px] p-2 rounded-xl flex flex-col justify-between text-left transition-all ${
+                      className={`h-full min-h-0 p-1.5 sm:p-2 rounded-xl flex flex-col justify-between text-left transition-all ${
                         isNominated
                           ? 'ring-2 ring-blue-400 border-2 border-blue-400 scale-[1.01] shadow-[0_0_15px_rgba(59,130,246,0.3)] bg-slate-900'
                           : isSelectedForNomination
@@ -1273,7 +1273,7 @@ export const DesktopDeflategateBoardArena = ({
       </main>
 
       {/* 4. BOTTOM TIER: COMMAND DECK & PROMINENT BIDDING CONSOLE (User request: info right next to your bid section) */}
-      <footer className="h-44 shrink-0 border-t border-slate-800 bg-slate-950/95 px-4 py-2 flex items-center justify-between gap-3">
+      <footer className="h-40 shrink-0 border-t border-slate-800 bg-slate-950/95 px-3 py-1.5 flex items-center justify-between gap-2.5">
         
         {/* Left: Your Franchise Status (~190px) */}
         <div className="w-48 shrink-0 p-2.5 rounded-2xl border border-blue-500/60 bg-blue-950/20 flex flex-col justify-between h-full shadow">
