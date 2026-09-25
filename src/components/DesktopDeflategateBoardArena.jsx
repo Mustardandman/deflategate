@@ -265,51 +265,57 @@ export const DesktopDeflategateBoardArena = ({
   // Formatter for player card effects with high readability
   const renderCardEffects = (effects, specialText) => {
     return (
-      <div className="space-y-1 my-1.5">
+      <div className="space-y-0.5 my-1">
         {effects && Array.isArray(effects) && effects.map((eff, i) => {
-          const symbolElement = eff.perRound ? (
+          const triggerBadge = eff.perRound ? (
             <span 
-              title="Refresh Effect: Triggers every round" 
-              className="cursor-help inline-block ml-1 hover:scale-110 transition-transform select-none text-emerald-400 font-bold"
+              title="Every Round: Triggers every round in Refresh Phase" 
+              className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/70 text-emerald-300 font-black text-[9px] uppercase tracking-wider shadow-sm ml-1 select-none shrink-0"
             >
-              🔄
+              <svg className="w-2.5 h-2.5 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+              </svg>
+              <span>TURN</span>
             </span>
           ) : (
             <span 
-              title="Instant Effect: Triggers immediately when bought" 
-              className="cursor-help inline-block ml-1 hover:scale-110 transition-transform select-none text-amber-400 font-bold"
+              title="Instant Effect: Triggers once immediately on purchase" 
+              className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-amber-950/90 border border-amber-500/70 text-amber-300 font-black text-[9px] uppercase tracking-wider shadow-sm ml-1 select-none shrink-0"
             >
-              ⚡
+              <svg className="w-2 h-2 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+              <span>INSTANT</span>
             </span>
           );
 
           if (eff.type === 'coins') {
             const isPositive = eff.amount > 0;
             return (
-              <div key={i} className={`text-xs flex items-center font-bold font-mono ${isPositive ? 'text-yellow-300' : 'text-orange-400'}`}>
+              <div key={i} className={`text-xs flex items-center justify-between font-bold font-mono leading-tight ${isPositive ? 'text-yellow-300' : 'text-orange-400'}`}>
                 <span>🪙 {isPositive ? `+${eff.amount}` : eff.amount} Coins</span>
-                {symbolElement}
+                {triggerBadge}
               </div>
             );
           } else if (eff.type === 'deflate') {
             return (
-              <div key={i} className="text-xs flex items-center font-bold font-mono text-emerald-300">
+              <div key={i} className="text-xs flex items-center justify-between font-bold font-mono text-emerald-300 leading-tight">
                 <span>🏈 -{eff.amount} PSI</span>
-                {symbolElement}
+                {triggerBadge}
               </div>
             );
           } else if (eff.type === 'inflate') {
             return (
-              <div key={i} className="text-xs flex items-center font-bold font-mono text-red-400">
+              <div key={i} className="text-xs flex items-center justify-between font-bold font-mono text-red-400 leading-tight">
                 <span>🏈🔺 +{eff.amount} PSI</span>
-                {symbolElement}
+                {triggerBadge}
               </div>
             );
           }
           return null;
         })}
         {specialText && (
-          <div className="text-xs leading-snug font-medium text-slate-200 bg-slate-950/70 p-2 rounded-lg border border-slate-700/60 mt-1">
+          <div className="text-[10px] leading-snug font-medium text-slate-200 bg-slate-950/80 p-1.5 rounded-lg border border-slate-700/60 mt-0.5">
             {specialText}
           </div>
         )}
@@ -545,12 +551,21 @@ export const DesktopDeflategateBoardArena = ({
 
   // Buccaneers Copy Phase
   if (ctx.phase === 'buccaneersCopy') {
-    const isChoosing = String(activeTurnPlayerId) === String(effectivePlayerID);
+    const isBucsMe = myPlayer?.team?.id === 'buccaneers' && !myPlayer?.copiedTeam;
+    const isChoosing = isBucsMe || String(activeTurnPlayerId) === String(effectivePlayerID);
+    const handlePick = (targetTeamId) => {
+      if (moves.copyAbility) {
+        moves.copyAbility(targetTeamId, effectivePlayerID);
+      } else if (moves.buccaneersPickTeam) {
+        moves.buccaneersPickTeam(targetTeamId, effectivePlayerID);
+      }
+    };
+
     return (
       <div className="h-screen w-screen overflow-hidden flex flex-col bg-slate-950 text-white font-sans p-6 items-center justify-center">
         <div className="max-w-3xl w-full p-6 rounded-3xl bg-slate-900 border-2 border-red-600 shadow-2xl text-center">
           <span className="text-xs font-bold uppercase tracking-widest bg-red-950 text-red-300 px-3 py-1 rounded-full border border-red-800">
-            Buccaneers Franchise Perk
+            🏴‍☠️ Buccaneers Franchise Perk
           </span>
           <h2 className="text-3xl font-extrabold uppercase text-white mt-3 mb-2">
             Copy Another Team's Ability
@@ -565,22 +580,22 @@ export const DesktopDeflategateBoardArena = ({
                 return (
                   <div
                     key={pId}
-                    onClick={() => isChoosing && moves.buccaneersPickTeam(targetTeam.id, effectivePlayerID)}
-                    className="p-4 rounded-xl border border-slate-700 bg-slate-800/80 hover:border-red-500 cursor-pointer transition-all flex flex-col justify-between"
+                    onClick={() => isChoosing && handlePick(targetTeam.id)}
+                    className="p-4 rounded-xl border border-slate-700 bg-slate-800/80 hover:border-red-500 cursor-pointer transition-all flex flex-col justify-between group hover:scale-102"
                   >
                     <div>
-                      <h4 className="font-bold text-lg text-white uppercase">{targetTeam.name}</h4>
-                      <p className="text-xs text-slate-300 mt-1">{targetTeam.ability}</p>
+                      <h4 className="font-bold text-lg text-white uppercase group-hover:text-red-400 transition-colors">{targetTeam.name}</h4>
+                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">{targetTeam.ability}</p>
                     </div>
                     {isChoosing && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          moves.buccaneersPickTeam(targetTeam.id, effectivePlayerID);
+                          handlePick(targetTeam.id);
                         }}
-                        className="mt-3 w-full py-1.5 rounded-lg text-xs font-bold uppercase text-white bg-red-600 hover:bg-red-500"
+                        className="mt-3 w-full py-2 rounded-lg text-xs font-black uppercase tracking-wider text-white bg-red-600 hover:bg-red-500 shadow-md cursor-pointer transition-all active:scale-95"
                       >
-                        Copy {targetTeam.name}
+                        Copy {targetTeam.name} ➔
                       </button>
                     )}
                   </div>
@@ -690,20 +705,54 @@ export const DesktopDeflategateBoardArena = ({
           </span>
         </div>
 
-        {/* Center: Live Broadcast Feed Banner (Latest action entry, clickable to open full log) */}
-        <div className="hidden md:flex items-center gap-2 text-xs max-w-xl truncate">
-          {G.board.actionLog && G.board.actionLog.length > 0 && (
-            <button
-              onClick={() => setShowLog(true)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950/90 hover:bg-slate-800 border border-slate-700/80 text-xs text-slate-300 cursor-pointer max-w-md truncate transition-all shadow group hover:border-slate-500"
-              title="Click to view full broadcast activity log"
-            >
-              <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shrink-0"></span>
-              <span className="text-blue-300 font-bold text-[10px] uppercase tracking-wider shrink-0">Broadcast:</span>
-              <span className="truncate font-medium text-slate-200">{G.board.actionLog[G.board.actionLog.length - 1]}</span>
-              <span className="text-[10px] text-slate-400 group-hover:text-white shrink-0 ml-0.5">▼</span>
-            </button>
-          )}
+        {/* Center: Game Event & Ability Banner (Non-routine events, team abilities, Rivalry, 1st overall pick) */}
+        <div className="flex-1 flex items-center justify-center max-w-2xl px-2 min-w-0">
+          {(() => {
+            const bannerHistory = G.board.gameLogBannerHistory || [];
+            const latestBanner = bannerHistory[0];
+
+            if (latestBanner) {
+              return (
+                <button
+                  type="button"
+                  onClick={() => setShowLog(true)}
+                  className="w-full max-w-lg flex items-center justify-between gap-2 px-3 py-1 rounded-full bg-slate-950/90 border border-amber-500/70 hover:border-amber-400 text-xs text-slate-200 cursor-pointer shadow-md hover:shadow-amber-500/10 transition-all group"
+                  title="Click to view full game event recollections and ability triggers"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0 truncate">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0"></span>
+                    <span className="text-amber-300 font-extrabold text-[10px] uppercase tracking-wider shrink-0 flex items-center gap-1">
+                      <span>{latestBanner.icon || '⚡'}</span>
+                      <span>{latestBanner.title}:</span>
+                    </span>
+                    <span className="truncate font-medium text-slate-100 text-xs">{latestBanner.text}</span>
+                  </div>
+                  <span className="text-[10px] text-amber-300/90 group-hover:text-amber-200 font-bold shrink-0 ml-1">
+                    Log ({bannerHistory.length}) ▼
+                  </span>
+                </button>
+              );
+            }
+
+            return (
+              <button
+                type="button"
+                onClick={() => setShowLog(true)}
+                className="w-full max-w-md flex items-center justify-between gap-2 px-3 py-1 rounded-full bg-slate-950/60 border border-slate-800 hover:border-slate-600 text-xs text-slate-400 cursor-pointer transition-all group"
+                title="Click to view game event log"
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-600 shrink-0"></span>
+                  <span className="text-[11px] text-slate-400 font-medium truncate">
+                    📢 Event Log • Awaiting team abilities & decisions
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 group-hover:text-slate-300 shrink-0">
+                  Log ▼
+                </span>
+              </button>
+            );
+          })()}
         </div>
 
         {/* Right: Quick Tools */}
@@ -741,15 +790,6 @@ export const DesktopDeflategateBoardArena = ({
             title="Official Rules"
           >
             📖 Rules
-          </button>
-
-          {/* Activity Log Toggle */}
-          <button
-            onClick={() => setShowLog(!showLog)}
-            className={`font-bold px-2.5 py-1 rounded-lg text-xs border ${showLog ? 'bg-indigo-950/80 text-indigo-300 border-indigo-700' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
-            title="Toggle Live Activity Log"
-          >
-            📋 Log
           </button>
 
           {/* Mobile Switcher */}
@@ -883,25 +923,27 @@ export const DesktopDeflategateBoardArena = ({
                 <p className="text-xs text-slate-400">Review all available talent before bidding starts.</p>
               </div>
 
-              {/* Full Draft Cards Gallery */}
-              <div className="flex items-center justify-start gap-3 overflow-x-auto tabletop-scroll w-full py-2 px-1">
+              {/* Full Draft Cards Gallery (2-row multi-column grid) */}
+              <div className="grid grid-rows-2 grid-flow-col auto-cols-[minmax(190px,230px)] gap-2 h-full max-h-[300px] overflow-x-auto tabletop-scroll w-full py-1 px-1">
                 {G.board.auctionPlayers && G.board.auctionPlayers.map((card, idx) => {
                   if (!card) return null;
                   return (
                     <div
                       key={card.uniqueId || idx}
-                      className={`w-48 p-3.5 rounded-2xl flex flex-col justify-between text-left shrink-0 ${getCardPhaseStyle(card)}`}
+                      className={`h-full min-h-[115px] max-h-[140px] p-2.5 rounded-xl flex flex-col justify-between text-left shrink-0 ${getCardPhaseStyle(card)}`}
                     >
                       <div>
-                        <div className="flex justify-between items-center text-xs font-mono font-bold mb-1">
+                        <div className="flex justify-between items-center text-[10px] font-mono font-bold leading-none mb-1">
                           <span className="text-yellow-300">Min: {card.minBid}</span>
                           {renderPositionTag(card.position)}
                           <span className="text-amber-400">Max: {card.maxBid}</span>
                         </div>
-                        <h4 className="font-bold text-base text-white truncate">{card.name}</h4>
-                        {renderCardEffects(card.effects, card.specialText || card.customText)}
+                        <h4 className="font-bold text-xs sm:text-sm text-white truncate leading-snug">{card.name}</h4>
+                        <div className="scale-95 origin-top-left -mt-0.5">
+                          {renderCardEffects(card.effects, card.specialText || card.customText)}
+                        </div>
                       </div>
-                      <div className="mt-2 pt-1 border-t border-slate-800 flex justify-between items-center">
+                      <div className="pt-1 border-t border-slate-800/80 flex justify-between items-center text-[10px]">
                         {renderPhaseBadge(card.phase)}
                       </div>
                     </div>
@@ -944,14 +986,14 @@ export const DesktopDeflategateBoardArena = ({
                 </span>
               </div>
 
-              {/* Full Cards Gallery (User request: DO NOT minimize the other players, show full effects, phase, position, and min/max for all cards!) */}
-              <div className="flex-1 min-h-0 flex items-center justify-start gap-3 overflow-x-auto tabletop-scroll py-2 px-1">
+              {/* Full Cards Gallery (2-row multi-column grid: up to 10 players fit across 5 columns in 2 rows without scrolling!) */}
+              <div className="flex-1 min-h-0 grid grid-rows-2 grid-flow-col auto-cols-[minmax(190px,230px)] gap-2 overflow-x-auto tabletop-scroll py-1 px-1">
                 {G.board.auctionPlayers && G.board.auctionPlayers.map((card, idx) => {
                   if (!card) {
                     return (
                       <div 
                         key={`sold-${idx}`} 
-                        className="w-48 h-full max-h-[290px] p-3 rounded-2xl flex items-center justify-center border border-dashed border-slate-800 text-slate-500 italic bg-slate-950/40 shrink-0"
+                        className="h-full min-h-[115px] max-h-[140px] p-2 rounded-xl flex items-center justify-center border border-dashed border-slate-800/80 text-slate-500 text-xs italic bg-slate-950/40"
                       >
                         Sold
                       </div>
@@ -971,17 +1013,17 @@ export const DesktopDeflategateBoardArena = ({
                           moves.selectCard(idx, effectivePlayerID);
                         }
                       }}
-                      className={`w-52 h-full max-h-[290px] p-3 rounded-2xl flex flex-col justify-between text-left shrink-0 transition-all ${
+                      className={`h-full min-h-[115px] max-h-[140px] p-2.5 rounded-xl flex flex-col justify-between text-left transition-all ${
                         isNominated
-                          ? 'ring-2 ring-blue-400 border-2 border-blue-400 scale-[1.02] shadow-[0_0_20px_rgba(59,130,246,0.3)] bg-slate-900'
+                          ? 'ring-2 ring-blue-400 border-2 border-blue-400 scale-[1.01] shadow-[0_0_15px_rgba(59,130,246,0.3)] bg-slate-900'
                           : isSelectedForNomination
-                            ? 'ring-2 ring-emerald-400 border-2 border-emerald-400 bg-slate-900 scale-[1.02]'
+                            ? 'ring-2 ring-emerald-400 border-2 border-emerald-400 bg-slate-900 scale-[1.01]'
                             : 'opacity-90 hover:opacity-100'
                       } ${canNominate ? 'cursor-pointer hover:border-emerald-400' : ''} ${getCardPhaseStyle(card)}`}
                     >
                       <div>
                         {/* Header: Min, Pos, Max */}
-                        <div className="flex justify-between items-center text-xs font-mono font-bold mb-1">
+                        <div className="flex justify-between items-center text-[10px] font-mono font-bold leading-none mb-1">
                           <span className="text-yellow-300">Min: {card.minBid}</span>
                           {renderPositionTag(card.position)}
                           <span className="text-amber-400">Max: {getEffectiveCardMaxBid(card, G.board.activeEvent)}</span>
@@ -989,18 +1031,20 @@ export const DesktopDeflategateBoardArena = ({
 
                         {/* Nominated / Active Badge */}
                         {isNominated && (
-                          <div className="mb-1">
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-600 text-white shadow">
+                          <div className="mb-0.5">
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-blue-600 text-white shadow">
                               🏈 ACTIVE AUCTION
                             </span>
                           </div>
                         )}
 
-                        <h4 className="font-bold text-base text-white truncate">{card.name}</h4>
-                        {renderCardEffects(card.effects, card.specialText || card.customText)}
+                        <h4 className="font-bold text-xs sm:text-sm text-white truncate leading-snug">{card.name}</h4>
+                        <div className="scale-95 origin-top-left -mt-0.5">
+                          {renderCardEffects(card.effects, card.specialText || card.customText)}
+                        </div>
                       </div>
 
-                      <div className="pt-1.5 border-t border-slate-800 flex justify-between items-center text-xs">
+                      <div className="pt-1 border-t border-slate-800/80 flex justify-between items-center text-[10px] leading-none">
                         {renderPhaseBadge(card.phase)}
                         {G.board.activeAuctionCardIndex === null && isMyTurnToNominate && (
                           <button
@@ -1010,7 +1054,7 @@ export const DesktopDeflategateBoardArena = ({
                               moves.selectCard(idx, effectivePlayerID);
                             }}
                             disabled={!canAffordCard}
-                            className="text-[10px] font-bold px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-30 cursor-pointer shadow"
+                            className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-30 cursor-pointer shadow"
                           >
                             Nominate ➔
                           </button>
@@ -1420,13 +1464,21 @@ export const DesktopDeflategateBoardArena = ({
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="relative max-w-4xl w-full flex items-center justify-center">
             
-            {/* Left Side Button: Prev Team */}
+            {/* Left Side Button: Prev Team (Modern gaming floating chevron) */}
             <button
+              type="button"
               onClick={() => setPeekLineupModal(prevPeekId)}
-              className="absolute -left-3 sm:-left-12 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-slate-800/95 hover:bg-blue-600 text-white font-black text-lg flex items-center justify-center cursor-pointer border border-slate-600 shadow-2xl transition-all hover:scale-110 active:scale-95"
+              className="absolute -left-4 sm:-left-12 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-slate-900/90 hover:bg-blue-600/90 border border-slate-700 hover:border-blue-400 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer shadow-2xl transition-all transform hover:scale-115 active:scale-95 group backdrop-blur-md"
               title="Previous Team"
             >
-              ◀
+              <svg 
+                className="w-6 h-6 stroke-[3] transition-transform group-hover:-translate-x-0.5" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
             </button>
 
             {/* Main Modal Box */}
@@ -1480,13 +1532,21 @@ export const DesktopDeflategateBoardArena = ({
               </div>
             </div>
 
-            {/* Right Side Button: Next Team */}
+            {/* Right Side Button: Next Team (Modern gaming floating chevron) */}
             <button
+              type="button"
               onClick={() => setPeekLineupModal(nextPeekId)}
-              className="absolute -right-3 sm:-right-12 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-slate-800/95 hover:bg-blue-600 text-white font-black text-lg flex items-center justify-center cursor-pointer border border-slate-600 shadow-2xl transition-all hover:scale-110 active:scale-95"
+              className="absolute -right-4 sm:-right-12 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-slate-900/90 hover:bg-blue-600/90 border border-slate-700 hover:border-blue-400 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer shadow-2xl transition-all transform hover:scale-115 active:scale-95 group backdrop-blur-md"
               title="Next Team"
             >
-              ▶
+              <svg 
+                className="w-6 h-6 stroke-[3] transition-transform group-hover:translate-x-0.5" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
             </button>
 
           </div>
@@ -1545,7 +1605,7 @@ export const DesktopDeflategateBoardArena = ({
         </div>
       )}
 
-      {/* Activity Log Modal (opened when clicking top broadcast ticker or Log button) */}
+      {/* Game Event Recollections & Ability Log Modal */}
       {showLog && (
         <div 
           onClick={() => setShowLog(false)}
@@ -1553,14 +1613,17 @@ export const DesktopDeflategateBoardArena = ({
         >
           <div 
             onClick={e => e.stopPropagation()}
-            className="bg-slate-900 border-2 border-slate-700 p-6 rounded-3xl max-w-lg w-full text-left shadow-2xl relative flex flex-col max-h-[80vh] cursor-default"
+            className="bg-slate-900 border-2 border-slate-700 p-6 rounded-3xl max-w-xl w-full text-left shadow-2xl relative flex flex-col max-h-[80vh] cursor-default"
           >
             <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-3">
               <div className="flex items-center gap-2">
-                <span className="text-xl">📋</span>
-                <h3 className="text-xl font-black text-white uppercase tracking-wider">
-                  Live Broadcast Feed
-                </h3>
+                <span className="text-xl">📢</span>
+                <div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-wider">
+                    Game Event Recollections
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Team abilities, dynamic choices, and special event resolutions.</p>
+                </div>
               </div>
               <button
                 onClick={() => setShowLog(false)}
@@ -1571,14 +1634,34 @@ export const DesktopDeflategateBoardArena = ({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto tabletop-scroll space-y-2 pr-1 text-xs">
-              {G.board.actionLog && G.board.actionLog.length > 0 ? (
-                G.board.actionLog.slice().reverse().map((entry, idx) => (
-                  <div key={idx} className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 leading-snug">
-                    {entry}
+              {G.board.gameLogBannerHistory && G.board.gameLogBannerHistory.length > 0 ? (
+                G.board.gameLogBannerHistory.map((entry, idx) => (
+                  <div key={entry.id || idx} className="p-3 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-slate-700 transition-all flex items-start gap-3">
+                    <span className="text-xl mt-0.5 shrink-0">{entry.icon || '⚡'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-extrabold text-amber-300 text-xs uppercase tracking-wide">
+                          {entry.title}
+                        </span>
+                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                          R{entry.round || 1}
+                        </span>
+                      </div>
+                      <p className="text-slate-200 text-xs leading-relaxed font-medium">
+                        {entry.text}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : G.logs && G.logs.length > 0 ? (
+                G.logs.map((entry, idx) => (
+                  <div key={entry.id || idx} className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 leading-snug flex items-center justify-between">
+                    <span>{entry.text}</span>
+                    <span className="text-[9px] font-mono text-slate-500 shrink-0 ml-2">R{entry.round || 1}</span>
                   </div>
                 ))
               ) : (
-                <div className="text-slate-500 italic text-center py-8">No action logs yet.</div>
+                <div className="text-slate-500 italic text-center py-12">No event recollections yet. Team ability triggers and special event choices will be logged here.</div>
               )}
             </div>
           </div>

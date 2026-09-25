@@ -27,6 +27,23 @@ const addLog = (G, text) => {
   if (G.logs.length > 50) G.logs.pop();
 };
 
+export const addBannerEvent = (G, { icon = '⚡', title, text, round }) => {
+  if (!G.board) return;
+  if (!G.board.gameLogBannerHistory) G.board.gameLogBannerHistory = [];
+  const entry = {
+    id: `${Date.now()}_${Math.random()}`,
+    icon,
+    title,
+    text,
+    round: round ?? G.board.round ?? 1,
+    timestamp: Date.now()
+  };
+  G.board.gameLogBannerHistory.unshift(entry);
+  if (G.board.gameLogBannerHistory.length > 50) {
+    G.board.gameLogBannerHistory = G.board.gameLogBannerHistory.slice(0, 50);
+  }
+};
+
 export const triggerAbilityNotification = (G, playerID, teamId, title, message) => {
   const icons = {
     eagles: '🦅',
@@ -71,6 +88,14 @@ export const triggerAbilityNotification = (G, playerID, teamId, title, message) 
   if (G.board.abilityNotificationHistory.length > 25) {
     G.board.abilityNotificationHistory = G.board.abilityNotificationHistory.slice(0, 25);
   }
+
+  // Also record in central Banner Log history for player recollection
+  addBannerEvent(G, {
+    icon,
+    title: `${teamName}: ${title}`,
+    text: message,
+    round: G.board?.round || 1
+  });
 };
 
 export const checkDolphinsEmergencyCoins = (G, playerID) => {
@@ -1540,7 +1565,13 @@ export const processRivalryStep = (G) => {
       const targetName = targetPlayer?.team?.name ? `${targetPlayer.team.name} (Player ${parseInt(targetId) + 1})` : `Player ${parseInt(targetId) + 1}`;
       giver.psi = Math.max(0, giver.psi - 1);
       applyPsiInflated(G, targetId, 1);
-      addLog(G, `⚔️ Rivalry: ${giverName} gave 1 PSI to ${targetName}.`);
+      const rivalryMsg = `${giverName} gave 1 PSI to ${targetName}.`;
+      addLog(G, `⚔️ Rivalry: ${rivalryMsg}`);
+      addBannerEvent(G, {
+        icon: '⚔️',
+        title: 'Rivalry Action',
+        text: rivalryMsg
+      });
     }
     G.board.pendingRivalry.step++;
     if (G.board.pendingRivalry.step < order.length) {
@@ -2095,7 +2126,8 @@ export const DeflategateGame = {
         pendingPukaQueue: [],
         pukaCopiedEffects: {},
         cardWonFlyAnimation: null,
-        tyreekHillAlert: null
+        tyreekHillAlert: null,
+        gameLogBannerHistory: []
       }
     };
   },
@@ -2156,7 +2188,8 @@ export const DeflategateGame = {
       }
     },
     copyAbility: ({ G, playerID, events }, targetTeamId, actingPlayerId) => {
-      const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
+      const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
+      const targetPlayerId = actingPlayerId || (G.players[playerID]?.team?.id === 'buccaneers' ? playerID : bucsPlayerId || Object.keys(G.players)[0]);
       const p = G.players[targetPlayerId];
       if (!p || !p.team || p.team.id !== 'buccaneers') return INVALID_MOVE;
       const targetTeam = TEAMS.find(t => t.id === targetTeamId);
@@ -2164,7 +2197,33 @@ export const DeflategateGame = {
 
       p.copiedTeam = targetTeam;
       const displayId = parseInt(targetPlayerId) + 1;
-      addLog(G, `Buccaneers (Player ${displayId}) copied ${targetTeam.name}'s ability!`);
+      const msg = `Buccaneers (Player ${displayId}) copied ${targetTeam.name}'s ability: "${targetTeam.ability}"!`;
+      addLog(G, msg);
+      addBannerEvent(G, {
+        icon: '🏴‍☠️',
+        title: 'Buccaneers Assimilation',
+        text: msg
+      });
+      G.board.bucsCopyComplete = true;
+      if (events && events.endPhase) events.endPhase();
+    },
+    buccaneersPickTeam: ({ G, playerID, events }, targetTeamId, actingPlayerId) => {
+      const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
+      const targetPlayerId = actingPlayerId || (G.players[playerID]?.team?.id === 'buccaneers' ? playerID : bucsPlayerId || Object.keys(G.players)[0]);
+      const p = G.players[targetPlayerId];
+      if (!p || !p.team || p.team.id !== 'buccaneers') return INVALID_MOVE;
+      const targetTeam = TEAMS.find(t => t.id === targetTeamId);
+      if (!targetTeam) return INVALID_MOVE;
+
+      p.copiedTeam = targetTeam;
+      const displayId = parseInt(targetPlayerId) + 1;
+      const msg = `Buccaneers (Player ${displayId}) copied ${targetTeam.name}'s ability: "${targetTeam.ability}"!`;
+      addLog(G, msg);
+      addBannerEvent(G, {
+        icon: '🏴‍☠️',
+        title: 'Buccaneers Assimilation',
+        text: msg
+      });
       G.board.bucsCopyComplete = true;
       if (events && events.endPhase) events.endPhase();
     },
@@ -2323,7 +2382,13 @@ export const DeflategateGame = {
       const targetName = target?.team?.name ? `${target.team.name} (Player ${parseInt(targetId) + 1})` : `Player ${parseInt(targetId) + 1}`;
       giver.psi = Math.max(0, giver.psi - 1);
       applyPsiInflated(G, targetId, 1);
-      addLog(G, `⚔️ Rivalry: ${giverName} gave 1 PSI to ${targetName}.`);
+      const rivalryMsg = `${giverName} gave 1 PSI to ${targetName}.`;
+      addLog(G, `⚔️ Rivalry: ${rivalryMsg}`);
+      addBannerEvent(G, {
+        icon: '⚔️',
+        title: 'Rivalry Action',
+        text: rivalryMsg
+      });
 
       G.board.pendingRivalry.step++;
       if (G.board.pendingRivalry.step < order.length) {
@@ -2374,6 +2439,11 @@ export const DeflategateGame = {
         });
 
         addLog(G, `Trade Rumors Complete: ${summaries.join('; ')}.`);
+        addBannerEvent(G, {
+          icon: '🔄',
+          title: 'Trade Rumors',
+          text: summaries.join('; ')
+        });
         G.board.tradeRumorsSummary = summaries;
         G.board.pendingTradeRumors = null;
       }
@@ -2729,14 +2799,21 @@ export const DeflategateGame = {
         if (bucsPlayer.isCpu) {
           const chosenTeam = otherDrafted[Math.floor(Math.random() * otherDrafted.length)] || TEAMS[0];
           bucsPlayer.copiedTeam = chosenTeam;
-          addLog(G, `Buccaneers (CPU Player ${parseInt(bucsPlayerId) + 1}) copied ${chosenTeam.name}'s ability.`);
+          const msg = `Buccaneers (CPU Player ${parseInt(bucsPlayerId) + 1}) copied ${chosenTeam.name}'s ability: "${chosenTeam.ability}".`;
+          addLog(G, msg);
+          addBannerEvent(G, {
+            icon: '🏴‍☠️',
+            title: 'Buccaneers Assimilation',
+            text: msg
+          });
           G.board.bucsCopyComplete = true;
           if (events && events.endPhase) events.endPhase();
         }
       },
       moves: {
         copyAbility: ({ G, playerID, events }, targetTeamId, actingPlayerId) => {
-          const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
+          const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
+          const targetPlayerId = actingPlayerId || (G.players[playerID]?.team?.id === 'buccaneers' ? playerID : bucsPlayerId || Object.keys(G.players)[0]);
           const p = G.players[targetPlayerId];
           if (!p || !p.team || p.team.id !== 'buccaneers') return INVALID_MOVE;
           const targetTeam = TEAMS.find(t => t.id === targetTeamId);
@@ -2744,7 +2821,33 @@ export const DeflategateGame = {
 
           p.copiedTeam = targetTeam;
           const displayId = parseInt(targetPlayerId) + 1;
-          addLog(G, `Buccaneers (Player ${displayId}) copied ${targetTeam.name}'s ability!`);
+          const msg = `Buccaneers (Player ${displayId}) copied ${targetTeam.name}'s ability: "${targetTeam.ability}"!`;
+          addLog(G, msg);
+          addBannerEvent(G, {
+            icon: '🏴‍☠️',
+            title: 'Buccaneers Assimilation',
+            text: msg
+          });
+          G.board.bucsCopyComplete = true;
+          if (events && events.endPhase) events.endPhase();
+        },
+        buccaneersPickTeam: ({ G, playerID, events }, targetTeamId, actingPlayerId) => {
+          const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
+          const targetPlayerId = actingPlayerId || (G.players[playerID]?.team?.id === 'buccaneers' ? playerID : bucsPlayerId || Object.keys(G.players)[0]);
+          const p = G.players[targetPlayerId];
+          if (!p || !p.team || p.team.id !== 'buccaneers') return INVALID_MOVE;
+          const targetTeam = TEAMS.find(t => t.id === targetTeamId);
+          if (!targetTeam) return INVALID_MOVE;
+
+          p.copiedTeam = targetTeam;
+          const displayId = parseInt(targetPlayerId) + 1;
+          const msg = `Buccaneers (Player ${displayId}) copied ${targetTeam.name}'s ability: "${targetTeam.ability}"!`;
+          addLog(G, msg);
+          addBannerEvent(G, {
+            icon: '🏴‍☠️',
+            title: 'Buccaneers Assimilation',
+            text: msg
+          });
           G.board.bucsCopyComplete = true;
           if (events && events.endPhase) events.endPhase();
         }
@@ -2912,6 +3015,11 @@ export const DeflategateGame = {
               G.board.eventNotification = `1st Overall Pick: ${highest.team?.name || 'Player'} deflated by -${diff} PSI to match 2nd highest (${secondHighest.psi}).`;
             }
             addLog(G, G.board.eventNotification);
+            addBannerEvent(G, {
+              icon: '🎯',
+              title: '1st Overall Pick',
+              text: G.board.eventNotification
+            });
           }
         } else if (ev.category === 'legend_returns') {
           let chosenCard;
