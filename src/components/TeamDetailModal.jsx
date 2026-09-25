@@ -7,7 +7,7 @@ export const renderCardEffectsHelper = (effects, specialText) => {
         const symbolElement = eff.perRound ? (
           <span 
             title="Every Round: Triggers every round in Refresh Phase" 
-            className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/70 text-emerald-300 text-[9px] font-black uppercase tracking-wider shadow-sm ml-1 select-none"
+            className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/70 text-emerald-300 text-[9px] font-black uppercase tracking-wider shadow-sm select-none"
           >
             <svg className="w-2.5 h-2.5 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
@@ -17,7 +17,7 @@ export const renderCardEffectsHelper = (effects, specialText) => {
         ) : (
           <span 
             title="Instant Effect: Triggers immediately when bought" 
-            className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-amber-950/90 border border-amber-500/70 text-amber-300 text-[9px] font-black uppercase tracking-wider shadow-sm ml-1 select-none"
+            className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-amber-950/90 border border-amber-500/70 text-amber-300 text-[9px] font-black uppercase tracking-wider shadow-sm select-none"
           >
             <svg className="w-2 h-2 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="currentColor">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
@@ -29,22 +29,22 @@ export const renderCardEffectsHelper = (effects, specialText) => {
         if (eff.type === 'coins') {
           const isPositive = eff.amount > 0;
           return (
-            <span key={i} className={`text-xs flex items-center font-black font-mono leading-tight ${isPositive ? 'text-yellow-300' : 'text-orange-400'}`}>
+            <span key={i} className={`text-xs flex items-center gap-1.5 font-black font-mono leading-tight ${isPositive ? 'text-yellow-300' : 'text-orange-400'}`}>
               <span>🪙 {isPositive ? `+${eff.amount}` : eff.amount} Coins</span>
               {symbolElement}
             </span>
           );
         } else if (eff.type === 'deflate') {
           return (
-            <span key={i} className="text-xs flex items-center font-black font-mono text-emerald-300 leading-tight">
-              <span>🏈 -${eff.amount} PSI</span>
+            <span key={i} className="text-xs flex items-center gap-1.5 font-black font-mono text-emerald-300 leading-tight">
+              <span>🏈 -{eff.amount} PSI</span>
               {symbolElement}
             </span>
           );
         } else if (eff.type === 'inflate') {
           return (
-            <span key={i} className="text-xs flex items-center font-black font-mono text-red-400 leading-tight">
-              <span>🏈🔺 +${eff.amount} PSI</span>
+            <span key={i} className="text-xs flex items-center gap-1.5 font-black font-mono text-red-400 leading-tight">
+              <span>🏈🔺 +{eff.amount} PSI</span>
               {symbolElement}
             </span>
           );

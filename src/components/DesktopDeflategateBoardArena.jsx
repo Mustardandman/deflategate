@@ -270,7 +270,7 @@ export const DesktopDeflategateBoardArena = ({
           const triggerBadge = eff.perRound ? (
             <span 
               title="Every Round: Triggers every round in Refresh Phase" 
-              className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/70 text-emerald-300 font-black text-[9px] uppercase tracking-wider shadow-sm ml-1 select-none shrink-0"
+              className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/70 text-emerald-300 font-black text-[9px] uppercase tracking-wider shadow-sm select-none shrink-0"
             >
               <svg className="w-2.5 h-2.5 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
@@ -280,7 +280,7 @@ export const DesktopDeflategateBoardArena = ({
           ) : (
             <span 
               title="Instant Effect: Triggers once immediately on purchase" 
-              className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-amber-950/90 border border-amber-500/70 text-amber-300 font-black text-[9px] uppercase tracking-wider shadow-sm ml-1 select-none shrink-0"
+              className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-amber-950/90 border border-amber-500/70 text-amber-300 font-black text-[9px] uppercase tracking-wider shadow-sm select-none shrink-0"
             >
               <svg className="w-2 h-2 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
@@ -292,21 +292,21 @@ export const DesktopDeflategateBoardArena = ({
           if (eff.type === 'coins') {
             const isPositive = eff.amount > 0;
             return (
-              <div key={i} className={`text-xs flex items-center justify-between font-bold font-mono leading-tight ${isPositive ? 'text-yellow-300' : 'text-orange-400'}`}>
+              <div key={i} className={`text-xs flex items-center justify-start gap-1.5 font-bold font-mono leading-tight ${isPositive ? 'text-yellow-300' : 'text-orange-400'}`}>
                 <span>🪙 {isPositive ? `+${eff.amount}` : eff.amount} Coins</span>
                 {triggerBadge}
               </div>
             );
           } else if (eff.type === 'deflate') {
             return (
-              <div key={i} className="text-xs flex items-center justify-between font-bold font-mono text-emerald-300 leading-tight">
+              <div key={i} className="text-xs flex items-center justify-start gap-1.5 font-bold font-mono text-emerald-300 leading-tight">
                 <span>🏈 -{eff.amount} PSI</span>
                 {triggerBadge}
               </div>
             );
           } else if (eff.type === 'inflate') {
             return (
-              <div key={i} className="text-xs flex items-center justify-between font-bold font-mono text-red-400 leading-tight">
+              <div key={i} className="text-xs flex items-center justify-start gap-1.5 font-bold font-mono text-red-400 leading-tight">
                 <span>🏈🔺 +{eff.amount} PSI</span>
                 {triggerBadge}
               </div>
@@ -1029,15 +1029,6 @@ export const DesktopDeflategateBoardArena = ({
                           <span className="text-amber-400">Max: {getEffectiveCardMaxBid(card, G.board.activeEvent)}</span>
                         </div>
 
-                        {/* Nominated / Active Badge */}
-                        {isNominated && (
-                          <div className="mb-0.5">
-                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-blue-600 text-white shadow">
-                              🏈 ACTIVE AUCTION
-                            </span>
-                          </div>
-                        )}
-
                         <h4 className="font-bold text-xs sm:text-sm text-white truncate leading-snug">{card.name}</h4>
                         <div className="scale-95 origin-top-left -mt-0.5">
                           {renderCardEffects(card.effects, card.specialText || card.customText)}
@@ -1046,7 +1037,11 @@ export const DesktopDeflategateBoardArena = ({
 
                       <div className="pt-1 border-t border-slate-800/80 flex justify-between items-center text-[10px] leading-none">
                         {renderPhaseBadge(card.phase)}
-                        {G.board.activeAuctionCardIndex === null && isMyTurnToNominate && (
+                        {isNominated ? (
+                          <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-600 text-white shadow flex items-center gap-1">
+                            <span>🏈</span> ACTIVE
+                          </span>
+                        ) : G.board.activeAuctionCardIndex === null && isMyTurnToNominate ? (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1058,7 +1053,7 @@ export const DesktopDeflategateBoardArena = ({
                           >
                             Nominate ➔
                           </button>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -1087,76 +1082,76 @@ export const DesktopDeflategateBoardArena = ({
 
           {/* Phase 4: Refresh Phase Step Resolution */}
           {ctx.phase === 'refreshPhase' && (
-            <div className="h-full flex flex-col justify-between items-center text-center p-3 sm:p-5">
-              <div>
-                <span className="text-xs font-black uppercase tracking-widest bg-emerald-950/90 text-emerald-300 px-3.5 py-1 rounded-full border border-emerald-600/80 shadow">
-                  🔄 Refresh Phase
-                </span>
-                <h2 className="text-2xl font-black text-white uppercase tracking-wide mt-2">
-                  Round {G.board.round} Revenue & Deflation
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">Lineup contracts and passive franchise abilities calculated.</p>
-              </div>
-
-              {/* Processing Teams Container */}
-              <div className="max-w-2xl w-full p-4 rounded-3xl bg-slate-950/90 border-2 border-slate-800 text-left shadow-2xl flex flex-col justify-between">
-                <div className="flex justify-between items-center pb-2 mb-3 border-b border-slate-800/80">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    Processing Teams:
+            <div className="h-full w-full flex flex-col justify-between p-2.5 sm:p-3 overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-950/90 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-600/80 shadow">
+                    🔄 Refresh Phase
                   </span>
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    Payouts & Deflation
-                  </span>
+                  <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-wide">
+                    Round {G.board.round} Revenue & Deflation
+                  </h2>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-56 overflow-y-auto tabletop-scroll pr-1">
-                  {G.board.refreshResults && G.board.refreshResults.slice(0, (G.board.refreshStepIndex || 0) + 1).map((res, i) => (
-                    <div 
-                      key={i} 
-                      className="flex items-center justify-between p-3 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-md transition-all hover:border-slate-500"
-                    >
-                      <div className="min-w-0 pr-2">
-                        <span className="font-black text-sm text-white block truncate">{res.teamName}</span>
-                        <span className="text-[10px] text-slate-400 uppercase font-semibold">Processed</span>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 font-mono font-bold shrink-0">
-                        <span className="text-xs text-yellow-300 bg-yellow-950/60 border border-yellow-700/60 px-2 py-0.5 rounded-lg shadow-sm">
-                          +{res.coinsGained} 🪙
-                        </span>
-                        <span className="text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-700/60 px-2 py-0.5 rounded-lg shadow-sm">
-                          -{res.psiDeflated} PSI
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Franchise Payouts
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="pt-2">
-                {G.board.refreshStage === 'intro' ? (
-                  <button
-                    onClick={() => moves.startRefreshSequence()}
-                    className="py-3 px-8 rounded-2xl font-black text-sm uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-500 shadow-xl cursor-pointer transition-all hover:scale-102 active:scale-98"
-                  >
-                    Start Refresh Phase 🔄
-                  </button>
-                ) : G.board.refreshStage === 'complete' ? (
-                  <button
-                    onClick={() => moves.confirmRefreshSummary()}
-                    className="py-3 px-8 rounded-2xl font-black text-sm uppercase tracking-wider text-white bg-emerald-600 hover:bg-emerald-500 shadow-xl cursor-pointer transition-all hover:scale-102 active:scale-98"
-                  >
-                    Advance to Round {G.board.round + 1} 🏈
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => moves.advanceRefreshStep()}
-                    className="py-2.5 px-6 rounded-2xl text-xs font-black uppercase text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 cursor-pointer transition-colors shadow"
-                  >
-                    Skip Step ⏩
-                  </button>
-                )}
+              {/* Processing Teams Grid Container (scrollable if > 6 teams, perfectly fits 10 teams) */}
+              <div className="flex-1 min-h-0 my-2 overflow-y-auto tabletop-scroll pr-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {(G.board.refreshResults && G.board.refreshResults.length > 0
+                    ? G.board.refreshResults
+                    : Object.keys(G.players).map(id => ({
+                        id,
+                        teamName: TEAMS_DATA[G.players[id].team]?.name || `Team ${id}`,
+                        coinsGained: 0,
+                        psiDeflated: 0
+                      }))
+                  ).map((res, i) => {
+                    const isMyTeam = String(res.id) === String(effectivePlayerID);
+                    return (
+                      <div 
+                        key={i} 
+                        className={`flex items-center justify-between p-2 px-2.5 rounded-xl border shadow-sm transition-all ${
+                          isMyTeam
+                            ? 'bg-blue-950/60 border-blue-500/80 ring-1 ring-blue-500/40'
+                            : 'bg-slate-950/80 border-slate-800/90 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="min-w-0 pr-2 flex items-center gap-1.5">
+                          {isMyTeam && (
+                            <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-blue-600 text-white shrink-0">
+                              YOU
+                            </span>
+                          )}
+                          <span className="font-bold text-xs text-white truncate">{res.teamName}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 font-mono font-bold shrink-0 text-xs">
+                          <span className="text-yellow-300 bg-yellow-950/70 border border-yellow-700/60 px-1.5 py-0.5 rounded text-[11px] shadow-sm">
+                            +{res.coinsGained} 🪙
+                          </span>
+                          <span className="text-emerald-400 bg-emerald-950/70 border border-emerald-700/60 px-1.5 py-0.5 rounded text-[11px] shadow-sm">
+                            -{res.psiDeflated} PSI
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Compact Footer Note */}
+              <div className="pt-2 border-t border-slate-800/80 shrink-0 flex items-center justify-between text-xs text-slate-400">
+                <span className="text-[11px]">Passive abilities & contracts calculated. Ready for next round.</span>
+                <button
+                  onClick={() => moves.confirmRefreshSummary()}
+                  className="px-4 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider text-white bg-emerald-600 hover:bg-emerald-500 shadow cursor-pointer transition-transform hover:scale-102 flex items-center gap-1.5"
+                >
+                  <span>Advance to Round {G.board.round + 1} ➔</span>
+                </button>
               </div>
             </div>
           )}
@@ -1186,56 +1181,84 @@ export const DesktopDeflategateBoardArena = ({
             </div>
           </div>
 
-          {/* Match Controls (User request: moved to spot where Game Status was, so user clicks in the same place) */}
-          <div className="p-3.5 rounded-2xl border border-slate-800 bg-slate-900/90 flex-1 flex flex-col justify-between shadow">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] uppercase font-bold text-slate-400">
-                  Match Controls
-                </span>
-                <span className="text-xs">{isCpuTurn ? '⏳' : '⚡'}</span>
+          {/* Match Controls / Refresh Phase Next Round Controls */}
+          {ctx.phase === 'refreshPhase' ? (
+            <div className="p-3.5 rounded-2xl border border-emerald-500/70 bg-gradient-to-b from-emerald-950/40 via-slate-900 to-slate-950 flex-1 flex flex-col justify-between shadow">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] uppercase font-bold text-emerald-400 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Round Complete
+                  </span>
+                  <span className="text-xs">🔄</span>
+                </div>
+                <h3 className="font-bold text-sm text-white mb-1">
+                  Round {G.board.round} Finished
+                </h3>
+                <p className="text-xs text-slate-300 leading-snug font-medium">
+                  Revenue and deflation processed for all franchises.
+                </p>
               </div>
 
-              {isCpuTurn ? (
-                <div className="space-y-2">
-                  <button
-                    onClick={() => moves.stepCpuTurn()}
-                    className="w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black bg-amber-400 hover:bg-amber-300 shadow cursor-pointer transition-transform hover:scale-102"
-                  >
-                    Next CPU Action ➔
-                  </button>
-                  <div className="grid grid-cols-2 gap-1.5">
+              <button
+                id="btn-next-round-controls"
+                onClick={() => moves.confirmRefreshSummary()}
+                className="w-full py-3 px-3 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider text-white bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 shadow-[0_0_20px_rgba(16,185,129,0.35)] cursor-pointer transition-all hover:scale-102 active:scale-98 flex items-center justify-center gap-1.5 border border-emerald-400/50"
+              >
+                <span>Next Round {G.board.round < 10 ? `${G.board.round + 1} ➔` : '➔'}</span>
+              </button>
+            </div>
+          ) : (
+            <div className="p-3.5 rounded-2xl border border-slate-800 bg-slate-900/90 flex-1 flex flex-col justify-between shadow">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">
+                    Match Controls
+                  </span>
+                  <span className="text-xs">{isCpuTurn ? '⏳' : '⚡'}</span>
+                </div>
+
+                {isCpuTurn ? (
+                  <div className="space-y-2">
                     <button
-                      onClick={() => setSkipMode('myTurn')}
-                      className="py-1.5 rounded-lg text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-750 border border-slate-700 cursor-pointer"
+                      onClick={() => moves.stepCpuTurn()}
+                      className="w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black bg-amber-400 hover:bg-amber-300 shadow cursor-pointer transition-transform hover:scale-102"
                     >
-                      Skip to My Turn ⏩
+                      Next CPU Action ➔
                     </button>
-                    <button
-                      onClick={() => setSkipMode('refresh')}
-                      className="py-1.5 rounded-lg text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-750 border border-slate-700 cursor-pointer"
-                    >
-                      Skip to Refresh ⏭️
-                    </button>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={() => setSkipMode('myTurn')}
+                        className="py-1.5 rounded-lg text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-750 border border-slate-700 cursor-pointer"
+                      >
+                        Skip to My Turn ⏩
+                      </button>
+                      <button
+                        onClick={() => setSkipMode('refresh')}
+                        className="py-1.5 rounded-lg text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-750 border border-slate-700 cursor-pointer"
+                      >
+                        Skip to Refresh ⏭️
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-600/80 text-xs text-center font-bold text-emerald-300 animate-pulse">
-                  ● Your Turn to Act
-                </div>
+                ) : (
+                  <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-600/80 text-xs text-center font-bold text-emerald-300 animate-pulse">
+                    ● Your Turn to Act
+                  </div>
+                )}
+              </div>
+
+              {/* Falcons Mulligan */}
+              {canMulligan && (
+                <button
+                  onClick={() => moves.falconsMulligan(effectivePlayerID)}
+                  className="w-full mt-2 py-2 rounded-xl text-xs font-bold uppercase text-white bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 border border-amber-400 shadow cursor-pointer"
+                >
+                  🔄 Falcons Mulligan Swap
+                </button>
               )}
             </div>
-
-            {/* Falcons Mulligan */}
-            {canMulligan && (
-              <button
-                onClick={() => moves.falconsMulligan(effectivePlayerID)}
-                className="w-full mt-2 py-2 rounded-xl text-xs font-bold uppercase text-white bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 border border-amber-400 shadow cursor-pointer"
-              >
-                🔄 Falcons Mulligan Swap
-              </button>
-            )}
-          </div>
+          )}
         </div>
 
       </main>
