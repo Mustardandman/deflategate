@@ -15,7 +15,7 @@ export const DesktopDeflategateBoardArena = ({
   toggleDesktopUi 
 }) => {
   const [showRules, setShowRules] = useState(false);
-  const [showLog, setShowLog] = useState(true);
+  const [showLog, setShowLog] = useState(false);
   const [peekLineupModal, setPeekLineupModal] = useState(false);
   const [customBid, setCustomBid] = useState(0);
   const [skipMode, setSkipMode] = useState(null); // null, 'myTurn', 'refresh'
@@ -672,40 +672,37 @@ export const DesktopDeflategateBoardArena = ({
       
       {/* 1. TOP HEADER BAR */}
       <header className="h-11 shrink-0 px-4 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between gap-4">
-        {/* Left: Branding & Game State */}
-        <div className="flex items-center gap-3">
+        {/* Left: Branding, Round, Card Era, and Turn Phase designations */}
+        <div className="flex items-center gap-2 shrink-0">
           <h1 className="font-extrabold text-xl text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-amber-300 uppercase tracking-wider">
             DEFLATEGATE
           </h1>
           <span className="font-bold text-xs px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700 uppercase tracking-wider">
             Round {G.board.round}/10
           </span>
-          <span className="font-bold text-xs px-2 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-700/60 uppercase tracking-wider">
+          {/* Card Era Designation next to Round */}
+          <span className="font-extrabold text-xs px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-600/80 uppercase tracking-wider shadow" title="Card Era">
+            {G.board.round >= 7 ? 'Hall of Fame' : G.board.round >= 4 ? 'Phase 2' : 'Phase 1'}
+          </span>
+          {/* Turn Phase Designation to the right of Card Era */}
+          <span className="font-bold text-xs px-2 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-700/60 uppercase tracking-wider shadow">
             {ctx.phase === 'auctionPhase' ? 'Auction Phase' : ctx.phase === 'preAuctionPhase' ? 'Pre-Auction' : ctx.phase === 'refreshPhase' ? 'Refresh Phase' : 'Event Phase'}
           </span>
         </div>
 
-        {/* Center: Turn Status summary */}
-        <div className="hidden md:flex items-center gap-2 text-xs">
-          {ctx.phase === 'auctionPhase' && (
-            G.board.activeAuctionCardIndex === null ? (
-              <span className="text-slate-300 font-bold flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span>
-                Waiting for <strong className="text-amber-300">{G.players[G.board.nominator]?.team?.name || `Player ${displayPlayerNumber(G.board.nominator)}`}</strong> to Nominate
-              </span>
-            ) : (
-              <span className="text-slate-300 font-bold flex items-center gap-1.5">
-                {isMyTurnToBid ? (
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-950 border border-emerald-500 text-emerald-300 font-extrabold animate-pulse">
-                    🚨 YOUR TURN TO BID ON {activeCard?.name}
-                  </span>
-                ) : (
-                  <span>
-                    Bidding on <strong className="text-white">{activeCard?.name}</strong>: Turn is <strong className="text-slate-200">{G.players[ctx.currentPlayer]?.team?.name || `Player ${displayPlayerNumber(ctx.currentPlayer)}`}</strong>
-                  </span>
-                )}
-              </span>
-            )
+        {/* Center: Live Broadcast Feed Banner (Latest action entry, clickable to open full log) */}
+        <div className="hidden md:flex items-center gap-2 text-xs max-w-xl truncate">
+          {G.board.actionLog && G.board.actionLog.length > 0 && (
+            <button
+              onClick={() => setShowLog(true)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950/90 hover:bg-slate-800 border border-slate-700/80 text-xs text-slate-300 cursor-pointer max-w-md truncate transition-all shadow group hover:border-slate-500"
+              title="Click to view full broadcast activity log"
+            >
+              <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shrink-0"></span>
+              <span className="text-blue-300 font-bold text-[10px] uppercase tracking-wider shrink-0">Broadcast:</span>
+              <span className="truncate font-medium text-slate-200">{G.board.actionLog[G.board.actionLog.length - 1]}</span>
+              <span className="text-[10px] text-slate-400 group-hover:text-white shrink-0 ml-0.5">▼</span>
+            </button>
           )}
         </div>
 
@@ -795,10 +792,12 @@ export const DesktopDeflategateBoardArena = ({
               key={pId}
               onClick={() => setPeekLineupModal(pId)}
               className={`h-full min-w-[190px] max-w-[230px] flex-1 p-2 rounded-xl border flex flex-col justify-between transition-all cursor-pointer relative ${
-                isMe 
-                  ? 'border-blue-500 bg-blue-950/30 ring-1 ring-blue-400' 
-                  : 'border-slate-800 bg-slate-900/80 hover:border-slate-700'
-              } ${hasWon ? 'opacity-70' : ''}`}
+                hasWon
+                  ? 'border-red-600 ring-2 ring-red-500/80 bg-red-950/25 shadow-[0_0_15px_rgba(220,38,38,0.2)]'
+                  : isMe 
+                    ? 'border-blue-500 bg-blue-950/30 ring-1 ring-blue-400' 
+                    : 'border-slate-800 bg-slate-900/80 hover:border-slate-700'
+              } ${hasWon ? 'opacity-90' : ''}`}
               title="Click to view full team lineup & ability"
             >
               {/* Header with Team Name, Star, and Tag */}
@@ -810,7 +809,7 @@ export const DesktopDeflategateBoardArena = ({
                       ⭐ 1st
                     </span>
                   )}
-                  <span className={`font-bold text-xs truncate ${isMe ? 'text-blue-300' : 'text-white'}`}>
+                  <span className={`font-bold text-xs truncate ${hasWon ? 'text-red-300' : isMe ? 'text-blue-300' : 'text-white'}`}>
                     {p.team?.name || `Player ${displayPlayerNumber(pId)}`}
                   </span>
                 </div>
@@ -829,8 +828,8 @@ export const DesktopDeflategateBoardArena = ({
               {/* Status Badge: Won / Passed / High Bid / In Bidding */}
               <div className="flex items-center justify-between text-[10px]">
                 {hasWon ? (
-                  <span className="font-bold text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700">
-                    ✓ Won Player
+                  <span className="font-black text-red-300 bg-red-950/90 px-1.5 py-0.5 rounded border border-red-600 shadow flex items-center gap-1">
+                    <span>⛔</span> Won Player (Out)
                   </span>
                 ) : hasPassed ? (
                   <span className="font-bold text-red-300 bg-red-950/80 px-1.5 py-0.5 rounded border border-red-800/80">
@@ -865,51 +864,10 @@ export const DesktopDeflategateBoardArena = ({
         })}
       </section>
 
-      {/* 3. CENTER TIER: SWAPPED LAYOUT (Broadcast Feed on LEFT, Event on RIGHT) */}
+      {/* 3. CENTER TIER: EXPANDED DRAFT & AUCTION ARENA */}
       <main className="flex-1 min-h-0 flex gap-3 p-3 overflow-hidden">
         
-        {/* LEFT COLUMN: Game Status & Live Broadcast Feed */}
-        <div className="w-64 shrink-0 flex flex-col gap-2.5 min-h-0">
-          
-          {/* Game Status */}
-          <div className="p-3 rounded-2xl border border-slate-800 bg-slate-900/80 shrink-0 text-xs space-y-1.5 shadow">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-              Game Status
-            </span>
-            <div className="space-y-1.5 text-xs text-slate-300">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Card Era:</span>
-                <span className="font-bold text-amber-300">
-                  {G.board.round >= 7 ? 'Hall of Fame' : G.board.round >= 4 ? 'Phase 2' : 'Phase 1'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">First Player:</span>
-                <span className="font-bold text-white">
-                  {G.players[G.board.firstPlayer]?.team?.name || `Player ${displayPlayerNumber(G.board.firstPlayer)}`}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Live Action Feed Ticker */}
-          {showLog && (
-            <div className="flex-1 min-h-0 p-3 rounded-2xl border border-slate-800 bg-slate-950/80 flex flex-col overflow-hidden shadow">
-              <span className="text-[10px] uppercase font-bold text-slate-400 mb-2">
-                Live Broadcast Feed
-              </span>
-              <div className="flex-1 overflow-y-auto tabletop-scroll space-y-1.5 text-xs pr-1">
-                {G.board.actionLog && G.board.actionLog.slice().reverse().map((entry, idx) => (
-                  <div key={idx} className="p-1.5 rounded-lg bg-slate-900/70 border border-slate-800 text-[11px] leading-snug text-slate-300">
-                    {entry}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* CENTER COLUMN: FULL DRAFT CARDS (User request: don't minimize cards, show all players & effects) */}
+        {/* EXPANDED DRAFT & AUCTION STAGE (User request: maximize width to fit more players without scrolling) */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-slate-900/60 rounded-3xl border border-slate-800 p-3 overflow-hidden justify-between">
           
           {/* Phase 2: Pre-Auction Reveal View */}
@@ -1085,58 +1043,77 @@ export const DesktopDeflategateBoardArena = ({
 
           {/* Phase 4: Refresh Phase Step Resolution */}
           {ctx.phase === 'refreshPhase' && (
-            <div className="h-full flex flex-col justify-between items-center text-center p-3">
+            <div className="h-full flex flex-col justify-between items-center text-center p-3 sm:p-5">
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider bg-emerald-950/80 text-emerald-300 px-3 py-1 rounded-full border border-emerald-700">
-                  Refresh Phase
+                <span className="text-xs font-black uppercase tracking-widest bg-emerald-950/90 text-emerald-300 px-3.5 py-1 rounded-full border border-emerald-600/80 shadow">
+                  🔄 Refresh Phase
                 </span>
-                <h2 className="text-xl font-bold text-white uppercase mt-1">
-                  Calculating Round {G.board.round} Revenue & Deflation
+                <h2 className="text-2xl font-black text-white uppercase tracking-wide mt-2">
+                  Round {G.board.round} Revenue & Deflation
                 </h2>
-                <p className="text-xs text-slate-400">Lineup bonuses and passive abilities calculated.</p>
+                <p className="text-xs text-slate-400 mt-0.5">Lineup contracts and passive franchise abilities calculated.</p>
               </div>
 
-              <div className="max-w-md w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 text-left space-y-2">
-                <div className="flex justify-between items-center text-xs font-bold text-slate-400 mb-2">
-                  <span>Processing Teams:</span>
-                  <span className="font-mono text-white">{(G.board.refreshStepIndex || 0) + 1} / {Object.keys(G.players).length}</span>
+              {/* Processing Teams Container */}
+              <div className="max-w-2xl w-full p-4 rounded-3xl bg-slate-950/90 border-2 border-slate-800 text-left shadow-2xl flex flex-col justify-between">
+                <div className="flex justify-between items-center pb-2 mb-3 border-b border-slate-800/80">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Processing Teams:
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Payouts & Deflation
+                  </span>
                 </div>
 
-                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-56 overflow-y-auto tabletop-scroll pr-1">
                   {G.board.refreshResults && G.board.refreshResults.slice(0, (G.board.refreshStepIndex || 0) + 1).map((res, i) => (
-                    <div key={i} className="flex justify-between items-center p-2 rounded-xl bg-slate-900 border border-slate-800 text-xs">
-                      <span className="font-bold text-white">{res.teamName}</span>
-                      <div className="flex items-center gap-3 font-mono font-bold">
-                        <span className="text-yellow-300">+{res.coinsGained} 🪙</span>
-                        <span className="text-emerald-400">-{res.psiDeflated} PSI</span>
+                    <div 
+                      key={i} 
+                      className="flex items-center justify-between p-3 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-md transition-all hover:border-slate-500"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <span className="font-black text-sm text-white block truncate">{res.teamName}</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold">Processed</span>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 font-mono font-bold shrink-0">
+                        <span className="text-xs text-yellow-300 bg-yellow-950/60 border border-yellow-700/60 px-2 py-0.5 rounded-lg shadow-sm">
+                          +{res.coinsGained} 🪙
+                        </span>
+                        <span className="text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-700/60 px-2 py-0.5 rounded-lg shadow-sm">
+                          -{res.psiDeflated} PSI
+                        </span>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {G.board.refreshStage === 'intro' ? (
-                <button
-                  onClick={() => moves.startRefreshSequence()}
-                  className="py-2.5 px-6 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-500 shadow-lg cursor-pointer"
-                >
-                  Start Refresh Phase 🔄
-                </button>
-              ) : G.board.refreshStage === 'complete' ? (
-                <button
-                  onClick={() => moves.confirmRefreshSummary()}
-                  className="py-2.5 px-6 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg cursor-pointer"
-                >
-                  Advance to Round {G.board.round + 1} 🏈
-                </button>
-              ) : (
-                <button
-                  onClick={() => moves.advanceRefreshStep()}
-                  className="py-2 px-5 rounded-xl text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 cursor-pointer"
-                >
-                  Skip Step ⏩
-                </button>
-              )}
+              {/* Action Buttons */}
+              <div className="pt-2">
+                {G.board.refreshStage === 'intro' ? (
+                  <button
+                    onClick={() => moves.startRefreshSequence()}
+                    className="py-3 px-8 rounded-2xl font-black text-sm uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-500 shadow-xl cursor-pointer transition-all hover:scale-102 active:scale-98"
+                  >
+                    Start Refresh Phase 🔄
+                  </button>
+                ) : G.board.refreshStage === 'complete' ? (
+                  <button
+                    onClick={() => moves.confirmRefreshSummary()}
+                    className="py-3 px-8 rounded-2xl font-black text-sm uppercase tracking-wider text-white bg-emerald-600 hover:bg-emerald-500 shadow-xl cursor-pointer transition-all hover:scale-102 active:scale-98"
+                  >
+                    Advance to Round {G.board.round + 1} 🏈
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => moves.advanceRefreshStep()}
+                    className="py-2.5 px-6 rounded-2xl text-xs font-black uppercase text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 cursor-pointer transition-colors shadow"
+                  >
+                    Skip Step ⏩
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -1260,7 +1237,7 @@ export const DesktopDeflategateBoardArena = ({
         <div className="flex-1 min-w-0 h-full flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs mb-0.5">
             <span className="font-bold uppercase text-slate-400">
-              Active Starting Lineup ({myPlayer?.lineup ? myPlayer.lineup.length : 0}/5)
+              Active Starting Lineup
             </span>
             {isPendingReplacementForMe && (
               <span className="font-bold text-xs uppercase px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-700 animate-pulse">
@@ -1349,23 +1326,23 @@ export const DesktopDeflategateBoardArena = ({
 
                 {/* Bid + and - buttons to alter your bid in the middle of the middle */}
                 <div className="flex flex-col items-center">
-                  <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Your Bid</div>
-                  <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-1">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Your Bid</div>
+                  <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl p-0.5 shadow-inner">
                     <button
                       onClick={() => setCustomBid(b => Math.max(nextBid, b - 1))}
                       disabled={!isMyTurnToBid || customBid <= nextBid}
-                      className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-sm flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-slate-800 hover:bg-slate-750 active:scale-95 text-white font-black text-lg flex items-center justify-center disabled:opacity-30 cursor-pointer border border-slate-700 transition-all"
                       title="Decrease bid"
                     >
                       −
                     </button>
-                    <span className="px-2 font-mono font-black text-yellow-300 text-xs min-w-[36px] text-center">
+                    <span className="px-3 font-mono font-black text-yellow-300 text-sm sm:text-base min-w-[44px] text-center">
                       {customBid}🪙
                     </span>
                     <button
                       onClick={() => setCustomBid(b => Math.min(maxAllowedBid, b + 1))}
                       disabled={!isMyTurnToBid || customBid >= maxAllowedBid}
-                      className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-sm flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-slate-800 hover:bg-slate-750 active:scale-95 text-white font-black text-lg flex items-center justify-center disabled:opacity-30 cursor-pointer border border-slate-700 transition-all"
                       title="Increase bid"
                     >
                       +
@@ -1525,22 +1502,84 @@ export const DesktopDeflategateBoardArena = ({
           }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm cursor-pointer"
         >
-          <div className="bg-slate-900 border-2 border-yellow-400 p-6 rounded-3xl max-w-sm w-full text-center shadow-2xl animate-fly-card" onClick={e => e.stopPropagation()}>
-            <span className="text-3xl">🏈</span>
-            <span className="text-xs font-bold uppercase tracking-widest bg-yellow-400 text-black px-3 py-0.5 rounded-full block my-2">
+          <div className="bg-slate-900 border-2 border-yellow-400 p-6 rounded-3xl max-w-md w-full text-center shadow-2xl animate-fly-card" onClick={e => e.stopPropagation()}>
+            <span className="text-4xl animate-bounce inline-block">🏈</span>
+            <span className="text-xs font-black uppercase tracking-widest bg-yellow-400 text-black px-3.5 py-1 rounded-full inline-block my-2 shadow">
               Player Acquired!
             </span>
-            <h3 className="text-2xl font-bold text-white uppercase">
+            <h3 className="text-2xl font-black text-white uppercase tracking-wide">
               {G.board.cardWonFlyAnimation.winnerTeamName}
             </h3>
-            <p className="text-yellow-300 font-mono font-bold text-sm">
+            <p className="text-yellow-300 font-mono font-bold text-sm mb-4">
               Won for {G.board.cardWonFlyAnimation.bidAmount} Coins!
             </p>
-            <div className={`mt-3 p-3 rounded-xl border text-left ${getCardPhaseStyle(G.board.cardWonFlyAnimation.card)}`}>
-              <div className="flex justify-between items-center text-xs font-mono font-bold">
-                <span>{G.board.cardWonFlyAnimation.card?.name}</span>
-                {renderPositionTag(G.board.cardWonFlyAnimation.card?.position)}
+
+            {/* FULL CARD RENDER */}
+            {G.board.cardWonFlyAnimation.card && (
+              <div className={`p-4 rounded-2xl border text-left shadow-lg mb-4 ${getCardPhaseStyle(G.board.cardWonFlyAnimation.card)}`}>
+                <div className="flex justify-between items-center text-xs font-mono font-bold mb-2">
+                  <span className="text-yellow-300">Min: {G.board.cardWonFlyAnimation.card.minBid}</span>
+                  {renderPositionTag(G.board.cardWonFlyAnimation.card.position)}
+                  <span className="text-amber-400">Max: {G.board.cardWonFlyAnimation.card.maxBid}</span>
+                </div>
+                <h4 className="font-extrabold text-xl text-white mb-2">{G.board.cardWonFlyAnimation.card.name}</h4>
+                <div className="text-xs mb-3 space-y-1">
+                  {renderCardEffects(G.board.cardWonFlyAnimation.card.effects, G.board.cardWonFlyAnimation.card.specialText || G.board.cardWonFlyAnimation.card.customText)}
+                </div>
+                <div className="pt-2 border-t border-slate-800/80 flex justify-between items-center text-xs">
+                  {renderPhaseBadge(G.board.cardWonFlyAnimation.card.phase)}
+                </div>
               </div>
+            )}
+
+            <button
+              onClick={() => {
+                setClientDismissedCardFlyTimestamp(G.board.cardWonFlyAnimation?.timestamp);
+                if (moves.dismissCardWonFlyAnimation) moves.dismissCardWonFlyAnimation();
+              }}
+              className="w-full py-2.5 rounded-xl font-black text-xs uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-500 shadow-lg cursor-pointer transition-transform hover:scale-102"
+            >
+              Continue ➔
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Activity Log Modal (opened when clicking top broadcast ticker or Log button) */}
+      {showLog && (
+        <div 
+          onClick={() => setShowLog(false)}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div 
+            onClick={e => e.stopPropagation()}
+            className="bg-slate-900 border-2 border-slate-700 p-6 rounded-3xl max-w-lg w-full text-left shadow-2xl relative flex flex-col max-h-[80vh] cursor-default"
+          >
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📋</span>
+                <h3 className="text-xl font-black text-white uppercase tracking-wider">
+                  Live Broadcast Feed
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowLog(false)}
+                className="text-slate-400 hover:text-white font-bold text-xl cursor-pointer p-1"
+                title="Close Log"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto tabletop-scroll space-y-2 pr-1 text-xs">
+              {G.board.actionLog && G.board.actionLog.length > 0 ? (
+                G.board.actionLog.slice().reverse().map((entry, idx) => (
+                  <div key={idx} className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 leading-snug">
+                    {entry}
+                  </div>
+                ))
+              ) : (
+                <div className="text-slate-500 italic text-center py-8">No action logs yet.</div>
+              )}
             </div>
           </div>
         </div>

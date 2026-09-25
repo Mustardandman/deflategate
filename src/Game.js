@@ -3870,7 +3870,15 @@ export const DeflategateGame = {
             addLog(G, `Jaylen Waddle Bonus: Player ${displayId} gained +1 coin for placing a bid!`);
           }
 
-          if (amount === effMaxBid) {
+          // If max bid is reached OR no other player can possibly outbid (e.g. sole remaining team without a card, or all other contenders passed/can't afford)
+          const otherEligibleBidders = Object.keys(G.players).filter(id => 
+            String(id) !== String(targetPlayerId) && 
+            !G.players[id].hasWonAuction && 
+            !(G.board.passedAuctionPlayers || []).includes(id) &&
+            G.players[id].coins >= (amount + minRaise)
+          );
+
+          if (amount === effMaxBid || otherEligibleBidders.length === 0) {
             resolveAuctionWin(G, targetPlayerId, card);
           }
           if (events && events.endTurn) events.endTurn();
