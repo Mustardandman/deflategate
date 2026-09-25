@@ -464,6 +464,21 @@ export const getCpuArchetype = (player, playerId) => {
   return CPU_ARCHETYPES[hash % CPU_ARCHETYPES.length];
 };
 
+export const selectCpuTeamFromChoices = (choices, personality) => {
+  if (!choices || choices.length === 0) return null;
+  if (choices.length === 1) return choices[0];
+  if (personality === 'rusher') {
+    return [...choices].sort((a, b) => a.initialPsi - b.initialPsi)[0];
+  } else if (personality === 'tycoon') {
+    return [...choices].sort((a, b) => b.coins - a.coins)[0];
+  } else if (personality === 'bully') {
+    const bullyIds = ['bears', 'eagles', 'raiders', 'steelers', 'commanders'];
+    const match = choices.find(t => bullyIds.includes(t.id));
+    if (match) return match;
+  }
+  return choices[Math.floor(Math.random() * choices.length)];
+};
+
 const scoreCardRaw = (card, roundsLeft, deflateWeight, coinWeight) => {
   if (!card) return -999;
   if (card.isPracticeSquad || card.uniqueId?.startsWith('ps_')) return 0;
@@ -2123,7 +2138,7 @@ export const DeflategateGame = {
         const cpu = G.players[id];
         if (cpu && cpu.isCpu && !cpu.team) {
           if (!cpu.personality) cpu.personality = CPU_ARCHETYPES[parseInt(id) % CPU_ARCHETYPES.length];
-          cpu.team = cpu.teamChoices[0];
+          cpu.team = selectCpuTeamFromChoices(cpu.teamChoices, cpu.personality) || cpu.teamChoices[0];
           cpu.psi = cpu.team.initialPsi;
           cpu.coins = cpu.team.coins;
           const cpuPsCount = cpu.team.id === 'seahawks' ? 4 : 3;
@@ -2674,7 +2689,7 @@ export const DeflategateGame = {
               const cpu = G.players[id];
               if (cpu && cpu.isCpu && !cpu.team) {
                 if (!cpu.personality) cpu.personality = CPU_ARCHETYPES[parseInt(id) % CPU_ARCHETYPES.length];
-                cpu.team = cpu.teamChoices[0];
+                cpu.team = selectCpuTeamFromChoices(cpu.teamChoices, cpu.personality) || cpu.teamChoices[0];
                 cpu.psi = cpu.team.initialPsi;
                 cpu.coins = cpu.team.coins;
                 const cpuPsCount = cpu.team.id === 'seahawks' ? 4 : 3;
