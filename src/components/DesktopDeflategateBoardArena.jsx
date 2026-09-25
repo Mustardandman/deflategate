@@ -980,7 +980,16 @@ export const DesktopDeflategateBoardArena = ({
           {ctx.phase === 'auctionPhase' && (
             <div className="h-full flex flex-col justify-between min-h-0">
               
-              {/* Full Cards Gallery (2-row multi-column grid: top banner removed per user request for vertical space) */}
+              {/* Auction Row Banner (User request: sleek compact banner identifying Auction Row) */}
+              <div className="flex items-center justify-center gap-2.5 py-0.5 px-4 rounded-xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-slate-800/80 shrink-0 mb-1 shadow-sm">
+                <span className="h-px w-6 sm:w-10 bg-gradient-to-r from-transparent to-slate-600"></span>
+                <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-slate-200 flex items-center gap-1.5">
+                  <span className="text-xs">🔨</span> Auction Row
+                </span>
+                <span className="h-px w-6 sm:w-10 bg-gradient-to-l from-transparent to-slate-600"></span>
+              </div>
+
+              {/* Full Cards Gallery (2-row multi-column grid) */}
               <div className="flex-1 min-h-0 grid grid-rows-2 grid-flow-col auto-cols-[minmax(185px,225px)] gap-x-2 gap-y-1 overflow-x-auto tabletop-scroll p-0.5">
                 {G.board.auctionPlayers && G.board.auctionPlayers.map((card, idx) => {
                   if (!card) {
