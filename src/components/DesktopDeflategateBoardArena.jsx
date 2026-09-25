@@ -439,54 +439,6 @@ export const DesktopDeflategateBoardArena = ({
     );
   }
 
-  // Titans Opening Draft View
-  if (G.board.pendingTitansDraft && isPendingReplacementForMe) {
-    const currentDraftTeamName = myPlayer?.copiedTeam ? `${myPlayer.team?.name} (Copied Titans)` : (myPlayer?.team?.name || 'Titans');
-    return (
-      <div className="h-screen w-screen bg-slate-950 text-white p-6 flex flex-col items-center justify-center font-sans">
-        <div className="max-w-4xl w-full text-center">
-          <span className="text-xs font-bold uppercase tracking-widest bg-blue-900/80 text-blue-300 px-3 py-1 rounded-full border border-blue-700">
-            Opening Draft
-          </span>
-          <h1 className="text-3xl font-extrabold text-white tracking-wide mt-2 mb-2 uppercase">
-            ⚔️ {currentDraftTeamName} Free Agent Scout
-          </h1>
-          <p className="text-slate-400 mb-6 text-sm">Select 1 player to acquire for free into your starting lineup.</p>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {G.board.pendingTitansDraft.cards.map((card, idx) => (
-              <div 
-                key={card.uniqueId || idx} 
-                onClick={() => moves.titansPickCard(idx, effectivePlayerID)}
-                className={`p-5 rounded-2xl flex flex-col justify-between hover:scale-102 cursor-pointer transition-all text-left ${getCardPhaseStyle(card)}`}
-              >
-                <div>
-                  <div className="flex justify-between items-center text-xs font-mono font-bold mb-2">
-                    <span className="text-slate-400">Min: {card.minBid}</span>
-                    {renderPositionTag(card.position)}
-                    <span className="text-slate-400">Max: {card.maxBid}</span>
-                  </div>
-                  <h3 className="text-xl font-bold text-white mb-1">{card.name}</h3>
-                  {renderCardEffects(card.effects, card.specialText || card.customText)}
-                </div>
-                <button 
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    moves.titansPickCard(idx, effectivePlayerID);
-                  }}
-                  className="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl text-xs uppercase tracking-wider"
-                >
-                  Acquire {card.name} (Free)
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // 1. TEAM SELECTION: EXACTLY 3 OPTIONS (User request: "First, I should only get 3 options when selecting a team")
   if (ctx.phase === 'teamSelection') {
     const unpickedHumans = humanPlayerIds.filter(id => !G.players[id].team);
@@ -634,6 +586,71 @@ export const DesktopDeflategateBoardArena = ({
                   </div>
                 );
               })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Titans Opening Draft Screen
+  if (ctx.phase === 'titansDraft' || G.board.pendingTitansDraft) {
+    const isMyDraftTurn = G.board.pendingTitansDraft && String(G.board.pendingTitansDraft.playerID) === String(effectivePlayerID);
+    if (!isMyDraftTurn) {
+      const draftingPlayer = G.board.pendingTitansDraft ? G.players[G.board.pendingTitansDraft.playerID] : null;
+      const draftingTeamName = draftingPlayer?.team?.name || 'Titans';
+      return (
+        <div className="h-screen w-screen bg-slate-950 flex items-center justify-center p-4 text-white">
+          <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 max-w-md w-full text-center shadow-2xl">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <h2 className="text-2xl font-bold text-white mb-2">{draftingTeamName} Drafting Opening Player</h2>
+            <p className="text-slate-400 text-sm">Waiting for {draftingTeamName} to choose an opening player card...</p>
+          </div>
+        </div>
+      );
+    }
+
+    const currentDraftTeamName = myPlayer?.copiedTeam ? `${myPlayer.team?.name} (Copied Titans)` : (myPlayer?.team?.name || 'Titans');
+    const draftCards = G.board.pendingTitansDraft?.cards || G.board.pendingTitansDraft?.options || [];
+
+    return (
+      <div className="h-screen w-screen bg-slate-950 text-white p-6 flex flex-col items-center justify-center font-sans">
+        <div className="max-w-4xl w-full text-center">
+          <span className="text-xs font-bold uppercase tracking-widest bg-blue-900/80 text-blue-300 px-3 py-1 rounded-full border border-blue-700">
+            Opening Draft
+          </span>
+          <h1 className="text-3xl font-extrabold text-white tracking-wide mt-2 mb-2 uppercase">
+            ⚔️ {currentDraftTeamName} Free Agent Scout
+          </h1>
+          <p className="text-slate-400 mb-6 text-sm">Select 1 player to acquire for free into your starting lineup.</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {draftCards.map((card, idx) => (
+              <div 
+                key={card.uniqueId || idx} 
+                onClick={() => moves.titansPickCard(idx, effectivePlayerID)}
+                className={`p-5 rounded-2xl flex flex-col justify-between hover:scale-102 cursor-pointer transition-all text-left ${getCardPhaseStyle(card)}`}
+              >
+                <div>
+                  <div className="flex justify-between items-center text-xs font-mono font-bold mb-2">
+                    <span className="text-slate-400">Min: {card.minBid}</span>
+                    {renderPositionTag(card.position)}
+                    <span className="text-slate-400">Max: {card.maxBid}</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-1">{card.name}</h3>
+                  {renderCardEffects(card.effects, card.specialText || card.customText)}
+                </div>
+                <button 
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moves.titansPickCard(idx, effectivePlayerID);
+                  }}
+                  className="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl text-xs uppercase tracking-wider cursor-pointer"
+                >
+                  Acquire {card.name} (Free)
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -851,43 +868,28 @@ export const DesktopDeflategateBoardArena = ({
       {/* 3. CENTER TIER: SWAPPED LAYOUT (Broadcast Feed on LEFT, Event on RIGHT) */}
       <main className="flex-1 min-h-0 flex gap-3 p-3 overflow-hidden">
         
-        {/* LEFT COLUMN: Match Controls & Live Broadcast Feed (User request: broadcast on left) */}
+        {/* LEFT COLUMN: Game Status & Live Broadcast Feed */}
         <div className="w-64 shrink-0 flex flex-col gap-2.5 min-h-0">
           
-          {/* Match Stepper for CPU Turn */}
-          <div className="p-3 rounded-2xl border border-slate-800 bg-slate-900/90 flex flex-col gap-2 shrink-0 shadow">
-            <span className="text-[10px] uppercase font-bold text-slate-400">
-              Match Controls
+          {/* Game Status */}
+          <div className="p-3 rounded-2xl border border-slate-800 bg-slate-900/80 shrink-0 text-xs space-y-1.5 shadow">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+              Game Status
             </span>
-
-            {isCpuTurn ? (
-              <div className="space-y-1.5">
-                <button
-                  onClick={() => moves.stepCpuTurn()}
-                  className="w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black bg-amber-400 hover:bg-amber-300 shadow cursor-pointer transition-transform hover:scale-102"
-                >
-                  Next CPU Action ➔
-                </button>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    onClick={() => setSkipMode('myTurn')}
-                    className="py-1.5 rounded-lg text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-750 border border-slate-700 cursor-pointer"
-                  >
-                    Skip to My Turn ⏩
-                  </button>
-                  <button
-                    onClick={() => setSkipMode('refresh')}
-                    className="py-1.5 rounded-lg text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-750 border border-slate-700 cursor-pointer"
-                  >
-                    Skip to Refresh ⏭️
-                  </button>
-                </div>
+            <div className="space-y-1.5 text-xs text-slate-300">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Card Era:</span>
+                <span className="font-bold text-amber-300">
+                  {G.board.round >= 7 ? 'Hall of Fame' : G.board.round >= 4 ? 'Phase 2' : 'Phase 1'}
+                </span>
               </div>
-            ) : (
-              <div className="p-2 rounded-xl bg-emerald-950/60 border border-emerald-700/80 text-xs text-center font-bold text-emerald-300">
-                ● Your Turn to Act
+              <div className="flex justify-between">
+                <span className="text-slate-400">First Player:</span>
+                <span className="font-bold text-white">
+                  {G.players[G.board.firstPlayer]?.team?.name || `Player ${displayPlayerNumber(G.board.firstPlayer)}`}
+                </span>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Live Action Feed Ticker */}
@@ -1163,33 +1165,51 @@ export const DesktopDeflategateBoardArena = ({
             </div>
           </div>
 
-          {/* Field Conditions */}
-          <div className="p-3 rounded-2xl border border-slate-800 bg-slate-900/80 flex-1 flex flex-col justify-between text-xs space-y-2">
+          {/* Match Controls (User request: moved to spot where Game Status was, so user clicks in the same place) */}
+          <div className="p-3.5 rounded-2xl border border-slate-800 bg-slate-900/90 flex-1 flex flex-col justify-between shadow">
             <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                Game Status
-              </span>
-              <div className="space-y-1.5 text-xs text-slate-300">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Card Era:</span>
-                  <span className="font-bold text-amber-300">
-                    {G.board.round >= 7 ? 'Hall of Fame' : G.board.round >= 4 ? 'Phase 2' : 'Phase 1'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">First Player:</span>
-                  <span className="font-bold text-white">
-                    {G.players[G.board.firstPlayer]?.team?.name || `Player ${displayPlayerNumber(G.board.firstPlayer)}`}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] uppercase font-bold text-slate-400">
+                  Match Controls
+                </span>
+                <span className="text-xs">{isCpuTurn ? '⏳' : '⚡'}</span>
               </div>
+
+              {isCpuTurn ? (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => moves.stepCpuTurn()}
+                    className="w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black bg-amber-400 hover:bg-amber-300 shadow cursor-pointer transition-transform hover:scale-102"
+                  >
+                    Next CPU Action ➔
+                  </button>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => setSkipMode('myTurn')}
+                      className="py-1.5 rounded-lg text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-750 border border-slate-700 cursor-pointer"
+                    >
+                      Skip to My Turn ⏩
+                    </button>
+                    <button
+                      onClick={() => setSkipMode('refresh')}
+                      className="py-1.5 rounded-lg text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-750 border border-slate-700 cursor-pointer"
+                    >
+                      Skip to Refresh ⏭️
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-600/80 text-xs text-center font-bold text-emerald-300 animate-pulse">
+                  ● Your Turn to Act
+                </div>
+              )}
             </div>
 
             {/* Falcons Mulligan */}
             {canMulligan && (
               <button
                 onClick={() => moves.falconsMulligan(effectivePlayerID)}
-                className="w-full py-2 rounded-xl text-xs font-bold uppercase text-white bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 border border-amber-400 shadow cursor-pointer"
+                className="w-full mt-2 py-2 rounded-xl text-xs font-bold uppercase text-white bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 border border-amber-400 shadow cursor-pointer"
               >
                 🔄 Falcons Mulligan Swap
               </button>
@@ -1286,109 +1306,101 @@ export const DesktopDeflategateBoardArena = ({
           </div>
         </div>
 
-        {/* Right: THE BIDDING CONSOLE (User request: All info right next to the your bid section) */}
+        {/* Right: STREAMLINED BIDDING CONSOLE */}
         <div className="w-80 shrink-0 h-full p-2.5 rounded-2xl border border-slate-800 bg-slate-900/90 flex flex-col justify-between shadow">
           {ctx.phase === 'auctionPhase' && G.board.activeAuctionCardIndex !== null ? (
             <div className="h-full flex flex-col justify-between">
               
-              {/* Auction Status Readout right next to controls */}
-              <div className="bg-slate-950 p-2 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
-                <div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase">High Bid</div>
-                  <span className="font-mono font-bold text-sm text-amber-300">
-                    {G.board.highestBid !== null ? `${G.board.highestBid} 🪙` : 'None'}
-                  </span>
-                  {highestBidderPlayer && (
-                    <span className="text-[10px] text-slate-400 block truncate">
-                      by {highestBidderPlayer.team?.name || 'Opponent'}
-                    </span>
-                  )}
-                </div>
-
-                <div className="text-center">
-                  <div className="text-[10px] text-slate-400 font-bold uppercase">Min Next</div>
-                  <span className="font-mono font-bold text-sm text-emerald-400">{nextBid} 🪙</span>
-                </div>
-
-                <div className="text-right">
-                  <div className="text-[10px] text-slate-400 font-bold uppercase">Your Cap</div>
-                  <span className="font-mono font-bold text-sm text-yellow-300">{maxAllowedBid} 🪙</span>
-                </div>
-              </div>
-
-              {/* Turn indicator banner */}
+              {/* 1. Status "your turn to bid" at the top of the box */}
               <div>
                 {isMyTurnToBid ? (
-                  <div className="py-1 px-2 rounded-lg bg-emerald-950/80 border border-emerald-500 text-center text-xs font-bold text-emerald-300 animate-pulse">
-                    🚨 YOUR TURN TO BID
+                  <div className="py-1 px-2 rounded-xl bg-emerald-950/90 border border-emerald-500 text-center text-xs font-black uppercase text-emerald-300 tracking-wider shadow animate-pulse">
+                    🚨 Your Turn to Bid
                   </div>
                 ) : humanHasWonInRound ? (
-                  <div className="py-1 px-2 rounded-lg bg-slate-800 text-center text-xs font-bold text-slate-400">
-                    ✓ You already acquired a player this round
+                  <div className="py-1 px-2 rounded-xl bg-slate-800 text-center text-xs font-bold text-slate-400">
+                    ✓ Won Player This Round
+                  </div>
+                ) : G.board.passedAuctionPlayers?.includes(effectivePlayerID) ? (
+                  <div className="py-1 px-2 rounded-xl bg-red-950/80 border border-red-800 text-center text-xs font-bold text-red-300">
+                    ⛔ Passed
                   </div>
                 ) : (
-                  <div className="py-1 px-2 rounded-lg bg-slate-800/80 text-center text-xs text-slate-400">
+                  <div className="py-1 px-2 rounded-xl bg-slate-800/80 text-center text-xs text-slate-400">
                     Waiting for {G.players[ctx.currentPlayer]?.team?.name || 'opponent'}...
                   </div>
                 )}
               </div>
 
-              {/* Quick increment buttons & Stepper */}
-              <div className="flex items-center gap-1.5">
-                {[1, 2, 5].map(amt => (
-                  <button
-                    key={amt}
-                    type="button"
-                    onClick={() => setCustomBid(b => Math.min(maxAllowedBid, b + amt))}
-                    disabled={!isMyTurnToBid || customBid + amt > maxAllowedBid}
-                    className="flex-1 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-mono font-bold disabled:opacity-30 cursor-pointer"
-                  >
-                    +{amt}
-                  </button>
-                ))}
+              {/* 2. Current bid indicator & Bid + and - buttons in the middle */}
+              <div className="flex items-center justify-between px-3 py-1.5 bg-slate-950/90 rounded-xl border border-slate-800/90">
+                {/* Current Bid indicator */}
+                <div className="text-left">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Current Bid</div>
+                  <div className="font-mono font-black text-sm text-amber-300">
+                    {G.board.highestBid !== null ? `${G.board.highestBid} 🪙` : '1 🪙 (Open)'}
+                  </div>
+                  {highestBidderPlayer && (
+                    <div className="text-[10px] text-slate-400 truncate max-w-[95px]">
+                      by {highestBidderPlayer.team?.name || 'Opponent'}
+                    </div>
+                  )}
+                </div>
 
-                {/* Custom Bid Stepper */}
-                <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg px-1 font-mono">
-                  <button
-                    onClick={() => setCustomBid(b => Math.max(nextBid, b - 1))}
-                    disabled={!isMyTurnToBid || customBid <= nextBid}
-                    className="px-1.5 py-0.5 text-slate-400 hover:text-white font-bold disabled:opacity-30"
-                  >
-                    -
-                  </button>
-                  <span className="px-1 font-bold text-yellow-300 text-xs">{customBid}🪙</span>
-                  <button
-                    onClick={() => setCustomBid(b => Math.min(maxAllowedBid, b + 1))}
-                    disabled={!isMyTurnToBid || customBid >= maxAllowedBid}
-                    className="px-1.5 py-0.5 text-slate-400 hover:text-white font-bold disabled:opacity-30"
-                  >
-                    +
-                  </button>
+                {/* Bid + and - buttons to alter your bid in the middle of the middle */}
+                <div className="flex flex-col items-center">
+                  <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Your Bid</div>
+                  <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-1">
+                    <button
+                      onClick={() => setCustomBid(b => Math.max(nextBid, b - 1))}
+                      disabled={!isMyTurnToBid || customBid <= nextBid}
+                      className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-sm flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                      title="Decrease bid"
+                    >
+                      −
+                    </button>
+                    <span className="px-2 font-mono font-black text-yellow-300 text-xs min-w-[36px] text-center">
+                      {customBid}🪙
+                    </span>
+                    <button
+                      onClick={() => setCustomBid(b => Math.min(maxAllowedBid, b + 1))}
+                      disabled={!isMyTurnToBid || customBid >= maxAllowedBid}
+                      className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 text-white font-black text-sm flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                      title="Increase bid"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Action Buttons: Bid, Buy Max, Pass (calls moves.bid and moves.pass!) */}
+              {/* 3. Bottom Row: Pass on bottom left, Bid X on bottom middle, Buy Max on bottom right */}
               <div className="grid grid-cols-3 gap-1.5">
-                <button
-                  onClick={() => moves.bid(customBid, effectivePlayerID)}
-                  disabled={!isMyTurnToBid || customBid < nextBid || customBid > maxAllowedBid}
-                  className="py-1.5 rounded-xl font-bold text-xs uppercase text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-30 shadow cursor-pointer"
-                >
-                  Bid {customBid}🪙
-                </button>
-                <button
-                  onClick={() => moves.bid(effMaxBid, effectivePlayerID)}
-                  disabled={!isMyTurnToBid || myPlayer?.coins < effMaxBid || effMaxBid < nextBid}
-                  className="py-1.5 rounded-xl font-bold text-xs uppercase text-black bg-amber-400 hover:bg-amber-300 disabled:opacity-30 shadow cursor-pointer"
-                >
-                  Buy Max ({effMaxBid})
-                </button>
+                {/* Bottom Left: Pass */}
                 <button
                   onClick={() => moves.pass(effectivePlayerID)}
                   disabled={!isMyTurnToBid || G.board.highestBidder === null}
-                  className="py-1.5 rounded-xl font-bold text-xs uppercase text-slate-300 bg-slate-800 hover:bg-slate-750 disabled:opacity-30 cursor-pointer border border-slate-700"
+                  className="py-2 rounded-xl font-bold text-xs uppercase text-slate-300 bg-slate-800 hover:bg-slate-750 disabled:opacity-30 cursor-pointer border border-slate-700 transition-colors"
                 >
                   Pass
+                </button>
+
+                {/* Bottom Middle: Bid X */}
+                <button
+                  onClick={() => moves.bid(customBid, effectivePlayerID)}
+                  disabled={!isMyTurnToBid || customBid < nextBid || customBid > maxAllowedBid}
+                  className="py-2 rounded-xl font-bold text-xs uppercase text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-30 shadow cursor-pointer transition-transform hover:scale-102"
+                >
+                  Bid {customBid}🪙
+                </button>
+
+                {/* Bottom Right: Buy Max */}
+                <button
+                  onClick={() => moves.bid(effMaxBid, effectivePlayerID)}
+                  disabled={!isMyTurnToBid || myPlayer?.coins < effMaxBid || effMaxBid < nextBid}
+                  className="py-2 rounded-xl font-bold text-xs uppercase text-black bg-amber-400 hover:bg-amber-300 disabled:opacity-30 shadow cursor-pointer transition-transform hover:scale-102"
+                >
+                  Buy Max
                 </button>
               </div>
 
@@ -1426,65 +1438,80 @@ export const DesktopDeflategateBoardArena = ({
         </div>
       )}
 
-      {/* OPPONENT ROSTER & ABILITY MODAL with Left/Right Arrows (User request: left and right arrows to cycle through teams, prominent ability) */}
+      {/* OPPONENT ROSTER & ABILITY MODAL with Left/Right Arrows on sides of box, centered team name, horizontal lineup */}
       {peekLineupModal !== false && peekPlayer && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border-2 border-slate-700 p-6 rounded-3xl max-w-2xl w-full text-left shadow-2xl">
-            {/* Header with Navigation Arrows */}
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setPeekLineupModal(prevPeekId)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs cursor-pointer border border-slate-700"
-                  title="Previous Team"
-                >
-                  ◀ Prev Team
-                </button>
-                <h3 className="text-xl font-bold text-white uppercase">
+          <div className="relative max-w-4xl w-full flex items-center justify-center">
+            
+            {/* Left Side Button: Prev Team */}
+            <button
+              onClick={() => setPeekLineupModal(prevPeekId)}
+              className="absolute -left-3 sm:-left-12 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-slate-800/95 hover:bg-blue-600 text-white font-black text-lg flex items-center justify-center cursor-pointer border border-slate-600 shadow-2xl transition-all hover:scale-110 active:scale-95"
+              title="Previous Team"
+            >
+              ◀
+            </button>
+
+            {/* Main Modal Box */}
+            <div className="bg-slate-900 border-2 border-slate-700 p-6 rounded-3xl w-full text-left shadow-2xl relative">
+              {/* Header with Centered Team Name */}
+              <div className="relative flex justify-center items-center border-b border-slate-800 pb-3 mb-4">
+                <h3 className="text-2xl font-black text-white uppercase tracking-wider text-center">
                   {peekPlayer.team?.name || `Player ${displayPlayerNumber(peekLineupModal)}`}
                 </h3>
                 <button
-                  onClick={() => setPeekLineupModal(nextPeekId)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs cursor-pointer border border-slate-700"
-                  title="Next Team"
+                  onClick={() => setPeekLineupModal(false)}
+                  className="absolute right-0 text-slate-400 hover:text-white font-bold p-1 text-xl cursor-pointer"
+                  title="Close"
                 >
-                  Next Team ▶
+                  ✕
                 </button>
               </div>
-              <button
-                onClick={() => setPeekLineupModal(false)}
-                className="text-slate-400 hover:text-white font-bold p-1 text-lg"
-              >
-                ✕
-              </button>
-            </div>
 
-            {/* Prominent Hero Team Ability */}
-            <div className="bg-gradient-to-r from-indigo-950/80 to-purple-950/80 border-2 border-indigo-500/70 p-4 rounded-2xl mb-4 shadow">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xl">⚡</span>
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
-                  Franchise Special Ability
-                </span>
-              </div>
-              <p className="text-sm font-semibold text-white leading-relaxed">
-                {peekPlayer.team?.ability || 'Standard franchise ability.'}
-              </p>
-            </div>
-
-            {/* Starting Lineup Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
-              {peekPlayer.lineup.map((card, idx) => (
-                <div key={idx} className={`p-3 rounded-xl border ${getCardPhaseStyle(card)}`}>
-                  <div className="flex justify-between items-center text-xs font-mono font-bold mb-1">
-                    <span>Slot {idx + 1}</span>
-                    {renderPositionTag(card.position)}
-                  </div>
-                  <h4 className="font-bold text-sm text-white">{card.name}</h4>
-                  {renderCardEffects(card.effects, card.specialText || card.customText)}
+              {/* Prominent Hero Team Ability */}
+              <div className="bg-gradient-to-r from-indigo-950/80 to-purple-950/80 border-2 border-indigo-500/70 p-4 rounded-2xl mb-4 shadow">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xl">⚡</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
+                    Franchise Special Ability
+                  </span>
                 </div>
-              ))}
+                <p className="text-sm font-semibold text-white leading-relaxed">
+                  {peekPlayer.team?.ability || 'Standard franchise ability.'}
+                </p>
+              </div>
+
+              {/* Starting Lineup Cards: Single Horizontal Row Left to Right */}
+              <div className="flex flex-row gap-3 overflow-x-auto tabletop-scroll pb-2">
+                {peekPlayer.lineup.map((card, idx) => (
+                  <div key={idx} className={`min-w-[170px] flex-1 p-3 rounded-xl border flex flex-col justify-between ${getCardPhaseStyle(card)}`}>
+                    <div>
+                      <div className="flex justify-between items-center text-xs font-mono font-bold mb-1">
+                        <span className="text-slate-400">Slot {idx + 1}</span>
+                        {renderPositionTag(card.position)}
+                      </div>
+                      <h4 className="font-bold text-sm text-white">{card.name}</h4>
+                      <div className="mt-1">
+                        {renderCardEffects(card.effects, card.specialText || card.customText)}
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-1 border-t border-slate-800/80 flex justify-between items-center text-[10px] text-slate-400">
+                      <span>{renderPhaseBadge(card.phase)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
+
+            {/* Right Side Button: Next Team */}
+            <button
+              onClick={() => setPeekLineupModal(nextPeekId)}
+              className="absolute -right-3 sm:-right-12 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-slate-800/95 hover:bg-blue-600 text-white font-black text-lg flex items-center justify-center cursor-pointer border border-slate-600 shadow-2xl transition-all hover:scale-110 active:scale-95"
+              title="Next Team"
+            >
+              ▶
+            </button>
+
           </div>
         </div>
       )}
