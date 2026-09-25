@@ -357,3 +357,31 @@ Playtest #19: (Complete)
     10. Broncos First-Round Ignored Cards: Lineup cards for Broncos whose recurring effects are ignored during their acquisition round are highlighted with a prominent red border, ring, and red glow until after the first refresh summary is confirmed.
     11. Combined & Condensed Current Turn & Bidding Section: Merged the duplicate top turn bar and bidding panel into a single, compact, unified section without redundant turn banners, while preserving `Next CPU action`, `Skip to my turn`, and `Skip to refresh phase`.
     12. Header Layout Alignment: Firmly right-aligned the Active Round Event and Franchise Ability boxes with `justify-end ml-auto`.
+----------------
+Playtest #21: (Complete)
+- Completed / Fixed in Playtest #21:
+  1. Buccaneers Copy Seahawks Ability: Immediately grants the 4th Practice Squad player (`ps_${playerId}_3`) to the Buccaneers upon copying the Seahawks ability (both for Human and CPU).
+  2. Multi-Team Ability Queue Precedence: When Buccaneers copy a franchise ability (Titans, Raiders, Chiefs, Commanders, Bills, Eagles), the original real franchise acts first, followed by the Buccaneers.
+  3. Commanders Multi-Marking: Both the original Commanders and Buccaneers can mark auction players in the pre-auction phase (`commandersMarkedIndices`). First player cannot nominate or bid on any marked player (unless only 1 card remains on the board), and the mark lifts when the first player acquires any player.
+  4. Match Controls Vertical Fitting: Removed the redundant "Skip to My Turn" and "Skip to Refresh Phase" buttons from the match controls sidebar to eliminate vertical overflow and cleanly fit the full-width "Next CPU Action ➔" button.
+  5. Last Auction Winner Celebration Screen: Fixed auction phase auto-transitioning before player acquisition celebration; `auctionPhase.endIf` now waits for `G.board.cardWonFlyAnimation === null` before proceeding to `postAuctionPhase`.
+  6. Refresh Phase Header & 3-Column Layout:
+     - Formatted the Refresh Phase table results grid with sleek 3-column desktop layout (`grid-cols-1 sm:grid-cols-2 md:grid-cols-3`) and safe team name fallback.
+     - Scoped winner flags, pass tags, and red out-borders to `ctx.phase === 'auctionPhase'`, displaying "Active Roster" during the refresh phase.
+     - Streamlined the "Time for the Refresh Phase" popup into a compact modal without verbose flavor text.
+  7. Event Reveal Ordering (Rivalry & Trade Rumors):
+     - Interactive event modals (Trade Rumors, Free Agency, Rivalry, New Cap Limit) are now gated behind `!isEventFlipped`.
+     - Players always see the Event Reveal popup first, requiring them to click "Continue" before interactive event prompts appear.
+     - Moved Rivalry step execution into `confirmEventReveal` to prevent premature CPU triggers before the event reveal is acknowledged.
+----------
+Playtest #22: (Complete)
+- Completed / Fixed in Playtest #22:
+  1. Event Reveal Popup Continuity: Fixed event reveal popup triggering consistently after team selection and after clicking continue to next round during the refresh phase by maintaining proper phase end conditions and ensuring `eventFlipRevealed = false` on every new round start.
+  2. Auction Row Height Optimization & Inspection Modal:
+     - Removed redundant auction row top banner and tightened grid gap to fit both player rows on screen without clipping.
+     - Formatted cards to display special ability text with 2-line clamping and a ⚡ inspect button.
+     - Added full-screen `Inspected Player Card` modal when clicking on any card or the ⚡ icon to review full card stats, costs, position, and unabridged special rules.
+     - Moved "ACTIVE" indicator to the bottom right of the card, aligned with the Phase badge.
+     - Positioned TURN and INSTANT trigger badges directly adjacent to coin/deflate values.
+
+

@@ -279,11 +279,10 @@ export const resolveAuctionWin = (G, playerID, card) => {
   }
 
   // Commanders Ability: Once the First Player acquires any player this round, the restriction lifts immediately
-  if (String(playerID) === String(G.board.firstPlayer) && G.board.commandersMarkedCardIndex !== null) {
-    const markedCard = G.board.auctionPlayers ? G.board.auctionPlayers[G.board.commandersMarkedCardIndex] : null;
-    const cardName = markedCard ? markedCard.name : 'The marked player';
-    addLog(G, `🎖️ Commanders Mark Lifted: First Player ${displayId} acquired a card. ${cardName} is now unlocked for all teams!`);
+  if (String(playerID) === String(G.board.firstPlayer) && (G.board.commandersMarkedCardIndex !== null || (G.board.commandersMarkedIndices && G.board.commandersMarkedIndices.length > 0))) {
+    addLog(G, `🎖️ Commanders Mark Lifted: First Player ${displayId} acquired a card. All marked players are now unlocked for all teams!`);
     G.board.commandersMarkedCardIndex = null;
+    G.board.commandersMarkedIndices = [];
   }
 
   // Pass nominator rights clockwise to next player with fewest wins if nominator won or is now maxed
@@ -323,6 +322,9 @@ export const resolveAuctionWin = (G, playerID, card) => {
   if (G.board.activeAuctionCardIndex !== null && G.board.auctionPlayers) {
     if (G.board.activeAuctionCardIndex === G.board.commandersMarkedCardIndex) {
       G.board.commandersMarkedCardIndex = null;
+    }
+    if (G.board.commandersMarkedIndices) {
+      G.board.commandersMarkedIndices = G.board.commandersMarkedIndices.filter(i => i !== G.board.activeAuctionCardIndex);
     }
     G.board.auctionPlayers[G.board.activeAuctionCardIndex] = null;
   }
@@ -996,7 +998,8 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
   G.board.auctionPlayers.forEach((c, idx) => {
     if (!c) return;
     if (c.id === 'dj_moore' && currentPlayer.coins > 10) return;
-    if (String(currentPlayerId) === String(G.board.firstPlayer) && idx === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
+    const isCommandersMarked = (idx === G.board.commandersMarkedCardIndex || G.board.commandersMarkedIndices?.includes(idx));
+    if (String(currentPlayerId) === String(G.board.firstPlayer) && isCommandersMarked && remainingCardsCount > 1) {
       return;
     }
     // Must be able to afford the opening minimum bid (unless sole remaining bidder with 0 coins)
@@ -1093,7 +1096,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   const remainingCardsCount = G.board.auctionPlayers.filter(c => c !== null).length;
-  if (String(currentPlayerId) === String(G.board.firstPlayer) && cardIndex === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
+  const isCommandersMarked = (cardIndex === G.board.commandersMarkedCardIndex || G.board.commandersMarkedIndices?.includes(cardIndex));
+  if (String(currentPlayerId) === String(G.board.firstPlayer) && isCommandersMarked && remainingCardsCount > 1) {
     return { shouldBid: false, bidAmount: 0 };
   }
   if (card.id === 'dj_moore' && currentPlayer.coins > 10) {
@@ -1465,7 +1469,6 @@ const executeCpuMoveInternal = (G, ctx, events) => {
         activePlayers.forEach(id => {
           G.players[id].hasWonAuction = true;
         });
-        if (events && events.endPhase) events.endPhase();
         return;
       }
     }
@@ -1734,7 +1737,6 @@ export const advanceTitansDraftQueue = (G, events) => {
 
   G.board.pendingTitansDraft = null;
   G.board.titansDraftComplete = true;
-  if (events && events.endPhase) events.endPhase();
 };
 
 export const advanceFreeAgencyQueue = (G) => {
@@ -2068,6 +2070,7 @@ export const DeflategateGame = {
         auctionPlayers: [],
         activeAuctionCardIndex: null,
         commandersMarkedCardIndex: null,
+        commandersMarkedIndices: [],
         currentBidder: null,
         highestBid: 0,
         highestBidder: null,
@@ -2183,19 +2186,20 @@ export const DeflategateGame = {
       });
 
       const allSelected = Object.values(G.players).every(pl => pl.team !== null);
-      if (allSelected && events && events.endPhase) {
-        events.endPhase();
+    },
+    copyAbility: ({ G, playerID }, targetTeamId, actingPlayerId) => {
+      const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
+      const targetPlayerId = actingPlayerId || (G.players[playerID]?.team?.id === 'buccaneers' ? playerID : bucsPlayerId || Object.keys(G.players)[0]);
+      const p = G.players[targetPlayerId];
+      if (!p || !p.team || p.team.id !== 'buccaneers') return INVALID_MOVE;
+      const targetTeam = TEAMS.find(t => t.id === targetTeamId);
+      if (!targetTeam) return INVALID_MOVE;
+
+      p.copiedTeam = targetTeam;
+      if (targetTeam.id === 'seahawks' && p.lineup.length < 4) {
+        p.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${targetPlayerId}_3` });
+        addLog(G, `Seahawks Ability: Buccaneers gained a 4th Practice Squad player!`);
       }
-    },
-    copyAbility: ({ G, playerID, events }, targetTeamId, actingPlayerId) => {
-      const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
-      const targetPlayerId = actingPlayerId || (G.players[playerID]?.team?.id === 'buccaneers' ? playerID : bucsPlayerId || Object.keys(G.players)[0]);
-      const p = G.players[targetPlayerId];
-      if (!p || !p.team || p.team.id !== 'buccaneers') return INVALID_MOVE;
-      const targetTeam = TEAMS.find(t => t.id === targetTeamId);
-      if (!targetTeam) return INVALID_MOVE;
-
-      p.copiedTeam = targetTeam;
       const displayId = parseInt(targetPlayerId) + 1;
       const msg = `Buccaneers (Player ${displayId}) copied ${targetTeam.name}'s ability: "${targetTeam.ability}"!`;
       addLog(G, msg);
@@ -2205,9 +2209,8 @@ export const DeflategateGame = {
         text: msg
       });
       G.board.bucsCopyComplete = true;
-      if (events && events.endPhase) events.endPhase();
     },
-    buccaneersPickTeam: ({ G, playerID, events }, targetTeamId, actingPlayerId) => {
+    buccaneersPickTeam: ({ G, playerID }, targetTeamId, actingPlayerId) => {
       const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
       const targetPlayerId = actingPlayerId || (G.players[playerID]?.team?.id === 'buccaneers' ? playerID : bucsPlayerId || Object.keys(G.players)[0]);
       const p = G.players[targetPlayerId];
@@ -2216,6 +2219,10 @@ export const DeflategateGame = {
       if (!targetTeam) return INVALID_MOVE;
 
       p.copiedTeam = targetTeam;
+      if (targetTeam.id === 'seahawks' && p.lineup.length < 4) {
+        p.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${targetPlayerId}_3` });
+        addLog(G, `Seahawks Ability: Buccaneers gained a 4th Practice Squad player!`);
+      }
       const displayId = parseInt(targetPlayerId) + 1;
       const msg = `Buccaneers (Player ${displayId}) copied ${targetTeam.name}'s ability: "${targetTeam.ability}"!`;
       addLog(G, msg);
@@ -2225,9 +2232,8 @@ export const DeflategateGame = {
         text: msg
       });
       G.board.bucsCopyComplete = true;
-      if (events && events.endPhase) events.endPhase();
     },
-    replaceLineupCard: ({ G, playerID, events }, discardIndex, actingPlayerId) => {
+    replaceLineupCard: ({ G, playerID }, discardIndex, actingPlayerId) => {
       const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
       if (!G.pendingReplacement || String(G.pendingReplacement.playerID) !== String(targetPlayerId)) {
         return INVALID_MOVE;
@@ -2248,10 +2254,9 @@ export const DeflategateGame = {
 
       if (G.board.postAuctionComplete === false && !G.board.pendingBills && !G.board.pendingEagles) {
         G.board.postAuctionComplete = true;
-        if (events && events.endPhase) events.endPhase();
       }
     },
-    discardWonCard: ({ G, playerID, events }, actingPlayerId) => {
+    discardWonCard: ({ G, playerID }, actingPlayerId) => {
       const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
       if (!G.pendingReplacement || String(G.pendingReplacement.playerID) !== String(targetPlayerId)) {
         return INVALID_MOVE;
@@ -2268,7 +2273,6 @@ export const DeflategateGame = {
 
       if (G.board.postAuctionComplete === false && !G.board.pendingBills && !G.board.pendingEagles) {
         G.board.postAuctionComplete = true;
-        if (events && events.endPhase) events.endPhase();
       }
     },
     reorderEventDeck: ({ G, playerID }, newDeckOrder) => {
@@ -2312,6 +2316,10 @@ export const DeflategateGame = {
       const card = G.board.auctionPlayers[auctionCardIndex];
       if (!card) return INVALID_MOVE;
 
+      if (!G.board.commandersMarkedIndices) G.board.commandersMarkedIndices = [];
+      if (!G.board.commandersMarkedIndices.includes(auctionCardIndex)) {
+        G.board.commandersMarkedIndices.push(auctionCardIndex);
+      }
       G.board.commandersMarkedCardIndex = auctionCardIndex;
       const displayId = parseInt(targetPlayerId) + 1;
       const firstDisplayId = parseInt(G.board.firstPlayer) + 1;
@@ -2325,10 +2333,9 @@ export const DeflategateGame = {
 
       if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
         G.board.preAuctionComplete = true;
-        if (events && events.endPhase) events.endPhase();
       }
     },
-    buyPracticeSquad: ({ G, playerID, events }, actingPlayerId) => {
+    buyPracticeSquad: ({ G, playerID }, actingPlayerId) => {
       if (!G.board.pendingNewCapLimit) return INVALID_MOVE;
       const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
       if (G.board.pendingNewCapLimit.playerID && String(targetPlayerId) !== String(G.board.pendingNewCapLimit.playerID)) {
@@ -2343,11 +2350,8 @@ export const DeflategateGame = {
       const displayId = parseInt(targetPlayerId) + 1;
       addLog(G, `New Cap Limit: Player ${displayId} paid 10 coins to add an extra Practice Squad Player (+1 Lineup Slot)!`);
       advanceNewCapLimitQueue(G);
-      if (!G.board.pendingNewCapLimit && G.board.eventConfirmed && events && events.endPhase) {
-        events.endPhase();
-      }
     },
-    passPracticeSquad: ({ G, playerID, events }, actingPlayerId) => {
+    passPracticeSquad: ({ G, playerID }, actingPlayerId) => {
       if (!G.board.pendingNewCapLimit) return INVALID_MOVE;
       const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
       if (G.board.pendingNewCapLimit.playerID && String(targetPlayerId) !== String(G.board.pendingNewCapLimit.playerID)) {
@@ -2356,9 +2360,6 @@ export const DeflategateGame = {
       const displayId = parseInt(targetPlayerId) + 1;
       addLog(G, `New Cap Limit: Player ${displayId} passed.`);
       advanceNewCapLimitQueue(G);
-      if (!G.board.pendingNewCapLimit && G.board.eventConfirmed && events && events.endPhase) {
-        events.endPhase();
-      }
     },
     rivalryGivePsi: ({ G, playerID }, targetPlayerId, actingPlayerId) => {
       if (!G.board.pendingRivalry) return INVALID_MOVE;
@@ -2505,11 +2506,8 @@ export const DeflategateGame = {
         addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins!`);
       }
       advanceFreeAgencyQueue(G);
-      if (!G.board.pendingFreeAgency && G.board.eventConfirmed && events && events.endPhase) {
-        events.endPhase();
-      }
     },
-    freeAgencyPass: ({ G, playerID, events }, actingPlayerId) => {
+    freeAgencyPass: ({ G, playerID }, actingPlayerId) => {
       if (!G.board.pendingFreeAgency) return INVALID_MOVE;
       const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
       if (G.board.pendingFreeAgency.playerID && String(targetPlayerId) !== String(G.board.pendingFreeAgency.playerID)) {
@@ -2522,9 +2520,6 @@ export const DeflategateGame = {
       const displayId = parseInt(targetPlayerId) + 1;
       addLog(G, `Free Agency: Player ${displayId} passed.`);
       advanceFreeAgencyQueue(G);
-      if (!G.board.pendingFreeAgency && G.board.eventConfirmed && events && events.endPhase) {
-        events.endPhase();
-      }
     },
     setQbChoice: ({ G, playerID }, cardUniqueId, choice) => {
       if (!G.board.qbChoices) G.board.qbChoices = {};
@@ -2542,12 +2537,14 @@ export const DeflategateGame = {
         G.board.refreshStage = 'complete';
       }
     },
-    confirmEventReveal: ({ G, events }) => {
+    confirmEventReveal: ({ G }) => {
       G.board.eventFlipRevealed = false;
       G.board.eventConfirmed = true;
-      if (events && events.endPhase) events.endPhase();
+      if (G.board.pendingRivalry && G.board.pendingRivalry.step === 0) {
+        processRivalryStep(G);
+      }
     },
-    confirmRefreshSummary: ({ G, events }) => {
+    confirmRefreshSummary: ({ G }) => {
       // Remove Broncos roundAcquired state so the card's recurring effects trigger next round
       Object.values(G.players).forEach(p => {
         p.lineup?.forEach(card => {
@@ -2585,16 +2582,11 @@ export const DeflategateGame = {
         p.cardsWonThisRound = 0;
         p.outbidCount = 0;
       });
-
-      if (events && events.endPhase) events.endPhase();
     },
-    dismissTradeRumorsSummary: ({ G, events }) => {
+    dismissTradeRumorsSummary: ({ G }) => {
       G.board.tradeRumorsSummary = null;
-      if (G.board.eventConfirmed && events && events.endPhase) {
-        events.endPhase();
-      }
     },
-    eaglesUseAbility: ({ G, playerID, events }, times) => {
+    eaglesUseAbility: ({ G, playerID }, times) => {
       if (!G.board.pendingEagles) return INVALID_MOVE;
       const eaglesId = String(G.board.pendingEagles.playerID);
       const eaglesPlayer = G.players[eaglesId];
@@ -2621,10 +2613,9 @@ export const DeflategateGame = {
 
       if (!G.board.pendingBills && !G.board.pendingEagles && !G.pendingReplacement) {
         G.board.postAuctionComplete = true;
-        if (events && events.endPhase) events.endPhase();
       }
     },
-    eaglesInflate: ({ G, playerID, events }) => {
+    eaglesInflate: ({ G, playerID }) => {
       if (!G.board.pendingEagles) return INVALID_MOVE;
       const eaglesId = String(G.board.pendingEagles.playerID);
       const eaglesPlayer = G.players[eaglesId];
@@ -2649,10 +2640,9 @@ export const DeflategateGame = {
 
       if (!G.board.pendingBills && !G.board.pendingEagles && !G.pendingReplacement) {
         G.board.postAuctionComplete = true;
-        if (events && events.endPhase) events.endPhase();
       }
     },
-    eaglesPass: ({ G, events }) => {
+    eaglesPass: ({ G }) => {
       if (G.board.pendingEaglesQueue && G.board.pendingEaglesQueue.length > 0) {
         G.board.pendingEagles = G.board.pendingEaglesQueue.shift();
       } else {
@@ -2660,7 +2650,6 @@ export const DeflategateGame = {
       }
       if (!G.board.pendingBills && !G.board.pendingEagles && !G.pendingReplacement) {
         G.board.postAuctionComplete = true;
-        if (events && events.endPhase) events.endPhase();
       }
     },
     dismissLegendNotification: ({ G }) => {
@@ -2773,9 +2762,6 @@ export const DeflategateGame = {
           }
 
           const allSelected = Object.values(G.players).every(pl => pl.team !== null);
-          if (allSelected && events && events.endPhase) {
-            events.endPhase();
-          }
         }
       },
       endIf: ({ G }) => Object.values(G.players).every(p => p.team !== null),
@@ -2789,7 +2775,6 @@ export const DeflategateGame = {
         const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
         if (!bucsPlayerId) {
           G.board.bucsCopyComplete = true;
-          if (events && events.endPhase) events.endPhase();
           return;
         }
 
@@ -2799,6 +2784,10 @@ export const DeflategateGame = {
         if (bucsPlayer.isCpu) {
           const chosenTeam = otherDrafted[Math.floor(Math.random() * otherDrafted.length)] || TEAMS[0];
           bucsPlayer.copiedTeam = chosenTeam;
+          if (chosenTeam.id === 'seahawks' && bucsPlayer.lineup.length < 4) {
+            bucsPlayer.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${bucsPlayerId}_3` });
+            addLog(G, `Seahawks Ability: Buccaneers gained a 4th Practice Squad player!`);
+          }
           const msg = `Buccaneers (CPU Player ${parseInt(bucsPlayerId) + 1}) copied ${chosenTeam.name}'s ability: "${chosenTeam.ability}".`;
           addLog(G, msg);
           addBannerEvent(G, {
@@ -2807,11 +2796,10 @@ export const DeflategateGame = {
             text: msg
           });
           G.board.bucsCopyComplete = true;
-          if (events && events.endPhase) events.endPhase();
         }
       },
       moves: {
-        copyAbility: ({ G, playerID, events }, targetTeamId, actingPlayerId) => {
+        copyAbility: ({ G, playerID }, targetTeamId, actingPlayerId) => {
           const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
           const targetPlayerId = actingPlayerId || (G.players[playerID]?.team?.id === 'buccaneers' ? playerID : bucsPlayerId || Object.keys(G.players)[0]);
           const p = G.players[targetPlayerId];
@@ -2820,6 +2808,10 @@ export const DeflategateGame = {
           if (!targetTeam) return INVALID_MOVE;
 
           p.copiedTeam = targetTeam;
+          if (targetTeam.id === 'seahawks' && p.lineup.length < 4) {
+            p.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${targetPlayerId}_3` });
+            addLog(G, `Seahawks Ability: Buccaneers gained a 4th Practice Squad player!`);
+          }
           const displayId = parseInt(targetPlayerId) + 1;
           const msg = `Buccaneers (Player ${displayId}) copied ${targetTeam.name}'s ability: "${targetTeam.ability}"!`;
           addLog(G, msg);
@@ -2829,9 +2821,8 @@ export const DeflategateGame = {
             text: msg
           });
           G.board.bucsCopyComplete = true;
-          if (events && events.endPhase) events.endPhase();
         },
-        buccaneersPickTeam: ({ G, playerID, events }, targetTeamId, actingPlayerId) => {
+        buccaneersPickTeam: ({ G, playerID }, targetTeamId, actingPlayerId) => {
           const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
           const targetPlayerId = actingPlayerId || (G.players[playerID]?.team?.id === 'buccaneers' ? playerID : bucsPlayerId || Object.keys(G.players)[0]);
           const p = G.players[targetPlayerId];
@@ -2840,6 +2831,10 @@ export const DeflategateGame = {
           if (!targetTeam) return INVALID_MOVE;
 
           p.copiedTeam = targetTeam;
+          if (targetTeam.id === 'seahawks' && p.lineup.length < 4) {
+            p.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${targetPlayerId}_3` });
+            addLog(G, `Seahawks Ability: Buccaneers gained a 4th Practice Squad player!`);
+          }
           const displayId = parseInt(targetPlayerId) + 1;
           const msg = `Buccaneers (Player ${displayId}) copied ${targetTeam.name}'s ability: "${targetTeam.ability}"!`;
           addLog(G, msg);
@@ -2849,7 +2844,6 @@ export const DeflategateGame = {
             text: msg
           });
           G.board.bucsCopyComplete = true;
-          if (events && events.endPhase) events.endPhase();
         }
       },
       endIf: ({ G }) => G.board.bucsCopyComplete === true,
@@ -2860,7 +2854,10 @@ export const DeflategateGame = {
       turn: { activePlayers: ActivePlayers.ALL },
       onBegin: ({ G, events }) => {
         G.board.titansDraftComplete = false;
-        G.board.titansDraftQueue = Object.keys(G.players).filter(id => getEffectiveTeamId(G.players[id]) === 'titans');
+        const titansQueue = Object.keys(G.players).filter(id => getEffectiveTeamId(G.players[id]) === 'titans');
+        // Real Titans always acts first, then Buccaneers!
+        titansQueue.sort((a, b) => (G.players[a].team?.id === 'titans' ? 0 : 1) - (G.players[b].team?.id === 'titans' ? 0 : 1));
+        G.board.titansDraftQueue = titansQueue;
         advanceTitansDraftQueue(G, events);
       },
       moves: {
@@ -3062,7 +3059,6 @@ export const DeflategateGame = {
             step: 0,
             currentGiverId: order[0]
           };
-          processRivalryStep(G);
         } else if (ev.category === 'pass_right') {
           G.board.pendingTradeRumors = {
             picks: {}
@@ -3168,15 +3164,14 @@ export const DeflategateGame = {
         dismissJaguarsPopup: ({ G }) => {
           G.board.jaguarsPopupNotification = null;
         },
-        confirmEventReveal: ({ G, events }) => {
+        confirmEventReveal: ({ G }) => {
           G.board.eventFlipRevealed = false;
           G.board.eventConfirmed = true;
-          const hasPendingInteractive = G.board.pendingRivalry || G.board.pendingTradeRumors || G.board.bonusAuction || G.board.pendingFreeAgency || G.board.pendingNewCapLimit;
-          if (!hasPendingInteractive && events && events.endPhase) {
-            events.endPhase();
+          if (G.board.pendingRivalry && G.board.pendingRivalry.step === 0) {
+            processRivalryStep(G);
           }
         },
-        buyPracticeSquad: ({ G, playerID, events }, actingPlayerId) => {
+        buyPracticeSquad: ({ G, playerID }, actingPlayerId) => {
           if (!G.board.pendingNewCapLimit) return INVALID_MOVE;
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (G.board.pendingNewCapLimit.playerID && String(targetPlayerId) !== String(G.board.pendingNewCapLimit.playerID)) {
@@ -3191,11 +3186,8 @@ export const DeflategateGame = {
           const displayId = parseInt(targetPlayerId) + 1;
           addLog(G, `New Cap Limit: Player ${displayId} paid 10 coins to add an extra Practice Squad Player (+1 Lineup Slot)!`);
           advanceNewCapLimitQueue(G);
-          if (!G.board.pendingNewCapLimit && G.board.eventConfirmed && events && events.endPhase) {
-            events.endPhase();
-          }
         },
-        passPracticeSquad: ({ G, playerID, events }, actingPlayerId) => {
+        passPracticeSquad: ({ G, playerID }, actingPlayerId) => {
           if (!G.board.pendingNewCapLimit) return INVALID_MOVE;
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (G.board.pendingNewCapLimit.playerID && String(targetPlayerId) !== String(G.board.pendingNewCapLimit.playerID)) {
@@ -3204,11 +3196,8 @@ export const DeflategateGame = {
           const displayId = parseInt(targetPlayerId) + 1;
           addLog(G, `New Cap Limit: Player ${displayId} passed.`);
           advanceNewCapLimitQueue(G);
-          if (!G.board.pendingNewCapLimit && G.board.eventConfirmed && events && events.endPhase) {
-            events.endPhase();
-          }
         },
-        rivalryGivePsi: ({ G, events, playerID }, targetPlayerId, actingPlayerId) => {
+        rivalryGivePsi: ({ G, playerID }, targetPlayerId, actingPlayerId) => {
           if (!G.board.pendingRivalry) return INVALID_MOVE;
           const { order, step } = G.board.pendingRivalry;
           if (step >= order.length) {
@@ -3238,9 +3227,6 @@ export const DeflategateGame = {
             processRivalryStep(G);
           } else {
             G.board.pendingRivalry = null;
-            if (G.board.eventConfirmed && events && events.endPhase) {
-              events.endPhase();
-            }
           }
         },
         tradeRumorsPickCard: ({ G, playerID }, cardIndex, actingPlayerId) => {
@@ -3344,11 +3330,8 @@ export const DeflategateGame = {
             addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins!`);
           }
           advanceFreeAgencyQueue(G);
-          if (!G.board.pendingFreeAgency && G.board.eventConfirmed && events && events.endPhase) {
-            events.endPhase();
-          }
         },
-        freeAgencyPass: ({ G, playerID, events }, actingPlayerId) => {
+        freeAgencyPass: ({ G, playerID }, actingPlayerId) => {
           if (!G.board.pendingFreeAgency) return INVALID_MOVE;
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (G.board.pendingFreeAgency.playerID && String(targetPlayerId) !== String(G.board.pendingFreeAgency.playerID)) {
@@ -3361,9 +3344,6 @@ export const DeflategateGame = {
           const displayId = parseInt(targetPlayerId) + 1;
           addLog(G, `Free Agency: Player ${displayId} passed.`);
           advanceFreeAgencyQueue(G);
-          if (!G.board.pendingFreeAgency && G.board.eventConfirmed && events && events.endPhase) {
-            events.endPhase();
-          }
         },
         setQbChoice: ({ G, playerID }, cardUniqueId, choice) => {
           if (!G.board.qbChoices) G.board.qbChoices = {};
@@ -3371,11 +3351,8 @@ export const DeflategateGame = {
           const displayId = parseInt(playerID) + 1;
           addLog(G, `Refs Check: Player ${displayId} selected ${choice.toUpperCase()} for Quarterback.`);
         },
-        dismissTradeRumorsSummary: ({ G, events }) => {
+        dismissTradeRumorsSummary: ({ G }) => {
           G.board.tradeRumorsSummary = null;
-          if (G.board.eventConfirmed && events && events.endPhase) {
-            events.endPhase();
-          }
         },
         dismissLegendNotification: ({ G }) => {
           G.board.legendNotification = null;
@@ -3413,6 +3390,7 @@ export const DeflategateGame = {
         }
 
         G.board.commandersMarkedCardIndex = null;
+        G.board.commandersMarkedIndices = [];
         G.board.pendingCommanders = null;
         G.board.pendingCommandersQueue = [];
 
@@ -3426,8 +3404,9 @@ export const DeflategateGame = {
         G.board.highestBidder = null;
         G.board.lastActionText = '';
 
-        // Check Raiders Ability (queue multi-teams)
+        // Check Raiders Ability (queue multi-teams: real Raiders acts before Buccaneers)
         const raidersTeams = Object.keys(G.players).filter(id => getEffectiveTeamId(G.players[id]) === 'raiders');
+        raidersTeams.sort((a, b) => (G.players[a].team?.id === 'raiders' ? 0 : 1) - (G.players[b].team?.id === 'raiders' ? 0 : 1));
         raidersTeams.forEach(raidersId => {
           const raidersPlayer = G.players[raidersId];
           if (raidersPlayer.isCpu) {
@@ -3517,8 +3496,9 @@ export const DeflategateGame = {
           G.board.pendingCardinals = G.board.pendingCardinalsQueue.shift();
         }
 
-        // Check Chiefs Ability (queue multi-teams)
+        // Check Chiefs Ability (queue multi-teams: real Chiefs acts before Buccaneers)
         const chiefsTeams = Object.keys(G.players).filter(id => getEffectiveTeamId(G.players[id]) === 'chiefs');
+        chiefsTeams.sort((a, b) => (G.players[a].team?.id === 'chiefs' ? 0 : 1) - (G.players[b].team?.id === 'chiefs' ? 0 : 1));
         chiefsTeams.forEach(chiefsId => {
           const chiefsPlayer = G.players[chiefsId];
           if (!chiefsPlayer.hasUsedChiefsAbility) {
@@ -3544,8 +3524,9 @@ export const DeflategateGame = {
           G.board.pendingChiefs = G.board.pendingChiefsQueue.shift();
         }
 
-        // Check Commanders Ability (queue multi-teams)
+        // Check Commanders Ability (queue multi-teams: real Commanders acts before Buccaneers)
         const commandersTeams = Object.keys(G.players).filter(id => getEffectiveTeamId(G.players[id]) === 'commanders');
+        commandersTeams.sort((a, b) => (G.players[a].team?.id === 'commanders' ? 0 : 1) - (G.players[b].team?.id === 'commanders' ? 0 : 1));
         commandersTeams.forEach(commandersId => {
           // Rule: This effect doesn't happen when the Commanders themselves are the first/nominating team
           if (String(commandersId) === String(G.board.firstPlayer)) {
@@ -3557,6 +3538,10 @@ export const DeflategateGame = {
           if (commandersPlayer.isCpu) {
             const chosenIdx = chooseCpuCommandersMarkCard(G, commandersId);
             if (chosenIdx !== -1) {
+              if (!G.board.commandersMarkedIndices) G.board.commandersMarkedIndices = [];
+              if (!G.board.commandersMarkedIndices.includes(chosenIdx)) {
+                G.board.commandersMarkedIndices.push(chosenIdx);
+              }
               G.board.commandersMarkedCardIndex = chosenIdx;
               const card = G.board.auctionPlayers[chosenIdx];
               const displayId = parseInt(commandersId) + 1;
@@ -3576,7 +3561,6 @@ export const DeflategateGame = {
         // If no human interactive prompts are pending, proceed to auction phase
         if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
           G.board.preAuctionComplete = true;
-          if (events && events.endPhase) events.endPhase();
         }
       },
       moves: {
@@ -3586,7 +3570,7 @@ export const DeflategateGame = {
         dismissJaguarsPopup: ({ G }) => {
           G.board.jaguarsPopupNotification = null;
         },
-        raidersGivePsi: ({ G, playerID, events }, targetPlayerId) => {
+        raidersGivePsi: ({ G, playerID }, targetPlayerId) => {
           if (!G.board.pendingRaiders) return INVALID_MOVE;
           const targetId = String(targetPlayerId);
           const raidersId = String(G.board.pendingRaiders.playerID);
@@ -3606,10 +3590,9 @@ export const DeflategateGame = {
 
           if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
             G.board.preAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         },
-        cardinalsSwap: ({ G, playerID, events }, auctionCardIndex) => {
+        cardinalsSwap: ({ G, playerID }, auctionCardIndex) => {
           if (!G.board.pendingCardinals) return INVALID_MOVE;
           if (auctionCardIndex < 0 || auctionCardIndex >= G.board.auctionPlayers.length) return INVALID_MOVE;
           const oldCard = G.board.auctionPlayers[auctionCardIndex];
@@ -3630,10 +3613,9 @@ export const DeflategateGame = {
 
           if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
             G.board.preAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         },
-        cardinalsPass: ({ G, events }) => {
+        cardinalsPass: ({ G }) => {
           if (G.board.pendingCardinalsQueue && G.board.pendingCardinalsQueue.length > 0) {
             G.board.pendingCardinals = G.board.pendingCardinalsQueue.shift();
           } else {
@@ -3641,10 +3623,9 @@ export const DeflategateGame = {
           }
           if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
             G.board.preAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         },
-        chiefsClaimCard: ({ G, playerID, events }, auctionCardIndex) => {
+        chiefsClaimCard: ({ G, playerID }, auctionCardIndex) => {
           if (!G.board.pendingChiefs) return INVALID_MOVE;
           const chiefsId = String(G.board.pendingChiefs.playerID);
           const chiefsPlayer = G.players[chiefsId];
@@ -3669,10 +3650,9 @@ export const DeflategateGame = {
 
           if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
             G.board.preAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         },
-        chiefsPass: ({ G, events }) => {
+        chiefsPass: ({ G }) => {
           if (G.board.pendingChiefsQueue && G.board.pendingChiefsQueue.length > 0) {
             G.board.pendingChiefs = G.board.pendingChiefsQueue.shift();
           } else {
@@ -3680,10 +3660,9 @@ export const DeflategateGame = {
           }
           if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
             G.board.preAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         },
-        commandersMarkCard: ({ G, playerID, events }, auctionCardIndex, actingPlayerId) => {
+        commandersMarkCard: ({ G, playerID }, auctionCardIndex, actingPlayerId) => {
           if (!G.board.pendingCommanders) return INVALID_MOVE;
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (String(G.board.pendingCommanders.playerID) !== String(targetPlayerId)) return INVALID_MOVE;
@@ -3691,6 +3670,10 @@ export const DeflategateGame = {
           const card = G.board.auctionPlayers[auctionCardIndex];
           if (!card) return INVALID_MOVE;
 
+          if (!G.board.commandersMarkedIndices) G.board.commandersMarkedIndices = [];
+          if (!G.board.commandersMarkedIndices.includes(auctionCardIndex)) {
+            G.board.commandersMarkedIndices.push(auctionCardIndex);
+          }
           G.board.commandersMarkedCardIndex = auctionCardIndex;
           const displayId = parseInt(targetPlayerId) + 1;
           const firstDisplayId = parseInt(G.board.firstPlayer) + 1;
@@ -3705,7 +3688,6 @@ export const DeflategateGame = {
 
           if (!G.board.pendingRaiders && !G.board.pendingCardinals && !G.board.pendingChiefs && !G.board.pendingCommanders) {
             G.board.preAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         }
       },
@@ -3849,7 +3831,8 @@ export const DeflategateGame = {
           }
 
           const remainingCardsCount = G.board.auctionPlayers.filter(c => c !== null).length;
-          if (String(targetPlayerId) === String(G.board.firstPlayer) && cardIndex === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
+          const isCommandersMarked = (cardIndex === G.board.commandersMarkedCardIndex || G.board.commandersMarkedIndices?.includes(cardIndex));
+          if (String(targetPlayerId) === String(G.board.firstPlayer) && isCommandersMarked && remainingCardsCount > 1) {
             return INVALID_MOVE;
           }
 
@@ -3918,7 +3901,8 @@ export const DeflategateGame = {
           }
 
           const remainingCardsCount = G.board.auctionPlayers.filter(c => c !== null).length;
-          if (String(targetPlayerId) === String(G.board.firstPlayer) && G.board.activeAuctionCardIndex === G.board.commandersMarkedCardIndex && remainingCardsCount > 1) {
+          const isCommandersMarked = (G.board.activeAuctionCardIndex === G.board.commandersMarkedCardIndex || G.board.commandersMarkedIndices?.includes(G.board.activeAuctionCardIndex));
+          if (String(targetPlayerId) === String(G.board.firstPlayer) && isCommandersMarked && remainingCardsCount > 1) {
             return INVALID_MOVE;
           }
 
@@ -4066,17 +4050,18 @@ export const DeflategateGame = {
           G.board.jaguarsPopupNotification = null;
         }
       },
-      endIf: ({ G }) => Object.values(G.players).every(p => p.hasWonAuction === true) && G.pendingReplacement === null,
+      endIf: ({ G }) => Object.values(G.players).every(p => p.hasWonAuction === true) && G.pendingReplacement === null && G.board.cardWonFlyAnimation === null,
       next: 'postAuctionPhase'
     },
 
     postAuctionPhase: {
       turn: { activePlayers: ActivePlayers.ALL },
-      onBegin: ({ G, events }) => {
+      onBegin: ({ G }) => {
         G.board.postAuctionComplete = false;
 
-        // 1. Check Bills Ability (queue multi-teams)
+        // 1. Check Bills Ability (queue multi-teams: real Bills acts before Buccaneers)
         const billsTeams = Object.keys(G.players).filter(id => getEffectiveTeamId(G.players[id]) === 'bills');
+        billsTeams.sort((a, b) => (G.players[a].team?.id === 'bills' ? 0 : 1) - (G.players[b].team?.id === 'bills' ? 0 : 1));
         billsTeams.forEach(billsId => {
           if (G.decks.discard && G.decks.discard.length > 0) {
             const billsPlayer = G.players[billsId];
@@ -4133,8 +4118,9 @@ export const DeflategateGame = {
           G.board.pendingBills = G.board.pendingBillsQueue.shift();
         }
 
-        // 2. Check Eagles Ability (queue multi-teams)
+        // 2. Check Eagles Ability (queue multi-teams: real Eagles acts before Buccaneers)
         const eaglesTeams = Object.keys(G.players).filter(id => getEffectiveTeamId(G.players[id]) === 'eagles');
+        eaglesTeams.sort((a, b) => (G.players[a].team?.id === 'eagles' ? 0 : 1) - (G.players[b].team?.id === 'eagles' ? 0 : 1));
         eaglesTeams.forEach(eaglesId => {
           const eaglesPlayer = G.players[eaglesId];
           const usedThisRound = eaglesPlayer.eaglesUsedRound === G.board.round ? (eaglesPlayer.eaglesUsedCount || 0) : 0;
@@ -4164,14 +4150,13 @@ export const DeflategateGame = {
 
         if (!G.board.pendingBills && !G.board.pendingEagles) {
           G.board.postAuctionComplete = true;
-          if (events && events.endPhase) events.endPhase();
         }
       },
       moves: {
         dismissJaguarsPopup: ({ G }) => {
           G.board.jaguarsPopupNotification = null;
         },
-        billsBuyDiscard: ({ G, playerID, events }, discardIndex) => {
+        billsBuyDiscard: ({ G, playerID }, discardIndex) => {
           if (!G.board.pendingBills) return INVALID_MOVE;
           const billsId = String(G.board.pendingBills.playerID);
           const billsPlayer = G.players[billsId];
@@ -4204,10 +4189,9 @@ export const DeflategateGame = {
 
           if (!G.board.pendingBills && !G.board.pendingEagles && !G.pendingReplacement) {
             G.board.postAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         },
-        billsPass: ({ G, events }) => {
+        billsPass: ({ G }) => {
           if (G.board.pendingBillsQueue && G.board.pendingBillsQueue.length > 0) {
             G.board.pendingBills = G.board.pendingBillsQueue.shift();
           } else {
@@ -4215,10 +4199,9 @@ export const DeflategateGame = {
           }
           if (!G.board.pendingBills && !G.board.pendingEagles && !G.pendingReplacement) {
             G.board.postAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         },
-        eaglesUseAbility: ({ G, playerID, events }, times) => {
+        eaglesUseAbility: ({ G, playerID }, times) => {
           if (!G.board.pendingEagles) return INVALID_MOVE;
           const eaglesId = String(G.board.pendingEagles.playerID);
           const eaglesPlayer = G.players[eaglesId];
@@ -4246,10 +4229,9 @@ export const DeflategateGame = {
 
           if (!G.board.pendingBills && !G.board.pendingEagles && !G.pendingReplacement) {
             G.board.postAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         },
-        eaglesInflate: ({ G, playerID, events }) => {
+        eaglesInflate: ({ G, playerID }) => {
           if (!G.board.pendingEagles) return INVALID_MOVE;
           const eaglesId = String(G.board.pendingEagles.playerID);
           const eaglesPlayer = G.players[eaglesId];
@@ -4274,10 +4256,9 @@ export const DeflategateGame = {
 
           if (!G.board.pendingBills && !G.board.pendingEagles && !G.pendingReplacement) {
             G.board.postAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         },
-        eaglesPass: ({ G, events }) => {
+        eaglesPass: ({ G }) => {
           if (G.board.pendingEaglesQueue && G.board.pendingEaglesQueue.length > 0) {
             G.board.pendingEagles = G.board.pendingEaglesQueue.shift();
           } else {
@@ -4285,10 +4266,9 @@ export const DeflategateGame = {
           }
           if (!G.board.pendingBills && !G.board.pendingEagles && !G.pendingReplacement) {
             G.board.postAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         },
-        replaceLineupCard: ({ G, playerID, events }, discardIndex, actingPlayerId) => {
+        replaceLineupCard: ({ G, playerID }, discardIndex, actingPlayerId) => {
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (!G.pendingReplacement || String(G.pendingReplacement.playerID) !== String(targetPlayerId)) {
             return INVALID_MOVE;
@@ -4309,10 +4289,9 @@ export const DeflategateGame = {
 
           if (!G.board.pendingBills && !G.board.pendingEagles) {
             G.board.postAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         },
-        discardWonCard: ({ G, playerID, events }) => {
+        discardWonCard: ({ G, playerID }) => {
           const targetPlayerId = G.players[playerID] ? playerID : Object.keys(G.players)[0];
           if (!G.pendingReplacement || String(G.pendingReplacement.playerID) !== String(targetPlayerId)) {
             return INVALID_MOVE;
@@ -4329,7 +4308,6 @@ export const DeflategateGame = {
 
           if (!G.board.pendingBills && !G.board.pendingEagles) {
             G.board.postAuctionComplete = true;
-            if (events && events.endPhase) events.endPhase();
           }
         }
       },
@@ -4450,6 +4428,7 @@ export const DeflategateGame = {
           G.board.eventNotification = null;
 
           // Reset all round flags so the next round's phases do not immediately trigger their endIf conditions
+          G.board.eventFlipRevealed = false;
           G.board.eventConfirmed = false;
           G.board.preAuctionComplete = false;
           G.board.postAuctionComplete = false;
@@ -4465,8 +4444,6 @@ export const DeflategateGame = {
             p.cardsWonThisRound = 0;
             p.outbidCount = 0;
           });
-
-          if (events && events.endPhase) events.endPhase();
         }
       },
       endIf: ({ G }) => G.board.refreshConfirmed === true,

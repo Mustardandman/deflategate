@@ -32,6 +32,7 @@ export const DesktopDeflategateBoardArena = ({
   const lastToastIdRef = useRef(null);
   const [replaceLocked, setReplaceLocked] = useState(false);
   const [selectedNominationIndex, setSelectedNominationIndex] = useState(0);
+  const [inspectedCard, setInspectedCard] = useState(null);
 
   const displayPlayerNumber = (id) => (parseInt(id) + 1).toString();
 
@@ -315,8 +316,11 @@ export const DesktopDeflategateBoardArena = ({
           return null;
         })}
         {specialText && (
-          <div className="text-[10px] leading-snug font-medium text-slate-200 bg-slate-950/80 p-1.5 rounded-lg border border-slate-700/60 mt-0.5">
-            {specialText}
+          <div 
+            title={specialText}
+            className="text-[9px] leading-tight font-medium text-amber-200/95 bg-amber-950/50 p-1 rounded-md border border-amber-800/60 mt-0.5 line-clamp-2"
+          >
+            ⚡ {specialText}
           </div>
         )}
       </div>
@@ -679,7 +683,7 @@ export const DesktopDeflategateBoardArena = ({
   const nextPeekId = allPlayerIds[(currentPeekIdx + 1) % allPlayerIds.length];
   const peekPlayer = peekLineupModal !== false ? G.players[peekLineupModal] : null;
 
-  const isEventFlipped = G.board.eventFlipRevealed && G.board.activeEvent && !G.board.eventConfirmed;
+  const isEventFlipped = (ctx.phase === 'eventPhase' || (G.board.activeEvent && !G.board.eventConfirmed)) && Boolean(G.board.activeEvent);
   const activeEvent = G.board.activeEvent;
 
   return (
@@ -822,10 +826,11 @@ export const DesktopDeflategateBoardArena = ({
           const p = G.players[pId];
           const isMe = pId === effectivePlayerID;
           const isFirstPlayer = G.board.firstPlayer === pId;
-          const hasWon = p.hasWonAuction;
-          const hasPassed = G.board.passedAuctionPlayers?.includes(pId);
-          const isHighest = G.board.highestBidder !== null && String(G.board.highestBidder) === String(pId);
-          const isActing = String(activeActingPlayerId) === String(pId);
+          const isAuction = ctx.phase === 'auctionPhase';
+          const hasWon = isAuction && p.hasWonAuction;
+          const hasPassed = isAuction && G.board.passedAuctionPlayers?.includes(pId);
+          const isHighest = isAuction && G.board.highestBidder !== null && String(G.board.highestBidder) === String(pId);
+          const isActing = isAuction && String(activeActingPlayerId) === String(pId);
 
           return (
             <div
@@ -883,6 +888,8 @@ export const DesktopDeflategateBoardArena = ({
                   <span className="font-bold text-emerald-300 bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-600 animate-pulse">
                     ● Bidding
                   </span>
+                ) : ctx.phase === 'refreshPhase' ? (
+                  <span className="text-slate-400 font-medium">Active Roster</span>
                 ) : (
                   <span className="text-slate-400 font-medium">In Bidding</span>
                 )}
@@ -908,7 +915,7 @@ export const DesktopDeflategateBoardArena = ({
       <main className="flex-1 min-h-0 flex gap-3 p-3 overflow-hidden">
         
         {/* EXPANDED DRAFT & AUCTION STAGE (User request: maximize width to fit more players without scrolling) */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-slate-900/60 rounded-3xl border border-slate-800 p-3 overflow-hidden justify-between">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-slate-900/60 rounded-3xl border border-slate-800 p-2 overflow-hidden justify-between">
           
           {/* Phase 2: Pre-Auction Reveal View */}
           {ctx.phase === 'preAuctionPhase' && (
@@ -924,18 +931,26 @@ export const DesktopDeflategateBoardArena = ({
               </div>
 
               {/* Full Draft Cards Gallery (2-row multi-column grid) */}
-              <div className="grid grid-rows-2 grid-flow-col auto-cols-[minmax(190px,230px)] gap-2 h-full max-h-[300px] overflow-x-auto tabletop-scroll w-full py-1 px-1">
+              <div className="grid grid-rows-2 grid-flow-col auto-cols-[minmax(190px,230px)] gap-x-2 gap-y-1.5 h-full max-h-[300px] overflow-x-auto tabletop-scroll w-full py-0.5 px-0.5">
                 {G.board.auctionPlayers && G.board.auctionPlayers.map((card, idx) => {
                   if (!card) return null;
                   return (
                     <div
                       key={card.uniqueId || idx}
-                      className={`h-full min-h-[115px] max-h-[140px] p-2.5 rounded-xl flex flex-col justify-between text-left shrink-0 ${getCardPhaseStyle(card)}`}
+                      onClick={() => setInspectedCard(card)}
+                      className={`h-full min-h-[108px] max-h-[135px] p-2 rounded-xl flex flex-col justify-between text-left shrink-0 cursor-pointer hover:border-slate-500 transition-all ${getCardPhaseStyle(card)}`}
                     >
                       <div>
-                        <div className="flex justify-between items-center text-[10px] font-mono font-bold leading-none mb-1">
+                        <div className="flex justify-between items-center text-[10px] font-mono font-bold leading-none mb-0.5">
                           <span className="text-yellow-300">Min: {card.minBid}</span>
-                          {renderPositionTag(card.position)}
+                          <div className="flex items-center gap-1">
+                            {renderPositionTag(card.position)}
+                            {(card.specialText || card.customText) && (
+                              <span className="text-[9px] text-amber-300 px-1 py-0.2 rounded bg-amber-950/80 border border-amber-600/60 shadow-sm">
+                                ⚡
+                              </span>
+                            )}
+                          </div>
                           <span className="text-amber-400">Max: {card.maxBid}</span>
                         </div>
                         <h4 className="font-bold text-xs sm:text-sm text-white truncate leading-snug">{card.name}</h4>
@@ -943,8 +958,9 @@ export const DesktopDeflategateBoardArena = ({
                           {renderCardEffects(card.effects, card.specialText || card.customText)}
                         </div>
                       </div>
-                      <div className="pt-1 border-t border-slate-800/80 flex justify-between items-center text-[10px]">
+                      <div className="pt-0.5 border-t border-slate-800/80 flex justify-between items-center text-[10px]">
                         {renderPhaseBadge(card.phase)}
+                        <span className="text-[9px] font-bold text-slate-400 hover:text-slate-200">Inspect 🔍</span>
                       </div>
                     </div>
                   );
@@ -964,36 +980,14 @@ export const DesktopDeflategateBoardArena = ({
           {ctx.phase === 'auctionPhase' && (
             <div className="h-full flex flex-col justify-between min-h-0">
               
-              {/* Top Banner: Nomination / Active Info */}
-              <div className="flex items-center justify-between text-xs px-2 pb-1 border-b border-slate-800">
-                {G.board.activeAuctionCardIndex === null ? (
-                  <span className="font-bold text-amber-300">
-                    {isMyTurnToNominate ? "Select a player card below to nominate" : `Waiting for ${G.players[G.board.nominator]?.team?.name || 'Nominator'} to nominate`}
-                  </span>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-white flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                      Active Bidding on: <strong className="text-blue-300 text-sm">{activeCard?.name}</strong>
-                    </span>
-                    <span className="text-slate-400 font-mono">
-                      (Min: {activeCard?.minBid}🪙 | Max: {effMaxBid}🪙)
-                    </span>
-                  </div>
-                )}
-                <span className="text-slate-400">
-                  {G.board.auctionPlayers ? `${G.board.auctionPlayers.length} Draft Pool Players` : ''}
-                </span>
-              </div>
-
-              {/* Full Cards Gallery (2-row multi-column grid: up to 10 players fit across 5 columns in 2 rows without scrolling!) */}
-              <div className="flex-1 min-h-0 grid grid-rows-2 grid-flow-col auto-cols-[minmax(190px,230px)] gap-2 overflow-x-auto tabletop-scroll py-1 px-1">
+              {/* Full Cards Gallery (2-row multi-column grid: top banner removed per user request for vertical space) */}
+              <div className="flex-1 min-h-0 grid grid-rows-2 grid-flow-col auto-cols-[minmax(190px,230px)] gap-x-2 gap-y-1 overflow-x-auto tabletop-scroll py-0.5 px-0.5">
                 {G.board.auctionPlayers && G.board.auctionPlayers.map((card, idx) => {
                   if (!card) {
                     return (
                       <div 
                         key={`sold-${idx}`} 
-                        className="h-full min-h-[115px] max-h-[140px] p-2 rounded-xl flex items-center justify-center border border-dashed border-slate-800/80 text-slate-500 text-xs italic bg-slate-950/40"
+                        className="h-full min-h-[108px] max-h-[135px] p-2 rounded-xl flex items-center justify-center border border-dashed border-slate-800/80 text-slate-500 text-xs italic bg-slate-950/40"
                       >
                         Sold
                       </div>
@@ -1011,21 +1005,38 @@ export const DesktopDeflategateBoardArena = ({
                         if (canNominate) {
                           setSelectedNominationIndex(idx);
                           moves.selectCard(idx, effectivePlayerID);
+                        } else {
+                          setInspectedCard(card);
                         }
                       }}
-                      className={`h-full min-h-[115px] max-h-[140px] p-2.5 rounded-xl flex flex-col justify-between text-left transition-all ${
+                      className={`h-full min-h-[108px] max-h-[135px] p-2 rounded-xl flex flex-col justify-between text-left transition-all ${
                         isNominated
                           ? 'ring-2 ring-blue-400 border-2 border-blue-400 scale-[1.01] shadow-[0_0_15px_rgba(59,130,246,0.3)] bg-slate-900'
                           : isSelectedForNomination
                             ? 'ring-2 ring-emerald-400 border-2 border-emerald-400 bg-slate-900 scale-[1.01]'
-                            : 'opacity-90 hover:opacity-100'
-                      } ${canNominate ? 'cursor-pointer hover:border-emerald-400' : ''} ${getCardPhaseStyle(card)}`}
+                            : 'opacity-90 hover:opacity-100 hover:border-slate-600'
+                      } ${canNominate ? 'cursor-pointer hover:border-emerald-400' : 'cursor-pointer'} ${getCardPhaseStyle(card)}`}
                     >
                       <div>
-                        {/* Header: Min, Pos, Max */}
-                        <div className="flex justify-between items-center text-[10px] font-mono font-bold leading-none mb-1">
+                        {/* Header: Min, Pos, Info inspect button, Max */}
+                        <div className="flex justify-between items-center text-[10px] font-mono font-bold leading-none mb-0.5">
                           <span className="text-yellow-300">Min: {card.minBid}</span>
-                          {renderPositionTag(card.position)}
+                          <div className="flex items-center gap-1">
+                            {renderPositionTag(card.position)}
+                            {(card.specialText || card.customText) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setInspectedCard(card);
+                                }}
+                                className="text-[9px] text-amber-300 hover:text-white px-1 py-0.2 rounded bg-amber-950/80 border border-amber-600/60 shadow-sm cursor-pointer"
+                                title="Inspect special ability"
+                              >
+                                ⚡
+                              </button>
+                            )}
+                          </div>
                           <span className="text-amber-400">Max: {getEffectiveCardMaxBid(card, G.board.activeEvent)}</span>
                         </div>
 
@@ -1035,7 +1046,7 @@ export const DesktopDeflategateBoardArena = ({
                         </div>
                       </div>
 
-                      <div className="pt-1 border-t border-slate-800/80 flex justify-between items-center text-[10px] leading-none">
+                      <div className="pt-0.5 border-t border-slate-800/80 flex justify-between items-center text-[10px] leading-none">
                         {renderPhaseBadge(card.phase)}
                         {isNominated ? (
                           <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-600 text-white shadow flex items-center gap-1">
@@ -1053,7 +1064,19 @@ export const DesktopDeflategateBoardArena = ({
                           >
                             Nominate ➔
                           </button>
-                        ) : null}
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInspectedCard(card);
+                            }}
+                            className="text-[9px] font-bold text-slate-400 hover:text-slate-200 cursor-pointer"
+                            title="Inspect full player card"
+                          >
+                            Inspect 🔍
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1101,12 +1124,12 @@ export const DesktopDeflategateBoardArena = ({
 
               {/* Processing Teams Grid Container (scrollable if > 6 teams, perfectly fits 10 teams) */}
               <div className="flex-1 min-h-0 my-2 overflow-y-auto tabletop-scroll pr-1">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                   {(G.board.refreshResults && G.board.refreshResults.length > 0
                     ? G.board.refreshResults
                     : Object.keys(G.players).map(id => ({
                         id,
-                        teamName: TEAMS_DATA[G.players[id].team]?.name || `Team ${id}`,
+                        teamName: G.players[id]?.team?.name || `Player ${displayPlayerNumber(id)}`,
                         coinsGained: 0,
                         psiDeflated: 0
                       }))
@@ -1219,27 +1242,13 @@ export const DesktopDeflategateBoardArena = ({
                 </div>
 
                 {isCpuTurn ? (
-                  <div className="space-y-2">
+                  <div>
                     <button
                       onClick={() => moves.stepCpuTurn()}
                       className="w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black bg-amber-400 hover:bg-amber-300 shadow cursor-pointer transition-transform hover:scale-102"
                     >
                       Next CPU Action ➔
                     </button>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        onClick={() => setSkipMode('myTurn')}
-                        className="py-1.5 rounded-lg text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-750 border border-slate-700 cursor-pointer"
-                      >
-                        Skip to My Turn ⏩
-                      </button>
-                      <button
-                        onClick={() => setSkipMode('refresh')}
-                        className="py-1.5 rounded-lg text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-750 border border-slate-700 cursor-pointer"
-                      >
-                        Skip to Refresh ⏭️
-                      </button>
-                    </div>
                   </div>
                 ) : (
                   <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-600/80 text-xs text-center font-bold text-emerald-300 animate-pulse">
@@ -1460,6 +1469,65 @@ export const DesktopDeflategateBoardArena = ({
       </footer>
 
       {/* 5. POPUP MODALS */}
+
+      {/* Inspected Player Card Full Detail Modal */}
+      {inspectedCard && (
+        <div 
+          onClick={() => setInspectedCard(null)}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-slate-900 border-2 border-slate-700 p-6 rounded-3xl max-w-sm w-full text-left shadow-2xl cursor-default animate-bounce-short space-y-4"
+          >
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🔍</span>
+                <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest">
+                  Player Card Details
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectedCard(null)}
+                className="text-slate-400 hover:text-white font-bold p-1 text-lg cursor-pointer"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className={`p-4 rounded-2xl border text-left shadow-lg ${getCardPhaseStyle(inspectedCard)}`}>
+              <div className="flex justify-between items-center text-xs font-mono font-bold mb-2">
+                <span className="text-yellow-300">Min: {inspectedCard.minBid}</span>
+                {renderPositionTag(inspectedCard.position)}
+                <span className="text-amber-400">Max: {getEffectiveCardMaxBid(inspectedCard, G.board.activeEvent)}</span>
+              </div>
+              <h4 className="font-extrabold text-xl text-white mb-2">{inspectedCard.name}</h4>
+              <div className="text-xs mb-3 space-y-1.5">
+                {renderCardEffects(inspectedCard.effects, inspectedCard.specialText || inspectedCard.customText)}
+              </div>
+              {(inspectedCard.specialText || inspectedCard.customText) && (
+                <div className="p-2.5 rounded-xl bg-amber-950/70 border border-amber-500/60 my-2 text-xs text-amber-200 leading-relaxed">
+                  <span className="font-bold text-amber-300 block mb-0.5">⚡ Special Ability:</span>
+                  {inspectedCard.specialText || inspectedCard.customText}
+                </div>
+              )}
+              <div className="pt-2 border-t border-slate-800/80 flex justify-between items-center text-xs">
+                {renderPhaseBadge(inspectedCard.phase)}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setInspectedCard(null)}
+              className="w-full bg-slate-800 hover:bg-slate-750 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider cursor-pointer border border-slate-700 shadow"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* EVENT REVEAL POPUP MODAL (User request: "I want the event to still have a pop up screen like the last version does") */}
       {isEventFlipped && (
@@ -1693,27 +1761,24 @@ export const DesktopDeflategateBoardArena = ({
 
       {/* End of Auction Phase / Refresh Phase Intro Popup */}
       {ctx.phase === 'refreshPhase' && G.board.inRefreshSummary && G.board.refreshStage === 'intro' && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border-2 border-blue-500 p-8 rounded-3xl max-w-lg w-full text-center shadow-2xl space-y-5 animate-bounce-short">
-            <div className="w-14 h-14 bg-blue-500/20 border-2 border-blue-400 rounded-full flex items-center justify-center mx-auto text-2xl shadow-inner">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-blue-500/80 p-5 rounded-2xl max-w-xs w-full text-center shadow-2xl space-y-3.5">
+            <div className="w-10 h-10 bg-blue-500/20 border border-blue-400/80 rounded-full flex items-center justify-center mx-auto text-xl shadow-inner">
               🔄
             </div>
             <div>
-              <span className="text-xs font-bold uppercase tracking-widest bg-blue-900/60 text-blue-300 px-3 py-1 rounded-full border border-blue-700">
-                Round {G.board.round} Auction Complete
+              <span className="text-[10px] font-bold uppercase tracking-widest bg-blue-900/60 text-blue-300 px-2.5 py-0.5 rounded-full border border-blue-700">
+                Round {G.board.round} Complete
               </span>
-              <h2 className="text-2xl font-bold text-white uppercase tracking-wide mt-2">
+              <h2 className="text-base font-bold text-white uppercase tracking-wide mt-1.5">
                 Time for the Refresh Phase
               </h2>
             </div>
-            <p className="text-slate-300 text-xs leading-relaxed">
-              Lineup cards will generate passive coins and deflation. Team abilities and active events will be calculated sequentially across all teams.
-            </p>
             <button
               onClick={() => moves.startRefreshSequence()}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl text-sm shadow-xl uppercase tracking-wider cursor-pointer transition-all"
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider cursor-pointer transition-all shadow-lg hover:scale-102 active:scale-98"
             >
-              Start Refresh Phase 🔄
+              Start Refresh Phase ➔
             </button>
           </div>
         </div>
@@ -1780,7 +1845,7 @@ export const DesktopDeflategateBoardArena = ({
       )}
 
       {/* Trade Rumors Modal: Pass 1 Active Player to the Right */}
-      {G.board.pendingTradeRumors && (
+      {!isEventFlipped && G.board.pendingTradeRumors && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border-2 border-blue-500 p-6 md:p-8 rounded-3xl max-w-2xl w-full text-center shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
             <span className="text-4xl block">🔄</span>
@@ -1855,7 +1920,7 @@ export const DesktopDeflategateBoardArena = ({
       )}
 
       {/* Trade Rumors Summary Modal */}
-      {G.board.tradeRumorsSummary && (
+      {!isEventFlipped && G.board.tradeRumorsSummary && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border-2 border-blue-500 p-6 md:p-8 rounded-3xl max-w-lg w-full text-center shadow-2xl space-y-4 animate-bounce-short">
             <span className="text-4xl block">🤝</span>
@@ -1876,7 +1941,7 @@ export const DesktopDeflategateBoardArena = ({
       )}
 
       {/* Free Agency Modal */}
-      {G.board.pendingFreeAgency && G.board.pendingFreeAgency.card && (
+      {!isEventFlipped && G.board.pendingFreeAgency && G.board.pendingFreeAgency.card && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border-2 border-purple-500 p-6 md:p-8 rounded-3xl max-w-lg w-full text-center shadow-2xl space-y-4 animate-bounce-short">
             <span className="text-4xl block">✍️</span>
@@ -1962,7 +2027,7 @@ export const DesktopDeflategateBoardArena = ({
       )}
 
       {/* Rivalry Modal: Give 1 PSI to Opponent */}
-      {G.board.pendingRivalry && (
+      {!isEventFlipped && G.board.pendingRivalry && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border-2 border-red-500 p-6 md:p-8 rounded-3xl max-w-lg w-full text-center shadow-2xl space-y-4">
             <span className="text-4xl block">⚔️</span>
@@ -2013,7 +2078,7 @@ export const DesktopDeflategateBoardArena = ({
       )}
 
       {/* New Cap Limit Modal */}
-      {G.board.pendingNewCapLimit && G.board.pendingNewCapLimit.active && (
+      {!isEventFlipped && G.board.pendingNewCapLimit && G.board.pendingNewCapLimit.active && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border-2 border-emerald-500 p-6 md:p-8 rounded-3xl max-w-md w-full text-center shadow-2xl space-y-4">
             <span className="text-4xl block">🧢</span>
