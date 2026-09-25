@@ -820,96 +820,120 @@ export const DesktopDeflategateBoardArena = ({
         </div>
       </header>
 
-      {/* 2. TOP TIER: UNIFORM TEAM PEDESTALS (User request: uniform clean neutral color, your team differentiated, yellow star for 1st player, clear passed/won badges) */}
-      <section className="h-24 shrink-0 px-3 py-1.5 border-b border-slate-800 bg-slate-950/80 overflow-x-auto tabletop-scroll flex items-center gap-2">
-        {Object.keys(G.players).map(pId => {
-          const p = G.players[pId];
-          const isMe = pId === effectivePlayerID;
-          const isFirstPlayer = G.board.firstPlayer === pId;
-          const isAuction = ctx.phase === 'auctionPhase';
-          const hasWon = isAuction && p.hasWonAuction;
-          const hasPassed = isAuction && G.board.passedAuctionPlayers?.includes(pId);
-          const isHighest = isAuction && G.board.highestBidder !== null && String(G.board.highestBidder) === String(pId);
-          const isActing = isAuction && String(activeActingPlayerId) === String(pId);
+      {/* 2. TOP TIER: UNIFORM TEAM PEDESTALS (User request: dynamic horizontal shrinking for 7+ teams without scrolling; 4 teams untouched) */}
+      {(() => {
+        const teamCount = Object.keys(G.players).length;
+        const isDenseTeams = teamCount >= 7;
+        const isMediumTeams = teamCount === 5 || teamCount === 6;
 
-          return (
-            <div
-              key={pId}
-              onClick={() => setPeekLineupModal(pId)}
-              className={`h-full min-w-[190px] max-w-[230px] flex-1 p-1.5 sm:p-2 rounded-xl border flex flex-col justify-between transition-all cursor-pointer relative ${
-                hasWon
-                  ? 'border-red-600 ring-2 ring-red-500/80 bg-red-950/25 shadow-[0_0_15px_rgba(220,38,38,0.2)]'
-                  : isMe 
-                    ? 'border-blue-500 bg-blue-950/30 ring-1 ring-blue-400' 
-                    : 'border-slate-800 bg-slate-900/80 hover:border-slate-700'
-              } ${hasWon ? 'opacity-90' : ''}`}
-              title="Click to view full team lineup & ability"
-            >
-              {/* Header with Team Name, Star, and Tag */}
-              <div className="flex items-center justify-between gap-1">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  {/* Yellow star for First Player */}
-                  {isFirstPlayer && (
-                    <span title="First Player of the Round" className="px-1 py-0.2 rounded-full bg-amber-400 text-black font-extrabold text-[9px] flex items-center gap-0.5 shadow shrink-0">
-                      ⭐ 1st
+        return (
+          <section className={`h-24 shrink-0 border-b border-slate-800 bg-slate-950/80 flex items-center ${
+            isDenseTeams 
+              ? 'px-2 py-1 gap-1.5 overflow-hidden' 
+              : isMediumTeams
+                ? 'px-2.5 py-1 gap-2 overflow-x-auto tabletop-scroll'
+                : 'px-3 py-1.5 gap-2 overflow-x-auto tabletop-scroll'
+          }`}>
+            {Object.keys(G.players).map(pId => {
+              const p = G.players[pId];
+              const isMe = pId === effectivePlayerID;
+              const isFirstPlayer = G.board.firstPlayer === pId;
+              const isAuction = ctx.phase === 'auctionPhase';
+              const hasWon = isAuction && p.hasWonAuction;
+              const hasPassed = isAuction && G.board.passedAuctionPlayers?.includes(pId);
+              const isHighest = isAuction && G.board.highestBidder !== null && String(G.board.highestBidder) === String(pId);
+              const isActing = isAuction && String(activeActingPlayerId) === String(pId);
+
+              // Responsive dynamic horizontal sizing:
+              // - 4 or fewer teams: min-w-[190px] max-w-[230px] flex-1 (no change)
+              // - 5-6 teams: min-w-[140px] max-w-[230px] flex-1
+              // - 7 or more teams: min-w-0 flex-1 (shrinks horizontally to fit without scrolling)
+              const cardWidthClass = isDenseTeams 
+                ? 'min-w-0 flex-1 p-1 sm:p-1.5' 
+                : isMediumTeams
+                  ? 'min-w-[140px] max-w-[230px] flex-1 p-1.5 sm:p-2'
+                  : 'min-w-[190px] max-w-[230px] flex-1 p-1.5 sm:p-2';
+
+              return (
+                <div
+                  key={pId}
+                  onClick={() => setPeekLineupModal(pId)}
+                  className={`h-full ${cardWidthClass} rounded-xl border flex flex-col justify-between transition-all cursor-pointer relative ${
+                    hasWon
+                      ? 'border-red-600 ring-2 ring-red-500/80 bg-red-950/25 shadow-[0_0_15px_rgba(220,38,38,0.2)]'
+                      : isMe 
+                        ? 'border-blue-500 bg-blue-950/30 ring-1 ring-blue-400' 
+                        : 'border-slate-800 bg-slate-900/80 hover:border-slate-700'
+                  } ${hasWon ? 'opacity-90' : ''}`}
+                  title="Click to view full team lineup & ability"
+                >
+                  {/* Header with Team Name, Star, and Tag */}
+                  <div className="flex items-center justify-between gap-1 min-w-0">
+                    <div className="flex items-center gap-1 min-w-0">
+                      {/* Yellow star for First Player */}
+                      {isFirstPlayer && (
+                        <span title="First Player of the Round" className="px-1 py-0.2 rounded-full bg-amber-400 text-black font-extrabold text-[9px] flex items-center gap-0.5 shadow shrink-0">
+                          ⭐{isDenseTeams ? '' : ' 1st'}
+                        </span>
+                      )}
+                      <span className={`font-bold ${isDenseTeams ? 'text-[11px]' : 'text-xs'} truncate ${hasWon ? 'text-red-300' : isMe ? 'text-blue-300' : 'text-white'}`}>
+                        {p.team?.name || `Player ${displayPlayerNumber(pId)}`}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isMe ? (
+                        <span className="text-[9px] font-black uppercase px-1 py-0.2 rounded bg-blue-600 text-white">YOU</span>
+                      ) : (
+                        <span className={`text-[9px] font-bold uppercase px-1 py-0.2 rounded ${p.isCpu ? 'bg-slate-800 text-slate-400' : 'bg-purple-900 text-purple-300'}`}>
+                          {p.isCpu ? 'CPU' : `P${displayPlayerNumber(pId)}`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Status Badge: Won / Passed / High Bid / In Bidding */}
+                  <div className="flex items-center justify-between text-[10px] min-w-0">
+                    {hasWon ? (
+                      <span className="font-black text-red-300 bg-red-950/90 px-1 py-0.5 rounded border border-red-600 shadow flex items-center gap-0.5 text-[9px] truncate">
+                        <span>⛔</span> {isDenseTeams ? 'Won' : 'Won Player (Out)'}
+                      </span>
+                    ) : hasPassed ? (
+                      <span className="font-bold text-red-300 bg-red-950/80 px-1.5 py-0.5 rounded border border-red-800/80 text-[9px]">
+                        ⛔ Passed
+                      </span>
+                    ) : isHighest ? (
+                      <span className="font-bold text-amber-300 bg-amber-950/90 px-1.5 py-0.5 rounded border border-amber-600 animate-pulse text-[9px] truncate">
+                        👑 {isDenseTeams ? `${G.board.highestBid}🪙` : `High Bid (${G.board.highestBid}🪙)`}
+                      </span>
+                    ) : isActing ? (
+                      <span className="font-bold text-emerald-300 bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-600 animate-pulse text-[9px]">
+                        ● Bidding
+                      </span>
+                    ) : ctx.phase === 'refreshPhase' ? (
+                      <span className="text-slate-400 font-medium text-[9px]">Active Roster</span>
+                    ) : (
+                      <span className="text-slate-400 font-medium text-[9px]">In Bidding</span>
+                    )}
+                  </div>
+
+                  {/* Digital PSI & Coins */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 font-mono text-xs">
+                    <span className="font-bold text-emerald-400 flex items-center gap-1">
+                      <span>🏈</span>
+                      <RollingSlotCounter value={p.psi} isPsi={true} />
                     </span>
-                  )}
-                  <span className={`font-bold text-xs truncate ${hasWon ? 'text-red-300' : isMe ? 'text-blue-300' : 'text-white'}`}>
-                    {p.team?.name || `Player ${displayPlayerNumber(pId)}`}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  {isMe ? (
-                    <span className="text-[9px] font-black uppercase px-1 py-0.2 rounded bg-blue-600 text-white">YOU</span>
-                  ) : (
-                    <span className={`text-[9px] font-bold uppercase px-1 py-0.2 rounded ${p.isCpu ? 'bg-slate-800 text-slate-400' : 'bg-purple-900 text-purple-300'}`}>
-                      {p.isCpu ? 'CPU' : `P${displayPlayerNumber(pId)}`}
+                    <span className="font-bold text-yellow-300 flex items-center gap-1">
+                      <span>🪙</span>
+                      <RollingSlotCounter value={p.coins} />
                     </span>
-                  )}
+                  </div>
                 </div>
-              </div>
-
-              {/* Status Badge: Won / Passed / High Bid / In Bidding */}
-              <div className="flex items-center justify-between text-[10px]">
-                {hasWon ? (
-                  <span className="font-black text-red-300 bg-red-950/90 px-1.5 py-0.5 rounded border border-red-600 shadow flex items-center gap-1">
-                    <span>⛔</span> Won Player (Out)
-                  </span>
-                ) : hasPassed ? (
-                  <span className="font-bold text-red-300 bg-red-950/80 px-1.5 py-0.5 rounded border border-red-800/80">
-                    ⛔ Passed
-                  </span>
-                ) : isHighest ? (
-                  <span className="font-bold text-amber-300 bg-amber-950/90 px-1.5 py-0.5 rounded border border-amber-600 animate-pulse">
-                    👑 High Bid ({G.board.highestBid}🪙)
-                  </span>
-                ) : isActing ? (
-                  <span className="font-bold text-emerald-300 bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-600 animate-pulse">
-                    ● Bidding
-                  </span>
-                ) : ctx.phase === 'refreshPhase' ? (
-                  <span className="text-slate-400 font-medium">Active Roster</span>
-                ) : (
-                  <span className="text-slate-400 font-medium">In Bidding</span>
-                )}
-              </div>
-
-              {/* Digital PSI & Coins */}
-              <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 font-mono text-xs">
-                <span className="font-bold text-emerald-400 flex items-center gap-1">
-                  <span>🏈</span>
-                  <RollingSlotCounter value={p.psi} isPsi={true} />
-                </span>
-                <span className="font-bold text-yellow-300 flex items-center gap-1">
-                  <span>🪙</span>
-                  <RollingSlotCounter value={p.coins} />
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </section>
+              );
+            })}
+          </section>
+        );
+      })()}
 
       {/* 3. CENTER TIER: EXPANDED DRAFT & AUCTION ARENA */}
       <main className="flex-1 min-h-0 flex gap-2.5 p-2 sm:p-2.5 overflow-hidden">
@@ -1318,55 +1342,103 @@ export const DesktopDeflategateBoardArena = ({
           </div>
         </div>
 
-        {/* Center: Your 5-Player Starting Lineup */}
-        <div className="flex-1 min-w-0 h-full flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs mb-0.5">
-            <span className="font-bold uppercase text-slate-400">
-              Active Starting Lineup
-            </span>
-            {isPendingReplacementForMe && (
-              <span className="font-bold text-xs uppercase px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-700 animate-pulse">
-                Click a card below to replace with {G.pendingReplacement?.wonCard?.name}
-              </span>
-            )}
-          </div>
+        {/* Center: Your Active Starting Lineup (User request: 3 is normal; 4+ shrinks horizontally to fit; Colts scrollable with newest on left) */}
+        {(() => {
+          const isColts = getEffectiveTeamId(myPlayer) === 'colts';
+          const rawLineup = myPlayer?.lineup || [];
+          const lineupCount = rawLineup.length;
+          
+          // For Colts: "Add the most recent player they acquire to the left side"
+          // We reverse the array for display while preserving each card's original index
+          const displayLineup = isColts
+            ? [...rawLineup].map((card, i) => ({ card, originalIdx: i })).reverse()
+            : rawLineup.map((card, i) => ({ card, originalIdx: i }));
 
-          <div className="flex-1 flex gap-2 min-h-0 overflow-x-auto tabletop-scroll">
-            {myPlayer?.lineup && myPlayer.lineup.map((card, idx) => (
-              <div
-                key={card.uniqueId || idx}
-                onClick={() => {
-                  if (isPendingReplacementForMe && !replaceLocked) {
-                    moves.replaceLineupCard(idx, effectivePlayerID);
-                  }
-                }}
-                className={`flex-1 min-w-[125px] p-2 rounded-xl flex flex-col justify-between text-left transition-all ${
-                  isPendingReplacementForMe 
-                    ? 'cursor-pointer hover:border-red-400 hover:scale-102 ring-1 ring-red-500/50' 
-                    : ''
-                } ${getCardPhaseStyle(card)}`}
-              >
-                <div>
-                  <div className="flex justify-between items-center text-[10px] font-mono font-bold">
-                    <span className="text-slate-400">Slot {idx + 1}</span>
-                    {renderPositionTag(card.position)}
-                  </div>
-                  <h5 className="font-bold text-xs text-white truncate mt-0.5">{card.name}</h5>
-                  <div className="scale-90 origin-top-left">
-                    {renderCardEffects(card.effects, null)}
-                  </div>
-                </div>
+          // Non-Colts: 3 is normal amount. When 4 or more, shrink them dynamically so they all fit without scrolling
+          const isShrunkLineup = !isColts && lineupCount >= 4;
 
-                <div className="pt-1 border-t border-slate-800 flex justify-between items-center text-[9px] text-slate-400">
-                  <span>{renderPhaseBadge(card.phase)}</span>
-                  {isPendingReplacementForMe && (
-                    <span className="text-red-400 font-bold uppercase">Replace</span>
+          return (
+            <div className="flex-1 min-w-0 h-full flex flex-col justify-between">
+              <div className="flex items-center justify-between text-xs mb-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold uppercase text-slate-400">
+                    Active Starting Lineup
+                  </span>
+                  {isColts && (
+                    <span className="text-[10px] font-mono text-blue-400 bg-blue-950/80 px-1.5 py-0.2 rounded border border-blue-800">
+                      {lineupCount} Players (Scroll ➔)
+                    </span>
                   )}
                 </div>
+                {isPendingReplacementForMe && (
+                  <span className="font-bold text-xs uppercase px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-700 animate-pulse">
+                    Click a card below to replace with {G.pendingReplacement?.wonCard?.name}
+                  </span>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
+
+              <div className={`flex-1 flex min-h-0 ${
+                isColts 
+                  ? 'gap-2 overflow-x-auto tabletop-scroll' 
+                  : isShrunkLineup 
+                    ? (lineupCount >= 5 ? 'gap-1 overflow-hidden' : 'gap-1.5 overflow-hidden')
+                    : 'gap-2 overflow-x-auto tabletop-scroll'
+              }`}>
+                {displayLineup.map(({ card, originalIdx }, displayIdx) => {
+                  const isNewestColts = isColts && displayIdx === 0 && rawLineup.length > 3;
+
+                  // Card width and padding logic:
+                  // - Colts: don't dynamically change, scrollable fixed width cards (w-[130px] shrink-0)
+                  // - Non-Colts: 3 cards = min-w-[125px] flex-1 (normal). 4+ cards = min-w-0 flex-1 (shrink horizontally)
+                  const cardClass = isColts
+                    ? 'w-[130px] shrink-0 p-2'
+                    : isShrunkLineup
+                      ? 'min-w-0 flex-1 p-1 sm:p-1.5'
+                      : 'min-w-[125px] flex-1 p-2';
+
+                  return (
+                    <div
+                      key={card.uniqueId || originalIdx}
+                      onClick={() => {
+                        if (isPendingReplacementForMe && !replaceLocked) {
+                          moves.replaceLineupCard(originalIdx, effectivePlayerID);
+                        } else {
+                          setInspectedCard(card);
+                        }
+                      }}
+                      className={`${cardClass} rounded-xl flex flex-col justify-between text-left transition-all cursor-pointer ${
+                        isPendingReplacementForMe 
+                          ? 'hover:border-red-400 hover:scale-102 ring-1 ring-red-500/50' 
+                          : 'hover:border-slate-500'
+                      } ${getCardPhaseStyle(card)}`}
+                      title="Click to inspect player details"
+                    >
+                      <div>
+                        <div className="flex justify-between items-center text-[10px] font-mono font-bold">
+                          <span className="text-slate-400">
+                            {isNewestColts ? '★ Newest' : `Slot ${originalIdx + 1}`}
+                          </span>
+                          {renderPositionTag(card.position)}
+                        </div>
+                        <h5 className="font-bold text-xs text-white truncate mt-0.5">{card.name}</h5>
+                        <div className="scale-90 origin-top-left">
+                          {renderCardEffects(card.effects, null)}
+                        </div>
+                      </div>
+
+                      <div className="pt-1 border-t border-slate-800 flex justify-between items-center text-[9px] text-slate-400">
+                        <span>{renderPhaseBadge(card.phase)}</span>
+                        {isPendingReplacementForMe && (
+                          <span className="text-red-400 font-bold uppercase">Replace</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Right: STREAMLINED BIDDING CONSOLE */}
         <div className="w-80 shrink-0 h-full p-2.5 rounded-2xl border border-slate-800 bg-slate-900/90 flex flex-col justify-between shadow">

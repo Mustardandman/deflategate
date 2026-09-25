@@ -383,5 +383,8 @@ Playtest #22: (Complete)
      - Added full-screen `Inspected Player Card` modal when clicking on any card or the ⚡ icon to review full card stats, costs, position, and unabridged special rules.
      - Moved "ACTIVE" indicator to the bottom right of the card, aligned with the Phase badge.
      - Positioned TURN and INSTANT trigger badges directly adjacent to coin/deflate values.
-
-
+   3. Compact Auction Row Banner: Added sleek, ultra-compact banner centered above the draft cards (🔨 AUCTION ROW) to clearly identify the auction section without encroaching on player card height.
+   4. Dynamic Horizontal Shrinking for Teams & Active Lineup:
+      - Top Tier Teams: When 4 teams, no change (min-w-[190px] max-w-[230px] flex-1). When 7 or more teams, dynamically shrinks team cards horizontally (min-w-0 flex-1) with streamlined badges so all 7–10 teams fit cleanly across the row without horizontal scrolling.
+      - Active Starting Lineup: 3 cards remain the normal size (min-w-[125px] flex-1). When 4 or more cards (Seahawks, mid-game event card additions, or expansions), dynamically shrinks cards horizontally (min-w-0 flex-1) so all cards fit without scrolling.
+      - Colts Infinite Lineup: Excluded from shrinking to preserve readability; lineup remains scrollable (w-[130px] shrink-0 with overflow-x-auto tabletop-scroll) with the most recently acquired player displayed on the left side (index 0).
