@@ -395,3 +395,20 @@ Playtest #22: (Complete)
       - Implemented missing franchise ability modals in the Arena UI for Eagles (`pendingEagles`), Bills (`pendingBills`), Raiders, Cardinals, Chiefs, and Commanders.
       - Eagles player can now use their Tush Push ability (1x or 2x) or click "Pass & Proceed to Refresh Phase ➔".
       - Added fallback "Continue to Refresh Phase ➔" button in Match Controls whenever post-auction decisions finish, and added `proceedToRefresh` move in `Game.js` to guarantee smooth transition into the Refresh Phase.
+----------
+Playtest #23: (Complete)
+- Completed / Fixed in Playtest #23:
+  1. Quick Player Navigation Arrows on Inspect Modal:
+     - Added floating circular chevron navigation arrows (`◀` and `▶`) flanking the left and right sides of the player modal box.
+     - Added inline `◀ X/Y ▶` quick-stepper in the modal header and `◀ Prev` / `Next ▶` buttons at the bottom.
+     - Added full keyboard arrow key navigation (`ArrowLeft`, `ArrowRight`, `Escape` to close) for fast cycling through available players without closing and reopening the modal.
+     - Works seamlessly across all player card sources: auction row, player active starting lineup, and opponent rosters.
+  2. Free Agency Event Genuine Player Card Representation:
+     - Replaced plain text description container with the genuine in-game player card UI.
+     - Displays min/max bid indicators, position tag (QB, RB, WR, TE, K, DEF), era/phase badge, card effects with TURN/INSTANT tags, and dedicated special ability highlight box.
+     - Added real-time sign cost and bank balance comparison for both active and waiting player views.
+  3. Chargers Ability Banner in Refresh Phase:
+     - Integrated Chargers ability into the top banner during the refresh phase (`calculateRefreshResults`).
+     - Corrected CPU outbidding tracking so the outbidding franchise (rather than the outbid player) is awarded outbid credits.
+     - Posts top banner event and franchise ability notification: `⚡ Chargers Ability: Chargers gained X coins by outbiding opposing teams`.
+

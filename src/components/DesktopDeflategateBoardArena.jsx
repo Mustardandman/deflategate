@@ -33,6 +33,55 @@ export const DesktopDeflategateBoardArena = ({
   const [replaceLocked, setReplaceLocked] = useState(false);
   const [selectedNominationIndex, setSelectedNominationIndex] = useState(0);
   const [inspectedCard, setInspectedCard] = useState(null);
+  const [inspectedCardIndex, setInspectedCardIndex] = useState(0);
+  const [inspectedCardList, setInspectedCardList] = useState([]);
+
+  const openInspectCard = (card, list = null) => {
+    if (!card) return;
+    let candidateList = list;
+    if (!candidateList || candidateList.length === 0) {
+      candidateList = G.board?.auctionPlayers || [];
+    }
+    const cleanList = candidateList.filter(Boolean);
+    const foundIdx = cleanList.findIndex(c => (c.uniqueId && c.uniqueId === card.uniqueId) || (c.id && c.id === card.id) || c.name === card.name);
+    const activeIdx = foundIdx >= 0 ? foundIdx : 0;
+    setInspectedCardList(cleanList.length > 0 ? cleanList : [card]);
+    setInspectedCardIndex(activeIdx);
+    setInspectedCard(cleanList.length > 0 ? cleanList[activeIdx] : card);
+  };
+
+  const handlePrevInspectedCard = () => {
+    if (!inspectedCardList || inspectedCardList.length <= 1) return;
+    const nextIdx = (inspectedCardIndex - 1 + inspectedCardList.length) % inspectedCardList.length;
+    setInspectedCardIndex(nextIdx);
+    setInspectedCard(inspectedCardList[nextIdx]);
+  };
+
+  const handleNextInspectedCard = () => {
+    if (!inspectedCardList || inspectedCardList.length <= 1) return;
+    const nextIdx = (inspectedCardIndex + 1) % inspectedCardList.length;
+    setInspectedCardIndex(nextIdx);
+    setInspectedCard(inspectedCardList[nextIdx]);
+  };
+
+  // Keyboard navigation for card inspect modal
+  useEffect(() => {
+    if (!inspectedCard) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handlePrevInspectedCard();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleNextInspectedCard();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setInspectedCard(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [inspectedCard, inspectedCardList, inspectedCardIndex]);
 
   const displayPlayerNumber = (id) => (parseInt(id) + 1).toString();
 
@@ -967,7 +1016,7 @@ export const DesktopDeflategateBoardArena = ({
                           moves.chiefsClaimCard(idx, effectivePlayerID);
                           setChiefsClaimActive(false);
                         } else {
-                          setInspectedCard(card);
+                          openInspectCard(card, G.board.auctionPlayers);
                         }
                       }}
                       className={`h-full min-h-0 p-1.5 sm:p-2 rounded-xl flex flex-col justify-between text-left shrink-0 cursor-pointer hover:border-slate-500 transition-all ${getCardPhaseStyle(card)}`}
@@ -1048,7 +1097,7 @@ export const DesktopDeflategateBoardArena = ({
                           setSelectedNominationIndex(idx);
                           moves.selectCard(idx, effectivePlayerID);
                         } else {
-                          setInspectedCard(card);
+                          openInspectCard(card, G.board.auctionPlayers);
                         }
                       }}
                       className={`h-full min-h-0 p-1.5 sm:p-2 rounded-xl flex flex-col justify-between text-left transition-all ${
@@ -1070,7 +1119,7 @@ export const DesktopDeflategateBoardArena = ({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setInspectedCard(card);
+                                  openInspectCard(card, G.board.auctionPlayers);
                                 }}
                                 className="text-[9px] text-amber-300 hover:text-white px-1 py-0.2 rounded bg-amber-950/80 border border-amber-600/60 shadow-sm cursor-pointer"
                                 title="Inspect special ability"
@@ -1111,7 +1160,7 @@ export const DesktopDeflategateBoardArena = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setInspectedCard(card);
+                              openInspectCard(card, G.board.auctionPlayers);
                             }}
                             className="text-[9px] font-bold text-slate-400 hover:text-slate-200 cursor-pointer"
                             title="Inspect full player card"
@@ -1422,7 +1471,7 @@ export const DesktopDeflategateBoardArena = ({
                         if (isPendingReplacementForMe && !replaceLocked) {
                           moves.replaceLineupCard(originalIdx, effectivePlayerID);
                         } else {
-                          setInspectedCard(card);
+                          openInspectCard(card, myPlayer?.lineup);
                         }
                       }}
                       className={`${cardClass} rounded-xl flex flex-col justify-between text-left transition-all cursor-pointer ${
@@ -1570,61 +1619,153 @@ export const DesktopDeflategateBoardArena = ({
 
       {/* 5. POPUP MODALS */}
 
-      {/* Inspected Player Card Full Detail Modal */}
+      {/* Inspected Player Card Full Detail Modal with Left/Right Navigation */}
       {inspectedCard && (
         <div 
           onClick={() => setInspectedCard(null)}
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 cursor-pointer"
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border-2 border-slate-700 p-6 rounded-3xl max-w-sm w-full text-left shadow-2xl cursor-default animate-bounce-short space-y-4"
+            className="relative max-w-sm w-full flex items-center justify-center cursor-default"
           >
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🔍</span>
-                <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest">
-                  Player Card Details
-                </span>
-              </div>
+            {/* Left Side Button: Prev Player (Floating Chevron) */}
+            {inspectedCardList.length > 1 && (
               <button
                 type="button"
-                onClick={() => setInspectedCard(null)}
-                className="text-slate-400 hover:text-white font-bold p-1 text-lg cursor-pointer"
-                title="Close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePrevInspectedCard();
+                }}
+                className="absolute -left-4 sm:-left-14 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full bg-slate-900/95 hover:bg-blue-600 border border-slate-700 hover:border-blue-400 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer shadow-2xl transition-all transform hover:scale-115 active:scale-95 group backdrop-blur-md"
+                title="Previous Player (Left Arrow key)"
               >
-                ✕
+                <svg 
+                  className="w-6 h-6 stroke-[3] transition-transform group-hover:-translate-x-0.5" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
               </button>
-            </div>
+            )}
 
-            <div className={`p-4 rounded-2xl border text-left shadow-lg ${getCardPhaseStyle(inspectedCard)}`}>
-              <div className="flex justify-between items-center text-xs font-mono font-bold mb-2">
-                <span className="text-yellow-300">Min: {inspectedCard.minBid}</span>
-                {renderPositionTag(inspectedCard.position)}
-                <span className="text-amber-400">Max: {getEffectiveCardMaxBid(inspectedCard, G.board.activeEvent)}</span>
-              </div>
-              <h4 className="font-extrabold text-xl text-white mb-2">{inspectedCard.name}</h4>
-              <div className="text-xs mb-3 space-y-1.5">
-                {renderCardEffects(inspectedCard.effects, null)}
-              </div>
-              {(inspectedCard.specialText || inspectedCard.customText) && (
-                <div className="p-2.5 rounded-xl bg-amber-950/70 border border-amber-500/60 my-2 text-xs text-amber-200 leading-relaxed">
-                  <span className="font-bold text-amber-300 block mb-0.5">⚡ Special Ability:</span>
-                  {inspectedCard.specialText || inspectedCard.customText}
+            {/* Main Player Card Modal Box */}
+            <div className="bg-slate-900 border-2 border-slate-700 p-6 rounded-3xl w-full text-left shadow-2xl animate-bounce-short space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🔍</span>
+                  <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest">
+                    Player Card Details
+                  </span>
                 </div>
-              )}
-              <div className="pt-2 border-t border-slate-800/80 flex justify-between items-center text-xs">
-                {renderPhaseBadge(inspectedCard.phase)}
+                <div className="flex items-center gap-2">
+                  {inspectedCardList.length > 1 && (
+                    <div className="flex items-center gap-1 bg-slate-800/90 px-2 py-0.5 rounded-lg border border-slate-700 text-xs font-mono font-bold text-slate-300">
+                      <button
+                        type="button"
+                        onClick={handlePrevInspectedCard}
+                        className="hover:text-blue-400 cursor-pointer p-0.5"
+                        title="Previous Player (←)"
+                      >
+                        ◀
+                      </button>
+                      <span>{inspectedCardIndex + 1}/{inspectedCardList.length}</span>
+                      <button
+                        type="button"
+                        onClick={handleNextInspectedCard}
+                        className="hover:text-blue-400 cursor-pointer p-0.5"
+                        title="Next Player (→)"
+                      >
+                        ▶
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setInspectedCard(null)}
+                    className="text-slate-400 hover:text-white font-bold p-1 text-lg cursor-pointer"
+                    title="Close (Esc)"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <div className={`p-4 rounded-2xl border text-left shadow-lg ${getCardPhaseStyle(inspectedCard)}`}>
+                <div className="flex justify-between items-center text-xs font-mono font-bold mb-2">
+                  <span className="text-yellow-300">Min: {inspectedCard.minBid}</span>
+                  {renderPositionTag(inspectedCard.position)}
+                  <span className="text-amber-400">Max: {getEffectiveCardMaxBid(inspectedCard, G.board.activeEvent)}</span>
+                </div>
+                <h4 className="font-extrabold text-xl text-white mb-2">{inspectedCard.name}</h4>
+                <div className="text-xs mb-3 space-y-1.5">
+                  {renderCardEffects(inspectedCard.effects, null)}
+                </div>
+                {(inspectedCard.specialText || inspectedCard.customText) && (
+                  <div className="p-2.5 rounded-xl bg-amber-950/70 border border-amber-500/60 my-2 text-xs text-amber-200 leading-relaxed">
+                    <span className="font-bold text-amber-300 block mb-0.5">⚡ Special Ability:</span>
+                    {inspectedCard.specialText || inspectedCard.customText}
+                  </div>
+                )}
+                <div className="pt-2 border-t border-slate-800/80 flex justify-between items-center text-xs">
+                  {renderPhaseBadge(inspectedCard.phase)}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                {inspectedCardList.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handlePrevInspectedCard}
+                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider cursor-pointer border border-slate-700 shadow flex items-center justify-center gap-1 transition-all"
+                    title="Previous Player"
+                  >
+                    <span>◀</span> Prev
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setInspectedCard(null)}
+                  className={`${inspectedCardList.length > 1 ? 'flex-1' : 'w-full'} bg-slate-800 hover:bg-slate-750 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider cursor-pointer border border-slate-700 shadow transition-all`}
+                >
+                  Close
+                </button>
+                {inspectedCardList.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleNextInspectedCard}
+                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider cursor-pointer border border-slate-700 shadow flex items-center justify-center gap-1 transition-all"
+                    title="Next Player"
+                  >
+                    Next <span>▶</span>
+                  </button>
+                )}
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setInspectedCard(null)}
-              className="w-full bg-slate-800 hover:bg-slate-750 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider cursor-pointer border border-slate-700 shadow"
-            >
-              Close
-            </button>
+            {/* Right Side Button: Next Player (Floating Chevron) */}
+            {inspectedCardList.length > 1 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNextInspectedCard();
+                }}
+                className="absolute -right-4 sm:-right-14 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full bg-slate-900/95 hover:bg-blue-600 border border-slate-700 hover:border-blue-400 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer shadow-2xl transition-all transform hover:scale-115 active:scale-95 group backdrop-blur-md"
+                title="Next Player (Right Arrow key)"
+              >
+                <svg 
+                  className="w-6 h-6 stroke-[3] transition-transform group-hover:translate-x-0.5" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1706,7 +1847,12 @@ export const DesktopDeflategateBoardArena = ({
               {/* Starting Lineup Cards: Single Horizontal Row Left to Right */}
               <div className="flex flex-row gap-3 overflow-x-auto tabletop-scroll pb-2">
                 {peekPlayer.lineup.map((card, idx) => (
-                  <div key={idx} className={`min-w-[170px] flex-1 p-3 rounded-xl border flex flex-col justify-between ${getCardPhaseStyle(card)}`}>
+                  <div 
+                    key={idx} 
+                    onClick={() => openInspectCard(card, peekPlayer.lineup)}
+                    className={`min-w-[170px] flex-1 p-3 rounded-xl border flex flex-col justify-between cursor-pointer hover:border-slate-500 transition-all ${getCardPhaseStyle(card)}`}
+                    title="Click to inspect player details"
+                  >
                     <div>
                       <div className="flex justify-between items-center text-xs font-mono font-bold mb-1">
                         <span className="text-slate-400">Slot {idx + 1}</span>
@@ -2053,15 +2199,47 @@ export const DesktopDeflategateBoardArena = ({
             <h2 className="text-2xl font-bold text-white uppercase tracking-wide">Sign Free Agent</h2>
             {String(G.board.pendingFreeAgency.playerID) === String(effectivePlayerID) ? (
               <>
-                <p className="text-slate-300 text-sm leading-relaxed">
-                  You drew <span className="font-bold text-white">{G.board.pendingFreeAgency.card.name}</span> ({G.board.pendingFreeAgency.card.position}). You may pay the Maximum price ({getEffectiveCardMaxBid(G.board.pendingFreeAgency.card, G.board.activeEvent)} Coins) to sign them immediately!
+                <p className="text-slate-300 text-xs leading-relaxed">
+                  You drew a Free Agent prospect! You may pay the Maximum price ({getEffectiveCardMaxBid(G.board.pendingFreeAgency.card, G.board.activeEvent)} Coins) to sign them immediately:
                 </p>
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
-                  <div className="my-1">{renderCardEffects(G.board.pendingFreeAgency.card.effects, G.board.pendingFreeAgency.card.specialText || G.board.pendingFreeAgency.card.customText)}</div>
-                  <p className="text-xs text-yellow-400 font-mono font-bold mt-2">
-                    Cost: {getEffectiveCardMaxBid(G.board.pendingFreeAgency.card, G.board.activeEvent)} Coins | Your Coins: {myPlayer?.coins}
-                  </p>
-                </div>
+
+                {/* Actual Player Card Matching Normal In-Game Details */}
+                {(() => {
+                  const faCard = G.board.pendingFreeAgency.card;
+                  const faCost = getEffectiveCardMaxBid(faCard, G.board.activeEvent);
+                  return (
+                    <div className="my-2">
+                      <div className={`p-4 rounded-2xl border text-left shadow-xl ${getCardPhaseStyle(faCard)}`}>
+                        <div className="flex justify-between items-center text-xs font-mono font-bold mb-2">
+                          <span className="text-yellow-300">Min: {faCard.minBid}</span>
+                          {renderPositionTag(faCard.position)}
+                          <span className="text-amber-400">Max: {faCost}</span>
+                        </div>
+                        <h4 className="font-extrabold text-xl text-white mb-2">{faCard.name}</h4>
+                        <div className="text-xs mb-3 space-y-1.5">
+                          {renderCardEffects(faCard.effects, null)}
+                        </div>
+                        {(faCard.specialText || faCard.customText) && (
+                          <div className="p-2.5 rounded-xl bg-amber-950/70 border border-amber-500/60 my-2 text-xs text-amber-200 leading-relaxed">
+                            <span className="font-bold text-amber-300 block mb-0.5">⚡ Special Ability:</span>
+                            {faCard.specialText || faCard.customText}
+                          </div>
+                        )}
+                        <div className="pt-2 border-t border-slate-800/80 flex justify-between items-center text-xs">
+                          {renderPhaseBadge(faCard.phase)}
+                          <span className="text-yellow-400 font-mono font-bold">
+                            Max Bid Price: {faCost} Coins
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-medium text-slate-300 px-1 mt-2">
+                        <span>Signing Cost: <span className="font-mono font-bold text-yellow-400">{faCost} Coins</span></span>
+                        <span>Your Bank: <span className={`font-mono font-bold ${(myPlayer?.coins || 0) >= faCost ? 'text-emerald-400' : 'text-red-400'}`}>{myPlayer?.coins || 0} Coins</span></span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {getEffectiveTeamId(myPlayer) !== 'colts' && myPlayer?.lineup?.length >= (getEffectiveTeamId(myPlayer) === 'seahawks' ? 4 : 3) + (myPlayer?.extraLineupSlots || 0) && (
                   <div className="text-left">
                     <p className="text-xs text-slate-400 mb-2 font-bold">Select an active player to replace if you sign:</p>
@@ -2108,12 +2286,42 @@ export const DesktopDeflategateBoardArena = ({
                 </div>
               </>
             ) : (
-              <div className="py-6 space-y-3 text-center">
+              <div className="py-4 space-y-3 text-center">
                 <span className="text-3xl block">⏳</span>
                 <h3 className="text-lg font-bold text-purple-300">Free Agency Decision Pending</h3>
                 <p className="text-slate-300 text-sm">
-                  Waiting for Player {displayPlayerNumber(G.board.pendingFreeAgency.playerID)} ({G.players[G.board.pendingFreeAgency.playerID]?.team?.name || 'Player'}) to decide...
+                  Player {displayPlayerNumber(G.board.pendingFreeAgency.playerID)} ({G.players[G.board.pendingFreeAgency.playerID]?.team?.name || 'Player'}) drew:
                 </p>
+                {(() => {
+                  const faCard = G.board.pendingFreeAgency.card;
+                  const faCost = getEffectiveCardMaxBid(faCard, G.board.activeEvent);
+                  return (
+                    <div className={`p-4 rounded-2xl border text-left shadow-xl ${getCardPhaseStyle(faCard)} max-w-sm mx-auto my-2`}>
+                      <div className="flex justify-between items-center text-xs font-mono font-bold mb-2">
+                        <span className="text-yellow-300">Min: {faCard.minBid}</span>
+                        {renderPositionTag(faCard.position)}
+                        <span className="text-amber-400">Max: {faCost}</span>
+                      </div>
+                      <h4 className="font-extrabold text-xl text-white mb-2">{faCard.name}</h4>
+                      <div className="text-xs mb-3 space-y-1.5">
+                        {renderCardEffects(faCard.effects, null)}
+                      </div>
+                      {(faCard.specialText || faCard.customText) && (
+                        <div className="p-2.5 rounded-xl bg-amber-950/70 border border-amber-500/60 my-2 text-xs text-amber-200 leading-relaxed">
+                          <span className="font-bold text-amber-300 block mb-0.5">⚡ Special Ability:</span>
+                          {faCard.specialText || faCard.customText}
+                        </div>
+                      )}
+                      <div className="pt-2 border-t border-slate-800/80 flex justify-between items-center text-xs">
+                        {renderPhaseBadge(faCard.phase)}
+                        <span className="text-yellow-400 font-mono font-bold">
+                          Max Price: {faCost} Coins
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+                <p className="text-xs text-slate-400">Waiting for decision to sign or pass...</p>
                 {isMultiHuman && playMode !== 'online' && (
                   <button
                     onClick={() => setSelectedPlayerID(String(G.board.pendingFreeAgency.playerID))}

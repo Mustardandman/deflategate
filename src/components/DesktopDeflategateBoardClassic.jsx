@@ -1028,15 +1028,46 @@ export const DesktopDeflategateBoardClassic = ({ G, ctx, moves, playerID, vsCpu,
             <h2 className="text-2xl font-black text-white uppercase tracking-wide">Sign Free Agent</h2>
             {String(G.board.pendingFreeAgency.playerID) === String(effectivePlayerID) ? (
               <>
-                <p className="text-slate-300 text-sm leading-relaxed">
-                  You drew <span className="font-bold text-white">{G.board.pendingFreeAgency.card.name}</span> ({G.board.pendingFreeAgency.card.position}). You may pay the Maximum price ({getEffectiveCardMaxBid(G.board.pendingFreeAgency.card, G.board.activeEvent)} Coins) to sign them immediately!
+                <p className="text-slate-300 text-xs leading-relaxed">
+                  You drew a Free Agent prospect! You may pay the Maximum price ({getEffectiveCardMaxBid(G.board.pendingFreeAgency.card, G.board.activeEvent)} Coins) to sign them immediately:
                 </p>
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
-                  <div className="my-1">{renderCardEffects(G.board.pendingFreeAgency.card.effects, G.board.pendingFreeAgency.card.specialText || G.board.pendingFreeAgency.card.customText)}</div>
-                  <p className="text-xs text-yellow-400 font-mono font-bold mt-2">
-                    Cost: {getEffectiveCardMaxBid(G.board.pendingFreeAgency.card, G.board.activeEvent)} Coins | Your Coins: {myPlayer.coins}
-                  </p>
-                </div>
+
+                {/* Actual Player Card Matching Normal In-Game Details */}
+                {(() => {
+                  const faCard = G.board.pendingFreeAgency.card;
+                  const faCost = getEffectiveCardMaxBid(faCard, G.board.activeEvent);
+                  return (
+                    <div className="my-2">
+                      <div className={`p-4 rounded-2xl border text-left shadow-xl ${getCardPhaseStyle(faCard)}`}>
+                        <div className="flex justify-between items-center text-xs font-mono font-bold mb-2">
+                          <span className="text-yellow-300">Min: {faCard.minBid}</span>
+                          {renderPositionTag(faCard.position)}
+                          <span className="text-amber-400">Max: {faCost}</span>
+                        </div>
+                        <h4 className="font-extrabold text-xl text-white mb-2">{faCard.name}</h4>
+                        <div className="text-xs mb-3 space-y-1.5">
+                          {renderCardEffects(faCard.effects, null)}
+                        </div>
+                        {(faCard.specialText || faCard.customText) && (
+                          <div className="p-2.5 rounded-xl bg-amber-950/70 border border-amber-500/60 my-2 text-xs text-amber-200 leading-relaxed">
+                            <span className="font-bold text-amber-300 block mb-0.5">⚡ Special Ability:</span>
+                            {faCard.specialText || faCard.customText}
+                          </div>
+                        )}
+                        <div className="pt-2 border-t border-slate-800/80 flex justify-between items-center text-xs">
+                          {renderPhaseBadge(faCard.phase)}
+                          <span className="text-yellow-400 font-mono font-bold">
+                            Max Bid Price: {faCost} Coins
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-medium text-slate-300 px-1 mt-2">
+                        <span>Signing Cost: <span className="font-mono font-bold text-yellow-400">{faCost} Coins</span></span>
+                        <span>Your Bank: <span className={`font-mono font-bold ${(myPlayer?.coins || 0) >= faCost ? 'text-emerald-400' : 'text-red-400'}`}>{myPlayer?.coins || 0} Coins</span></span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {getEffectiveTeamId(myPlayer) !== 'colts' && myPlayer.lineup.length >= (getEffectiveTeamId(myPlayer) === 'seahawks' ? 4 : 3) + (myPlayer.extraLineupSlots || 0) && (
                   <div className="text-left">
                     <p className="text-xs text-slate-400 mb-2 font-bold">Select an active player to replace if you sign:</p>

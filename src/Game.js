@@ -46,6 +46,7 @@ export const addBannerEvent = (G, { icon = '⚡', title, text, round }) => {
 
 export const triggerAbilityNotification = (G, playerID, teamId, title, message) => {
   const icons = {
+    chargers: '⚡',
     eagles: '🦅',
     dolphins: '🐬',
     cardinals: '🦤',
@@ -90,9 +91,12 @@ export const triggerAbilityNotification = (G, playerID, teamId, title, message) 
   }
 
   // Also record in central Banner Log history for player recollection
+  const bannerTitle = (title && teamId && title.toLowerCase().includes(teamId.toLowerCase()))
+    ? title
+    : `${teamName}: ${title}`;
   addBannerEvent(G, {
     icon,
-    title: `${teamName}: ${title}`,
+    title: bannerTitle,
     text: message,
     round: G.board?.round || 1
   });
@@ -1478,8 +1482,8 @@ const executeCpuMoveInternal = (G, ctx, events) => {
 
     if (decision.shouldBid) {
       const nextBid = decision.bidAmount;
-      if (G.board.highestBidder !== null && G.players[G.board.highestBidder]) {
-        G.players[G.board.highestBidder].outbidCount++;
+      if (G.board.highestBidder !== null && G.board.highestBidder !== currentPlayerId) {
+        G.players[currentPlayerId].outbidCount = (G.players[currentPlayerId].outbidCount || 0) + 1;
       }
       G.board.highestBid = nextBid;
       G.board.highestBidder = currentPlayerId;
@@ -1922,9 +1926,14 @@ export const calculateRefreshResults = (G) => {
       }
     }
 
-    if (effectiveTeamId === 'chargers' && p.outbidCount > 0) {
-      if (effectiveTeamId !== 'browns') bonusCoins += p.outbidCount;
-      addLog(G, `Chargers Ability: Outbid ${p.outbidCount} times, gained +${p.outbidCount} bonus coins.`);
+    if (effectiveTeamId === 'chargers') {
+      const outbidCoins = p.outbidCount || 0;
+      if (outbidCoins > 0) {
+        if (effectiveTeamId !== 'browns') bonusCoins += outbidCoins;
+        addLog(G, `Chargers Ability: Outbid opposing teams ${outbidCoins} time(s), gained +${outbidCoins} bonus coins.`);
+      }
+      const chargersMsg = `Chargers gained ${outbidCoins} coins by outbiding opposing teams`;
+      triggerAbilityNotification(G, id, 'chargers', 'Chargers Ability', chargersMsg);
     }
 
     // Apply through full-round capping helpers
