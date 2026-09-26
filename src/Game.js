@@ -2653,6 +2653,14 @@ export const DeflategateGame = {
         G.board.postAuctionComplete = true;
       }
     },
+    proceedToRefresh: ({ G }) => {
+      G.board.pendingBills = null;
+      G.board.pendingBillsQueue = [];
+      G.board.pendingEagles = null;
+      G.board.pendingEaglesQueue = [];
+      G.pendingReplacement = null;
+      G.board.postAuctionComplete = true;
+    },
     dismissLegendNotification: ({ G }) => {
       G.board.legendNotification = null;
     },
@@ -4052,7 +4060,10 @@ export const DeflategateGame = {
           G.board.jaguarsPopupNotification = null;
         }
       },
-      endIf: ({ G }) => Object.values(G.players).every(p => p.hasWonAuction === true) && G.pendingReplacement === null && G.board.cardWonFlyAnimation === null,
+      endIf: ({ G }) => (
+        Object.values(G.players).every(p => p.hasWonAuction === true) ||
+        (G.board.auctionPlayers && G.board.auctionPlayers.length > 0 && G.board.auctionPlayers.every(c => c === null))
+      ) && G.pendingReplacement === null && G.board.cardWonFlyAnimation === null,
       next: 'postAuctionPhase'
     },
 
@@ -4311,6 +4322,14 @@ export const DeflategateGame = {
           if (!G.board.pendingBills && !G.board.pendingEagles) {
             G.board.postAuctionComplete = true;
           }
+        },
+        proceedToRefresh: ({ G }) => {
+          G.board.pendingBills = null;
+          G.board.pendingBillsQueue = [];
+          G.board.pendingEagles = null;
+          G.board.pendingEaglesQueue = [];
+          G.pendingReplacement = null;
+          G.board.postAuctionComplete = true;
         }
       },
       endIf: ({ G }) => G.board.postAuctionComplete === true,
