@@ -682,8 +682,7 @@ export const DesktopDeflategateBoardArena = ({
   const prevPeekId = allPlayerIds[(currentPeekIdx - 1 + allPlayerIds.length) % allPlayerIds.length];
   const nextPeekId = allPlayerIds[(currentPeekIdx + 1) % allPlayerIds.length];
   const peekPlayer = peekLineupModal !== false ? G.players[peekLineupModal] : null;
-
-  const isEventFlipped = (ctx.phase === 'eventPhase' || (G.board.activeEvent && !G.board.eventConfirmed)) && Boolean(G.board.activeEvent);
+  const isEventFlipped = Boolean(G.board.activeEvent && !G.board.eventConfirmed && (G.board.eventFlipRevealed !== false));
   const activeEvent = G.board.activeEvent;
 
   return (
@@ -1625,7 +1624,9 @@ export const DesktopDeflategateBoardArena = ({
               onClick={() => moves.confirmEventReveal()}
               className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-3.5 rounded-xl text-base shadow-lg uppercase tracking-wider cursor-pointer transition-all hover:scale-102"
             >
-              Continue to Round {G.board.round} Auction 🏈
+              {G.board.pendingTradeRumors || G.board.pendingRivalry || G.board.pendingFreeAgency || G.board.pendingNewCapLimit
+                ? 'Continue to Event Action ➔'
+                : `Continue to Round ${G.board.round} Auction 🏈`}
             </button>
           </div>
         </div>

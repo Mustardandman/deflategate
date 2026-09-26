@@ -2585,6 +2585,7 @@ export const DeflategateGame = {
     },
     dismissTradeRumorsSummary: ({ G }) => {
       G.board.tradeRumorsSummary = null;
+      G.board.eventConfirmed = true;
     },
     eaglesUseAbility: ({ G, playerID }, times) => {
       if (!G.board.pendingEagles) return INVALID_MOVE;
@@ -3353,6 +3354,7 @@ export const DeflategateGame = {
         },
         dismissTradeRumorsSummary: ({ G }) => {
           G.board.tradeRumorsSummary = null;
+          G.board.eventConfirmed = true;
         },
         dismissLegendNotification: ({ G }) => {
           G.board.legendNotification = null;
