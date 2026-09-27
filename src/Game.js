@@ -81,14 +81,12 @@ export const triggerAbilityNotification = (G, playerID, teamId, title, message) 
     title,
     message,
     icon,
+    round: G.board.round || 1,
     timestamp: Date.now()
   };
   G.board.abilityNotification = notif;
   if (!G.board.abilityNotificationHistory) G.board.abilityNotificationHistory = [];
   G.board.abilityNotificationHistory.unshift(notif);
-  if (G.board.abilityNotificationHistory.length > 25) {
-    G.board.abilityNotificationHistory = G.board.abilityNotificationHistory.slice(0, 25);
-  }
 
   // Also record in central Banner Log history for player recollection
   const bannerTitle = (title && teamId && title.toLowerCase().includes(teamId.toLowerCase()))

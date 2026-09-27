@@ -478,3 +478,41 @@ Changes Implemented:
 6. Round Counter Parity:
    - Updated mobile header round counter from `Round ${G.board.round} / 9` to `Round ${G.board.round} / 10`.
 -----------
+Playtest #26:
+- In the Team Detail modal:
+  - Move the team count designation (e.g., 3/4) directly to the right of the team name with no arrows.
+  - Delete the subtitle text "Full Roster & Franchise Overview" below the team name.
+  - Make the football icon smaller.
+  - Condense the header, Deflation/Coins boxes, Franchise Power card, and lineup cards so the first three active lineup spots fit fully on screen without excessive scrolling.
+- For the top banners and user team quick vitals box:
+  - Only display the top event/ability banner and the user team quick vitals box when in the Auction tab (hidden on My Team, Teams, and Log tabs).
+  - Redesign the event/ability banner to be strictly one single line: team name on left, message start in middle/right (truncated). Remove Newer/Older buttons, "1 of 3" text, and close (✕) button.
+  - Clicking the banner opens a modal displaying all banner messages in full (not truncated), scrollable, indicating which round each occurred in (Round X).
+  - Do not delete or cap older messages; all announcements across all rounds are retained in history.
+- For the bidding controls:
+  - Pass button: make a little longer/wider.
+  - Max (X) button: make a little longer/wider.
+  - Stepper arrows (◀ / ▶): make larger.
+  - Bid X button: make smaller while still remaining the largest button.
+
+Status: COMPLETE
+Changes Implemented:
+1. Team Detail Modal Polish & Space Condensation (`src/components/TeamDetailModal.jsx`):
+   - Moved team count indicator (e.g. `3 / 4`) directly to the right of the team name as a sleek rounded badge with no arrows.
+   - Removed subtitle text "Full Roster & Franchise Overview" below team name.
+   - Reduced football icon size to `w-8 h-8` with `text-base`.
+   - Condensed key vitals boxes (`Deflation` and `Coins`) into single-row horizontal stat cards (`px-3 py-1.5`).
+   - Compacted Franchise Ability Power card into low-height container (`px-3 py-2`).
+   - Condensed active lineup cards padding, typography, and modal footer padding so 3 active starting lineup spots fit cleanly on mobile screens without excessive scrolling.
+2. Top Announcements Banner & Quick Vitals Auction Tab Isolation (`src/components/MobileDeflategateBoard.jsx`):
+   - Restricted floating ability announcement banner and persistent team quick vitals card to `activeTab === 'auction'` only (hidden on `myRoster`, `teams`, and `log` tabs).
+   - Replaced multi-line carousel with a strictly single-line notification bar: team name pill on left, truncated announcement message in middle, and `📜 History` button on right.
+   - Removed Newer/Older stepper buttons, "X of Y" counter, and "✕" dismiss button.
+   - Clicking anywhere on the banner opens a full Announcements History modal displaying every notification across all rounds with `Round X` badges and full untruncated messages.
+   - Removed 25-item slice limit in `triggerAbilityNotification` (`src/Game.js`) and attached current round number (`G.board.round`) to each notification so all history is preserved.
+3. Bidding Controls Sizing & Polish (`src/components/MobileDeflategateBoard.jsx`):
+   - Pass button: lengthened and widened with `px-4 py-2.5 min-w-[64px]`.
+   - Max (X) button: lengthened and widened with `px-3.5 py-2.5 min-w-[78px]`.
+   - Stepper arrows (`◀` / `▶`): enlarged with `text-base px-3 py-2`.
+   - Bid X button: reduced to `flex-1 py-2.5 px-2`, ensuring it remains the primary, largest button in the bar while giving balanced spacing to controls.
+-----------

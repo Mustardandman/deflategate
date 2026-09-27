@@ -137,54 +137,33 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
         onTouchEnd={handleTouchEnd}
       >
         {/* Modal Header */}
-        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-600/30 border border-indigo-400/50 flex items-center justify-center text-2xl shadow-inner shrink-0">
+        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 px-3.5 py-2.5 sm:px-4 sm:py-3 border-b border-slate-800 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-indigo-600/30 border border-indigo-400/50 flex items-center justify-center text-base shadow-inner shrink-0">
               🏈
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-xl sm:text-2xl font-black text-white truncate drop-shadow">
+                <h3 className="text-lg sm:text-xl font-black text-white truncate drop-shadow">
                   {team.name}
                 </h3>
-                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                  isCpu 
-                    ? 'bg-slate-800 text-slate-300 border border-slate-700' 
-                    : 'bg-emerald-950 text-emerald-300 border border-emerald-600'
-                }`}>
-                  Player {displayId} • {isCpu ? 'CPU' : 'Human'}
-                </span>
                 {hasMultipleTeams && (
-                  <div className="flex items-center gap-1.5 bg-slate-950/80 border border-slate-700/80 px-2 py-0.5 rounded-full text-xs shadow-inner">
-                    <button
-                      type="button"
-                      onClick={handlePrevTeam}
-                      className="text-slate-400 hover:text-white px-1 font-black transition-colors"
-                      title="Previous Team"
-                    >
-                      ◀
-                    </button>
-                    <span className="font-mono text-slate-300 font-bold text-[10px]">
-                      {currentIndex + 1} / {allTeamPlayerIds.length}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleNextTeam}
-                      className="text-slate-400 hover:text-white px-1 font-black transition-colors"
-                      title="Next Team"
-                    >
-                      ▶
-                    </button>
-                  </div>
+                  <span className="font-mono text-slate-300 bg-slate-950/80 border border-slate-700/80 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0">
+                    {currentIndex + 1} / {allTeamPlayerIds.length}
+                  </span>
                 )}
               </div>
-              <p className="text-xs text-slate-400 font-medium">Full Roster & Franchise Overview</p>
+              <div className="flex items-center gap-2 -mt-0.5">
+                <span className="text-[10px] font-black uppercase text-slate-400">
+                  Player {displayId} • {isCpu ? 'CPU' : 'Human'}
+                </span>
+              </div>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-sm font-black transition-colors shrink-0 cursor-pointer"
+            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-xs font-black transition-colors shrink-0 cursor-pointer"
             title="Close"
           >
             ✕
@@ -192,42 +171,38 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
-          {/* Key Vitals Grid (Lineup slots and per round gain boxes deleted per Playtest #25) */}
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center">
-              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block mb-0.5">Deflation</span>
-              <span className="text-xl font-black font-mono text-emerald-400">{psiVal}</span>
-              <span className="text-[10px] text-slate-500 font-mono block">Target: 0 PSI</span>
+        <div className="p-3 sm:p-4 overflow-y-auto space-y-2.5 flex-1">
+          {/* Key Vitals Grid - Condensed Single-Row Cards */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center justify-between">
+              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Deflation</span>
+              <span className="text-sm font-black font-mono text-emerald-400">🏈 {psiVal} PSI</span>
             </div>
 
-            <div className="bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center">
-              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block mb-0.5">Coins</span>
-              <span className="text-xl font-black font-mono text-yellow-400">🪙 {player.coins}</span>
-              <span className="text-[10px] text-slate-500 font-mono block">Initial: {team.coins}</span>
+            <div className="bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center justify-between">
+              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Coins</span>
+              <span className="text-sm font-black font-mono text-yellow-400">🪙 {player.coins}</span>
             </div>
           </div>
 
-          {/* Franchise Ability Card */}
-          <div className="bg-gradient-to-r from-amber-950/40 via-slate-950 to-amber-950/40 border border-amber-500/40 p-4 rounded-2xl space-y-1.5 shadow-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">⭐</span>
-              <h4 className="text-xs font-black uppercase tracking-widest text-amber-300">
-                Franchise Power: {team.name}
-              </h4>
+          {/* Franchise Ability Card - Condensed */}
+          <div className="bg-gradient-to-r from-amber-950/30 via-slate-950 to-amber-950/30 border border-amber-500/35 px-3 py-2 rounded-xl text-xs shadow-sm">
+            <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[10px] uppercase tracking-wider mb-0.5">
+              <span>⭐</span>
+              <span>Power: {team.name}</span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-medium">
+            <p className="text-[11px] text-slate-200 leading-snug font-medium">
               {team.ability}
             </p>
             {player.copiedTeam && (
-              <div className="mt-2 pt-2 border-t border-amber-500/20 text-xs text-cyan-300 font-bold">
-                🏴‍☠️ Buccaneers Copied: <span className="text-white">{player.copiedTeam.name}</span> — {player.copiedTeam.ability}
+              <div className="mt-1 pt-1 border-t border-amber-500/20 text-[10px] text-cyan-300 font-bold">
+                🏴‍☠️ Copied: <span className="text-white">{player.copiedTeam.name}</span> — {player.copiedTeam.ability}
               </div>
             )}
           </div>
 
           {/* Active Lineup Cards */}
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
                 <span>Active Lineup</span>
@@ -239,11 +214,11 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
             </div>
 
             {(!player.lineup || player.lineup.length === 0) ? (
-              <div className="p-6 bg-slate-950/60 border border-slate-800 rounded-2xl text-center text-slate-500 text-xs italic">
+              <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-xl text-center text-slate-500 text-xs italic">
                 No active players in lineup yet.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {player.lineup.map((card, cidx) => {
                   const isBroncosIgnored = team.id === 'broncos' && card.broncosRoundAcquired === G.board.round;
                   const hasRamsMultiplier = Boolean(card.ramsMultiplier);
@@ -253,7 +228,7 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
                     <div 
                       key={card.uniqueId || cidx} 
                       onClick={() => onInspectCard && onInspectCard(card, player.lineup)}
-                      className={`p-3.5 rounded-2xl border-2 flex flex-col justify-between text-left transition-all relative cursor-pointer hover:border-indigo-400 active:scale-[0.98] ${
+                      className={`p-2.5 rounded-xl border-2 flex flex-col justify-between text-left transition-all relative cursor-pointer hover:border-indigo-400 active:scale-[0.98] ${
                         isBroncosIgnored
                           ? 'border-red-500 bg-red-950/20 shadow-[0_0_12px_rgba(239,68,68,0.4)]'
                           : getCardPhaseStyleHelper(card)
@@ -262,21 +237,21 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
                     >
                       {/* Rams 2x badge if attached */}
                       {hasRamsMultiplier && (
-                        <div className="absolute -top-2.5 -right-2 bg-gradient-to-r from-amber-500 to-yellow-400 text-black text-[10px] font-black px-2 py-0.5 rounded-full shadow-lg border border-yellow-200 uppercase tracking-wider animate-bounce">
+                        <div className="absolute -top-2.5 -right-2 bg-gradient-to-r from-amber-500 to-yellow-400 text-black text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-lg border border-yellow-200 uppercase tracking-wider animate-bounce">
                           ✨ 2x MULTIPLIER
                         </div>
                       )}
 
                       {/* Broncos Ignored badge */}
                       {isBroncosIgnored && (
-                        <div className="absolute -top-2.5 -left-2 bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow border border-red-300 uppercase tracking-wider">
+                        <div className="absolute -top-2.5 -left-2 bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow border border-red-300 uppercase tracking-wider">
                           🚫 Ignored (1st Round)
                         </div>
                       )}
 
                       <div>
-                        <div className="flex justify-between items-center mb-1 text-[11px]">
-                          <span className="bg-slate-900 border border-slate-700 text-cyan-400 font-mono font-black px-2 py-0.5 rounded uppercase">
+                        <div className="flex justify-between items-center mb-0.5 text-[10px]">
+                          <span className="bg-slate-900 border border-slate-700 text-cyan-400 font-mono font-black px-1.5 py-0.2 rounded uppercase">
                             {card.position || 'WR'}
                           </span>
                           <div className="flex items-center gap-1">
@@ -284,16 +259,16 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
                           </div>
                         </div>
 
-                        <h5 className="font-extrabold text-white text-sm sm:text-base mt-1 leading-snug">
+                        <h5 className="font-extrabold text-white text-xs sm:text-sm leading-snug truncate">
                           {card.name}
                         </h5>
 
-                        <div className="mt-2 text-xs">
+                        <div className="mt-1 text-xs">
                           {renderCardEffectsHelper(card.effects, card.specialText || card.customText)}
                         </div>
                       </div>
 
-                      <div className="mt-3 pt-2 border-t border-slate-800/80 flex justify-between items-center text-[10px] text-slate-400 font-mono">
+                      <div className="mt-2 pt-1 border-t border-slate-800/80 flex justify-between items-center text-[10px] text-slate-400 font-mono">
                         <span>Min: {card.minBid || 1} Coins</span>
                         <span>Max: {effMax} Coins</span>
                       </div>
@@ -306,13 +281,13 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
         </div>
 
         {/* Modal Footer with Swipe / Prev-Next Controls */}
-        <div className="bg-slate-950 p-3 sm:p-4 border-t border-slate-800 flex items-center justify-between gap-2 shrink-0">
+        <div className="bg-slate-950 px-3 py-2 border-t border-slate-800 flex items-center justify-between gap-2 shrink-0">
           {hasMultipleTeams ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={handlePrevTeam}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1 transition-colors cursor-pointer"
                 title="Previous Team"
               >
                 ◀ Prev Team
@@ -320,7 +295,7 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
               <button
                 type="button"
                 onClick={handleNextTeam}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1 transition-colors cursor-pointer"
                 title="Next Team"
               >
                 Next Team ▶
@@ -330,7 +305,7 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
 
           <button
             onClick={onClose}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-5 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
+            className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer"
           >
             Close Details
           </button>
