@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TeamDetailModal, renderCardEffectsHelper, renderPhaseBadgeHelper, getCardPhaseStyleHelper } from './TeamDetailModal.jsx';
-import { getEffectiveTeamId } from '../Game.js';
+import { getEffectiveTeamId, getEffectiveCardMaxBid } from '../Game.js';
 
 export const MobileDeflategateBoard = ({
   G,
@@ -9,17 +9,54 @@ export const MobileDeflategateBoard = ({
   playerID,
   vsCpu,
   playMode,
-  numHumans,
-  setIsMobile
+  numHumans
 }) => {
   // Mobile Tab Navigation: 'auction', 'myRoster', 'teams', 'log'
   const [activeTab, setActiveTab] = useState('auction');
   const [selectedTeamDetailId, setSelectedTeamDetailId] = useState(null);
   const [customBid, setCustomBid] = useState(0);
-  const [skipMode, setSkipMode] = useState(null); // null, 'myTurn', 'refresh'
   const [replaceLocked, setReplaceLocked] = useState(false);
   const [dismissedAbilityIds, setDismissedAbilityIds] = useState([]);
   const [abilityCarouselIdx, setAbilityCarouselIdx] = useState(0);
+
+  // Inspected Player Card Modal State with Carousel Navigation
+  const [inspectedCard, setInspectedCard] = useState(null);
+  const [inspectedCardList, setInspectedCardList] = useState([]);
+  const [inspectedCardIndex, setInspectedCardIndex] = useState(0);
+
+  const openInspectCard = (card, list = null) => {
+    if (!card) return;
+    const cleanList = (list && Array.isArray(list)) ? list.filter(Boolean) : [card];
+    const activeIdx = cleanList.findIndex(c => (c.uniqueId && c.uniqueId === card.uniqueId) || (c.id === card.id && c.name === card.name));
+    setInspectedCardList(cleanList.length > 0 ? cleanList : [card]);
+    setInspectedCardIndex(activeIdx >= 0 ? activeIdx : 0);
+    setInspectedCard(cleanList.length > 0 && activeIdx >= 0 ? cleanList[activeIdx] : card);
+  };
+
+  const handlePrevInspectedCard = () => {
+    if (!inspectedCardList || inspectedCardList.length <= 1) return;
+    const nextIdx = (inspectedCardIndex - 1 + inspectedCardList.length) % inspectedCardList.length;
+    setInspectedCardIndex(nextIdx);
+    setInspectedCard(inspectedCardList[nextIdx]);
+  };
+
+  const handleNextInspectedCard = () => {
+    if (!inspectedCardList || inspectedCardList.length <= 1) return;
+    const nextIdx = (inspectedCardIndex + 1) % inspectedCardList.length;
+    setInspectedCardIndex(nextIdx);
+    setInspectedCard(inspectedCardList[nextIdx]);
+  };
+
+  useEffect(() => {
+    if (!inspectedCard) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft') handlePrevInspectedCard();
+      else if (e.key === 'ArrowRight') handleNextInspectedCard();
+      else if (e.key === 'Escape') setInspectedCard(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [inspectedCard, inspectedCardList, inspectedCardIndex]);
 
   const displayPlayerNumber = (id) => (parseInt(id) + 1).toString();
   const humanPlayerIds = Object.keys(G.players).filter(id => !G.players[id].isCpu);
@@ -126,34 +163,6 @@ export const MobileDeflategateBoard = ({
     }
   }, [isPendingReplacementForMe, G.pendingReplacement?.wonCard?.uniqueId]);
 
-  // Automated turn stepper for mobile Skip buttons
-  useEffect(() => {
-    if (!skipMode) return;
-    if (G.pendingReplacement) {
-      setSkipMode(null);
-      return;
-    }
-    if (ctx.phase !== 'auctionPhase') {
-      setSkipMode(null);
-      return;
-    }
-    if (skipMode === 'myTurn') {
-      if (activeActingPlayerId === effectivePlayerID || humanHasWonInRound) {
-        setSkipMode(null);
-        return;
-      }
-    }
-    if (isCpuTurn) {
-      if (playMode === 'online' && String(playerID) !== '0') return;
-      const timer = setTimeout(() => {
-        moves.stepCpuTurn();
-      }, 150);
-      return () => clearTimeout(timer);
-    } else if (skipMode === 'refresh' && !humanHasWonInRound) {
-      setSkipMode(null);
-    }
-  }, [skipMode, activeActingPlayerId, ctx.phase, isCpuTurn, G.pendingReplacement, humanHasWonInRound, effectivePlayerID, moves]);
-
   // Auto-switch to Auction tab when human turn starts
   const isMyBiddingTurn = ctx.phase === 'auctionPhase' && G.board.activeAuctionCardIndex !== null && String(ctx.currentPlayer) === String(effectivePlayerID);
   useEffect(() => {
@@ -209,14 +218,6 @@ export const MobileDeflategateBoard = ({
                 ))}
               </div>
             )}
-            {setIsMobile && (
-              <button
-                onClick={() => setIsMobile(false)}
-                className="mt-2 text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl border border-slate-700 text-slate-300"
-              >
-                🖥️ Switch to Desktop View
-              </button>
-            )}
           </div>
         </div>
       );
@@ -227,14 +228,6 @@ export const MobileDeflategateBoard = ({
         <div>
           <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
             <span className="text-xs font-bold text-slate-400">Player {displayPlayerNumber(effectivePlayerID)}</span>
-            {setIsMobile && (
-              <button
-                onClick={() => setIsMobile(false)}
-                className="text-[10px] bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded-lg border border-slate-700 text-slate-300"
-              >
-                🖥️ Desktop
-              </button>
-            )}
           </div>
 
           <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-300 uppercase mb-1">
@@ -511,18 +504,9 @@ export const MobileDeflategateBoard = ({
 
         <div className="flex items-center gap-1.5">
           {G.board.activeEvent && (
-            <div className="bg-indigo-950/80 border border-indigo-500/50 px-2 py-1 rounded-xl text-[10px] font-black text-indigo-300 truncate max-w-[130px]">
+            <div className="bg-indigo-950/80 border border-indigo-500/50 px-2.5 py-1 rounded-xl text-[10px] font-black text-indigo-300 truncate max-w-[150px]">
               {G.board.activeEvent.name}
             </div>
-          )}
-          {setIsMobile && (
-            <button
-              onClick={() => setIsMobile(false)}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded-xl text-[10px] font-bold border border-slate-700"
-              title="Switch to Desktop Layout"
-            >
-              🖥️ Desktop
-            </button>
           )}
         </div>
       </header>
@@ -539,18 +523,25 @@ export const MobileDeflategateBoard = ({
         </div>
       )}
 
-      {/* Persistent Quick Vitals Card for Human Player */}
-      <div className="bg-gradient-to-r from-slate-900 to-indigo-950/60 border border-indigo-500/40 p-3 rounded-2xl shadow-md mb-3 flex items-center justify-between">
+      {/* Persistent Quick Vitals Card for Human Player - Jumps to My Team Tab */}
+      <div 
+        onClick={() => setActiveTab('myRoster')}
+        className="bg-gradient-to-r from-slate-900 to-indigo-950/70 border border-indigo-500/40 hover:border-indigo-400/70 p-3 rounded-2xl shadow-md mb-3 flex items-center justify-between cursor-pointer transition-all active:scale-[0.99] group"
+        title="Tap to jump to My Team tab & Franchise Powers"
+      >
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-indigo-600/30 border border-indigo-400/50 flex items-center justify-center text-lg shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-indigo-600/30 border border-indigo-400/50 flex items-center justify-center text-lg shrink-0 group-hover:scale-105 transition-transform">
             🛡️
           </div>
           <div className="min-w-0">
-            <span className="text-xs font-black text-white truncate block">
-              {effectiveTeam?.name || `Player ${displayPlayerNumber(effectivePlayerID)}`}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-black text-white truncate block">
+                {effectiveTeam?.name || `Player ${displayPlayerNumber(effectivePlayerID)}`}
+              </span>
+              <span className="text-[9px] text-indigo-400 font-bold group-hover:translate-x-0.5 transition-transform shrink-0">➔</span>
+            </div>
             <span className="text-[10px] text-slate-400 font-medium">
-              Lineup: {(myPlayer.lineup || []).length}/{(effectiveTeam?.id === 'colts' ? '∞' : (effectiveTeam?.id === 'seahawks' ? 4 : 3) + (myPlayer.extraLineupSlots || 0))}
+              Lineup: {(myPlayer.lineup || []).length}/{(effectiveTeam?.id === 'colts' ? '∞' : (effectiveTeam?.id === 'seahawks' ? 4 : 3) + (myPlayer.extraLineupSlots || 0))} • <span className="text-indigo-300 font-bold">My Team</span>
             </span>
           </div>
         </div>
@@ -574,156 +565,286 @@ export const MobileDeflategateBoard = ({
         {/* TAB 1: AUCTION BLOCK */}
         {activeTab === 'auction' && (
           <div className="space-y-3">
-            {/* Active Nominated Player Card */}
+            {/* Active Nominated Player Card - Compact & Clean */}
             {activeCard ? (
-              <div className={`p-4 rounded-2xl border-2 shadow-xl ${getCardPhaseStyleHelper(activeCard)}`}>
-                <div className="flex justify-between items-center mb-1 text-xs">
-                  <span className="bg-slate-900 border border-slate-700 text-cyan-400 font-mono font-black px-2 py-0.5 rounded uppercase">
-                    {activeCard.position || 'WR'}
-                  </span>
-                  {renderPhaseBadgeHelper(activeCard.phase)}
-                </div>
-
-                <h3 className="text-xl font-black text-white mt-1">{activeCard.name}</h3>
-
-                <div className="mt-2 text-xs">
-                  {renderCardEffectsHelper(activeCard.effects, activeCard.specialText || activeCard.customText)}
-                </div>
-
-                <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                  <div className="font-mono text-slate-400">
-                    <span>Min: {activeCard.minBid}</span> • <span>Max: {effMaxBid}</span>
+              <div 
+                onClick={() => openInspectCard(activeCard, G.board.auctionPlayers)}
+                  className={`p-3 rounded-2xl border-2 shadow-lg cursor-pointer transition-all active:scale-[0.99] ${getCardPhaseStyleHelper(activeCard)}`}
+                >
+                  <div className="flex justify-between items-center mb-1 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="bg-slate-900 border border-slate-700 text-cyan-400 font-mono font-black px-1.5 py-0.5 rounded text-[10px] uppercase">
+                        {activeCard.position || 'WR'}
+                      </span>
+                      <span className="text-[10px] bg-yellow-500/20 text-yellow-300 font-bold px-1.5 py-0.5 rounded border border-yellow-500/40 uppercase">
+                        ON BLOCK 🔨
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {renderPhaseBadgeHelper(activeCard.phase)}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openInspectCard(activeCard, G.board.auctionPlayers);
+                        }}
+                        className="text-slate-400 hover:text-white text-xs px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700 font-bold"
+                        title="Inspect full details"
+                      >
+                        🔍
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-400 block">Current High Bid</span>
-                    <span className="text-sm font-black font-mono text-yellow-400">
-                      {G.board.highestBid === null ? 'None' : `${G.board.highestBid} Coins`}
+
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="text-base font-black text-white truncate">{activeCard.name}</h3>
+                    <div className="font-mono text-xs text-slate-300 shrink-0">
+                      <span className="text-yellow-400 font-bold">Min: {activeCard.minBid}</span> • <span className="text-amber-400 font-bold">Max: {effMaxBid}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-1 text-xs">
+                    {renderCardEffectsHelper(activeCard.effects, activeCard.specialText || activeCard.customText)}
+                  </div>
+
+                  <div className="mt-2 pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                    <div className="text-left">
+                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Current High Bid</span>
+                      <span className="text-sm font-black font-mono text-yellow-400">
+                        {G.board.highestBid === null ? 'None' : `${G.board.highestBid} Coins`}
+                      </span>
+                    </div>
+                    {G.board.highestBidder !== null ? (
+                      <div className="text-right">
+                        <span className="text-[9px] text-slate-400 uppercase font-bold block">Leader</span>
+                        <span className="text-xs font-bold text-blue-300 truncate max-w-[140px] block">
+                          {G.players[G.board.highestBidder]?.team?.name || `Player ${displayPlayerNumber(G.board.highestBidder)}`}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-slate-500 italic">No bids yet</span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* Awaiting Nomination Banner */
+                <div className="p-3.5 bg-slate-900 border border-slate-800 rounded-2xl text-center shadow-lg">
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <span className="text-xl">⭐</span>
+                    <h3 className="text-xs font-black text-white uppercase tracking-wider">
+                      {isMyTurnToNominate ? "Your Turn to Nominate!" : "Awaiting Nomination"}
+                    </h3>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    {isMyTurnToNominate
+                      ? "Tap any highlighted prospect card below to place on the auction block."
+                      : `Waiting for ${G.players[G.board.nominator]?.team?.name || `Player ${displayPlayerNumber(G.board.nominator)}`} to select a player...`}
+                  </p>
+                </div>
+              )}
+
+              {/* Auction Block Prospects Pool */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
+                    Auction Prospects ({G.board.auctionPlayers.filter(Boolean).length})
+                  </h4>
+                  {isMyTurnToNominate && (
+                    <span className="text-[10px] font-black uppercase text-yellow-300 animate-pulse">
+                      Tap to Nominate
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {G.board.auctionPlayers.map((card, idx) => {
+                    if (!card) return null;
+                    const isCurrentActive = G.board.activeAuctionCardIndex === idx;
+
+                    return (
+                      <div
+                        key={card.uniqueId || idx}
+                        onClick={() => {
+                          if (isMyTurnToNominate && !isCurrentActive) {
+                            moves.selectCard(idx, effectivePlayerID);
+                          } else {
+                            openInspectCard(card, G.board.auctionPlayers);
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all cursor-pointer shadow-md select-none relative group ${
+                          isCurrentActive 
+                            ? 'border-yellow-400 bg-yellow-950/30 ring-1 ring-yellow-400' 
+                            : isMyTurnToNominate 
+                              ? 'border-yellow-500/70 bg-slate-900/95 hover:border-yellow-400 active:scale-[0.98]' 
+                              : `${getCardPhaseStyleHelper(card)} hover:border-slate-500 active:scale-[0.98]`
+                        }`}
+                      >
+                        {/* Top Header Row: Position, Phase, and Inspect */}
+                        <div className="flex items-center justify-between gap-1 mb-1 text-[10px]">
+                          <span className="bg-slate-950 border border-slate-700 text-cyan-400 font-mono font-black px-1.5 py-0.5 rounded uppercase shrink-0">
+                            {card.position || 'WR'}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {renderPhaseBadgeHelper(card.phase)}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openInspectCard(card, G.board.auctionPlayers);
+                              }}
+                              className="text-slate-400 hover:text-white p-0.5 rounded text-[10px]"
+                              title="Inspect details"
+                            >
+                              🔍
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Card Name */}
+                        <h5 className="text-xs font-black text-white truncate mb-0.5">
+                          {card.name}
+                        </h5>
+
+                        {/* Min / Max Bids */}
+                        <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between mb-1.5 pb-1 border-b border-slate-800/80">
+                          <span>Min <b className="text-yellow-400">{card.minBid}</b></span>
+                          <span>Max <b className="text-amber-400">{card.maxBid}</b></span>
+                        </div>
+
+                        {/* Card Effects */}
+                        <div className="text-[10px] flex-1 my-1">
+                          {renderCardEffectsHelper(card.effects, null)}
+                          {(card.specialText || card.customText) && (
+                            <div className="text-[9px] line-clamp-2 text-amber-200 bg-amber-950/60 border border-amber-500/50 rounded px-1.5 py-0.5 mt-1 font-medium leading-tight">
+                              ⚡ {card.specialText || card.customText}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bottom Action Footer */}
+                        <div className="mt-2 pt-1.5 border-t border-slate-800/80">
+                          {isCurrentActive ? (
+                            <div className="w-full text-center py-1 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 font-black text-[10px] uppercase tracking-wider">
+                              Active
+                            </div>
+                          ) : isMyTurnToNominate ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                moves.selectCard(idx, effectivePlayerID);
+                              }}
+                              className="w-full py-1.5 rounded-lg bg-yellow-500 hover:bg-yellow-400 text-black font-black text-[10px] uppercase tracking-wider cursor-pointer shadow transition-all"
+                            >
+                              Nominate ➔
+                            </button>
+                          ) : (
+                            <div className="flex items-center justify-between text-[10px] text-slate-500 font-medium">
+                              <span>Prospect</span>
+                              <span className="text-slate-400 group-hover:text-blue-400 transition-colors">Details ➔</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: MY ROSTER */}
+          {activeTab === 'myRoster' && (
+            <div className="space-y-3">
+              {/* Franchise Power Hero Card */}
+              {effectiveTeam && (
+                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-slate-900 via-indigo-950/70 to-slate-900 border-2 border-indigo-500/50 shadow-xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-indigo-600/30 border border-indigo-400/60 flex items-center justify-center text-xl shrink-0 shadow-inner">
+                        🏈
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <h3 className="text-sm font-black text-white tracking-wide truncate">
+                            {effectiveTeam.name}
+                          </h3>
+                          {myPlayer.copiedTeam && (
+                            <span className="text-[9px] bg-purple-900 text-purple-200 border border-purple-500 px-1 py-0.2 rounded font-bold uppercase shrink-0">
+                              Copied
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider block">
+                          Franchise Power
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="bg-yellow-950/90 border border-yellow-500/60 text-yellow-300 text-xs font-black px-2 py-0.5 rounded-lg font-mono shadow-sm">
+                        🪙 {myPlayer.coins || 0}
+                      </span>
+                      <span className="bg-emerald-950/90 border border-emerald-500/60 text-emerald-300 text-xs font-black px-2 py-0.5 rounded-lg font-mono shadow-sm">
+                        🏈 {typeof myPlayer.psi === 'number' ? myPlayer.psi.toFixed(1) : myPlayer.psi || 0} PSI
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-indigo-950/60 border border-indigo-500/40 text-xs text-indigo-100 leading-relaxed shadow-inner">
+                    <div className="flex items-center gap-1 font-bold text-amber-300 mb-1 text-[10px] uppercase tracking-wider">
+                      <span>⚡ Special Ability</span>
+                    </div>
+                    {effectiveTeam.ability || 'No special ability active.'}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[11px] text-slate-400">
+                    <span>Starting Lineup Capacity:</span>
+                    <span className="font-mono font-bold text-slate-200">
+                      {(myPlayer.lineup || []).length} / {effectiveTeam.id === 'colts' ? '∞' : (effectiveTeam.id === 'seahawks' ? 4 : 3) + (myPlayer.extraLineupSlots || 0)} Cards
                     </span>
                   </div>
                 </div>
+              )}
 
-                {G.board.highestBidder !== null && (
-                  <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-300">
-                    <span>Highest Bidder:</span>
-                    <span className="font-bold text-blue-300">
-                      {G.players[G.board.highestBidder]?.team?.name || `Player ${displayPlayerNumber(G.board.highestBidder)}`}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* Awaiting Nomination Banner */
-              <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl text-center shadow-lg">
-                <span className="text-3xl block mb-2">⭐</span>
-                <h3 className="text-sm font-black text-white uppercase">
-                  {isMyTurnToNominate ? "Your Turn to Nominate!" : "Awaiting Nomination"}
-                </h3>
-                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  {isMyTurnToNominate
-                    ? "Tap any highlighted prospect card below to place on the auction block."
-                    : `Waiting for ${G.players[G.board.nominator]?.team?.name || `Player ${displayPlayerNumber(G.board.nominator)}`} to select a player...`}
-                </p>
-              </div>
-            )}
-
-            {/* Auction Block Prospects Pool */}
-            <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
-                  Auction Prospects ({G.board.auctionPlayers.filter(Boolean).length})
+                  My Active Lineup ({(myPlayer.lineup || []).length})
                 </h4>
-                {isMyTurnToNominate && (
-                  <span className="text-[10px] font-black uppercase text-yellow-300 animate-pulse">
-                    Tap a card to Nominate
-                  </span>
-                )}
+                <span className="text-[10px] text-indigo-400 font-bold">Tap card to inspect</span>
               </div>
 
-              <div className="grid grid-cols-1 gap-2">
-                {G.board.auctionPlayers.map((card, idx) => {
-                  if (!card) return null;
-                  const isCurrentActive = G.board.activeAuctionCardIndex === idx;
-
-                  return (
+              {(!myPlayer.lineup || myPlayer.lineup.length === 0) ? (
+                <div className="p-8 bg-slate-900 border border-slate-800 rounded-2xl text-center text-slate-500 text-xs italic">
+                  No active players in lineup. Win an auction to draft players!
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {myPlayer.lineup.map((card, idx) => (
                     <div
                       key={card.uniqueId || idx}
-                      onClick={() => {
-                        if (isMyTurnToNominate && !isCurrentActive) {
-                          moves.selectCard(idx, effectivePlayerID);
-                        }
-                      }}
-                      className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
-                        isCurrentActive 
-                          ? 'border-yellow-400 bg-yellow-950/20' 
-                          : isMyTurnToNominate 
-                            ? 'border-yellow-500/60 bg-slate-900 hover:border-yellow-400 cursor-pointer shadow-md' 
-                            : 'border-slate-800 bg-slate-900/60'
-                      }`}
+                      onClick={() => openInspectCard(card, myPlayer.lineup)}
+                      className={`p-3.5 rounded-2xl border-2 shadow-md cursor-pointer hover:border-slate-500 active:scale-[0.99] transition-all ${getCardPhaseStyleHelper(card)}`}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-[10px] bg-slate-950 border border-slate-700 text-cyan-400 font-mono font-black px-1.5 py-0.5 rounded uppercase shrink-0">
+                      <div className="flex justify-between items-center mb-1 text-xs">
+                        <span className="bg-slate-900 border border-slate-700 text-cyan-400 font-mono font-black px-2 py-0.5 rounded uppercase">
                           {card.position || 'WR'}
                         </span>
-                        <div className="min-w-0">
-                          <h5 className="text-xs font-black text-white truncate">{card.name}</h5>
-                          <span className="text-[10px] text-slate-400 font-mono block">
-                            Min {card.minBid} • Max {card.maxBid}
-                          </span>
+                        <div className="flex items-center gap-1.5">
+                          {renderPhaseBadgeHelper(card.phase)}
+                          <span className="text-slate-400 hover:text-white text-xs font-bold">🔍</span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        {renderPhaseBadgeHelper(card.phase)}
-                        {isMyTurnToNominate && !isCurrentActive && (
-                          <span className="text-xs text-yellow-400 font-black">Nominate ➔</span>
-                        )}
+                      <h4 className="text-base font-black text-white">{card.name}</h4>
+                      <div className="mt-1 text-xs">
+                        {renderCardEffectsHelper(card.effects, card.specialText || card.customText)}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        )}
-
-        {/* TAB 2: MY ROSTER */}
-        {activeTab === 'myRoster' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
-                My Active Lineup ({(myPlayer.lineup || []).length})
-              </h4>
-              <span className="text-[10px] text-slate-500 font-mono">🔄 = Per Round Effect</span>
-            </div>
-
-            {(!myPlayer.lineup || myPlayer.lineup.length === 0) ? (
-              <div className="p-8 bg-slate-900 border border-slate-800 rounded-2xl text-center text-slate-500 text-xs italic">
-                No active players in lineup. Win an auction to draft players!
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                {myPlayer.lineup.map((card, idx) => (
-                  <div
-                    key={card.uniqueId || idx}
-                    className={`p-3.5 rounded-2xl border-2 shadow-md ${getCardPhaseStyleHelper(card)}`}
-                  >
-                    <div className="flex justify-between items-center mb-1 text-xs">
-                      <span className="bg-slate-900 border border-slate-700 text-cyan-400 font-mono font-black px-2 py-0.5 rounded uppercase">
-                        {card.position || 'WR'}
-                      </span>
-                      {renderPhaseBadgeHelper(card.phase)}
-                    </div>
-
-                    <h4 className="text-base font-black text-white">{card.name}</h4>
-                    <div className="mt-1 text-xs">
-                      {renderCardEffectsHelper(card.effects, card.specialText || card.customText)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+          )}
 
         {/* TAB 3: ALL TEAMS & STANDINGS (DRILLDOWN FEATURE) */}
         {activeTab === 'teams' && (
@@ -868,6 +989,157 @@ export const MobileDeflategateBoard = ({
         G={G}
         onClose={() => setSelectedTeamDetailId(null)}
       />
+
+      {/* Inspected Player Card Full Detail Modal with Left/Right Navigation for Mobile */}
+      {inspectedCard && (
+        <div 
+          onClick={() => setInspectedCard(null)}
+          className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-sm w-full flex items-center justify-center cursor-default"
+          >
+            {/* Left Side Button: Prev Player (Floating Chevron) */}
+            {inspectedCardList.length > 1 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePrevInspectedCard();
+                }}
+                className="absolute -left-2 top-1/2 -translate-y-1/2 z-30 w-10 h-10 rounded-full bg-slate-900/95 hover:bg-blue-600 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer shadow-2xl transition-all active:scale-95 group backdrop-blur-md"
+                title="Previous Player"
+              >
+                <svg 
+                  className="w-5 h-5 stroke-[3]" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
+
+            {/* Main Player Card Modal Box */}
+            <div className="bg-slate-900 border-2 border-slate-700 p-4 rounded-3xl w-full text-left shadow-2xl space-y-3">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-2.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-lg">🔍</span>
+                  <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
+                    Player Card Details
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {inspectedCardList.length > 1 && (
+                    <div className="flex items-center gap-1 bg-slate-800/90 px-2 py-0.5 rounded-lg border border-slate-700 text-xs font-mono font-bold text-slate-300">
+                      <button
+                        type="button"
+                        onClick={handlePrevInspectedCard}
+                        className="hover:text-blue-400 cursor-pointer p-0.5"
+                        title="Previous Player"
+                      >
+                        ◀
+                      </button>
+                      <span>{inspectedCardIndex + 1}/{inspectedCardList.length}</span>
+                      <button
+                        type="button"
+                        onClick={handleNextInspectedCard}
+                        className="hover:text-blue-400 cursor-pointer p-0.5"
+                        title="Next Player"
+                      >
+                        ▶
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setInspectedCard(null)}
+                    className="text-slate-400 hover:text-white font-bold p-1 text-base cursor-pointer"
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <div className={`p-3.5 rounded-2xl border text-left shadow-lg ${getCardPhaseStyleHelper(inspectedCard)}`}>
+                <div className="flex justify-between items-center text-xs font-mono font-bold mb-2">
+                  <span className="text-yellow-300">Min: {inspectedCard.minBid}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[11px] font-mono font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
+                    {inspectedCard.position || 'WR'}
+                  </span>
+                  <span className="text-amber-400">Max: {getEffectiveCardMaxBid(inspectedCard, G.board.activeEvent)}</span>
+                </div>
+                <h4 className="font-extrabold text-lg text-white mb-1.5">{inspectedCard.name}</h4>
+                <div className="text-xs mb-2 space-y-1">
+                  {renderCardEffectsHelper(inspectedCard.effects, null)}
+                </div>
+                {(inspectedCard.specialText || inspectedCard.customText) && (
+                  <div className="p-2.5 rounded-xl bg-amber-950/70 border border-amber-500/60 my-2 text-xs text-amber-200 leading-relaxed">
+                    <span className="font-bold text-amber-300 block mb-0.5">⚡ Special Ability:</span>
+                    {inspectedCard.specialText || inspectedCard.customText}
+                  </div>
+                )}
+                <div className="pt-2 border-t border-slate-800/80 flex justify-between items-center text-xs">
+                  {renderPhaseBadgeHelper(inspectedCard.phase)}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                {inspectedCardList.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handlePrevInspectedCard}
+                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 rounded-xl text-xs uppercase tracking-wider cursor-pointer border border-slate-700 shadow flex items-center justify-center gap-1 transition-all"
+                  >
+                    <span>◀</span> Prev
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setInspectedCard(null)}
+                  className={`${inspectedCardList.length > 1 ? 'flex-1' : 'w-full'} bg-slate-800 hover:bg-slate-750 text-white font-bold py-2 rounded-xl text-xs uppercase tracking-wider cursor-pointer border border-slate-700 shadow transition-all`}
+                >
+                  Close
+                </button>
+                {inspectedCardList.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleNextInspectedCard}
+                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 rounded-xl text-xs uppercase tracking-wider cursor-pointer border border-slate-700 shadow flex items-center justify-center gap-1 transition-all"
+                  >
+                    Next <span>▶</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Right Side Button: Next Player (Floating Chevron) */}
+            {inspectedCardList.length > 1 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNextInspectedCard();
+                }}
+                className="absolute -right-2 top-1/2 -translate-y-1/2 z-30 w-10 h-10 rounded-full bg-slate-900/95 hover:bg-blue-600 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer shadow-2xl transition-all active:scale-95 group backdrop-blur-md"
+                title="Next Player"
+              >
+                <svg 
+                  className="w-5 h-5 stroke-[3]" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Trade Rumors Card Picker Modal */}
       {G.board.pendingTradeRumors && !G.board.pendingTradeRumors?.picks?.[effectivePlayerID] && myPlayer.lineup && (
@@ -1437,37 +1709,14 @@ export const MobileDeflategateBoard = ({
                 </button>
               </div>
             ) : isCpuTurn ? (
-              /* CPU Turn Progression Controls */
-              <div className="flex items-center gap-1.5 justify-between">
-                <button
-                  onClick={() => moves.stepCpuTurn()}
-                  className="flex-1 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-black rounded-xl text-xs uppercase"
-                >
-                  Next CPU Action ➔
-                </button>
-
-                {!humanHasWonInRound && (
-                  <button
-                    onClick={() => setSkipMode('myTurn')}
-                    className="px-2.5 py-2 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs"
-                  >
-                    My Turn ⏩
-                  </button>
-                )}
-
-                <button
-                  onClick={() => {
-                    if (humanHasWonInRound) {
-                      setSkipMode('refresh');
-                      if (isCpuTurn) moves.stepCpuTurn();
-                    }
-                  }}
-                  disabled={!humanHasWonInRound}
-                  className="px-2.5 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs disabled:opacity-40"
-                >
-                  Refresh ⏩
-                </button>
-              </div>
+              /* CPU Turn Progression Controls - Clean full-width stepper */
+              <button
+                type="button"
+                onClick={() => moves.stepCpuTurn()}
+                className="w-full py-2.5 bg-yellow-500 hover:bg-yellow-400 active:scale-[0.98] text-black font-black rounded-xl text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer"
+              >
+                Next CPU Action ➔
+              </button>
             ) : null}
           </div>
         )}

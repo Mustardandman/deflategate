@@ -16,6 +16,16 @@ const DeflategateBoard = (props) => {
     return isMobileWidth || isIPhoneOrMobile;
   });
 
+  React.useEffect(() => {
+    const handleResize = () => {
+      const isMobileWidth = window.innerWidth <= 768;
+      const isIPhoneOrMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+      setIsMobileView(isMobileWidth || isIPhoneOrMobile);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [desktopUiMode, setDesktopUiMode] = useState(() => {
     if (typeof window === 'undefined') return 'arena';
     return localStorage.getItem('deflategate_desktop_ui') || 'arena';
@@ -32,14 +42,13 @@ const DeflategateBoard = (props) => {
   };
 
   if (isMobileView) {
-    return <MobileDeflategateBoard {...props} setIsMobile={setIsMobileView} />;
+    return <MobileDeflategateBoard {...props} />;
   }
 
   if (desktopUiMode === 'classic') {
     return (
       <DesktopDeflategateBoardClassic 
         {...props} 
-        setIsMobile={setIsMobileView} 
         toggleDesktopUi={toggleDesktopUi} 
       />
     );
@@ -48,7 +57,6 @@ const DeflategateBoard = (props) => {
   return (
     <DesktopDeflategateBoardArena 
       {...props} 
-      setIsMobile={setIsMobileView} 
       toggleDesktopUi={toggleDesktopUi} 
     />
   );
@@ -213,29 +221,64 @@ const App = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
             <div>
               <label className="block text-slate-400 font-bold mb-1.5 uppercase text-[10px] tracking-wider font-sans">Total Teams (4-10)</label>
-              <input 
-                type="number" 
-                min="4" max="10" 
-                value={numPlayers} 
-                onChange={e => {
-                  const val = parseInt(e.target.value) || 4;
-                  setNumPlayers(val);
-                  if (numHumansChoice > val) setNumHumansChoice(val);
-                }}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-bold text-lg outline-none focus:border-blue-500 transition-colors"
-              />
+              <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl p-1.5 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = Math.max(4, numPlayers - 1);
+                    setNumPlayers(next);
+                    if (numHumansChoice > next) setNumHumansChoice(next);
+                  }}
+                  disabled={numPlayers <= 4}
+                  className="w-11 h-11 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
+                  title="Decrease teams"
+                >
+                  −
+                </button>
+                <div className="flex-1 text-center font-black text-xl text-white font-mono select-none">
+                  {numPlayers} <span className="text-xs text-slate-400 font-sans font-medium">Teams</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = Math.min(10, numPlayers + 1);
+                    setNumPlayers(next);
+                  }}
+                  disabled={numPlayers >= 10}
+                  className="w-11 h-11 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
+                  title="Increase teams"
+                >
+                  +
+                </button>
+              </div>
             </div>
 
             {playMode === 'pvp_cpu' || playMode === 'online' ? (
               <div>
                 <label className="block text-slate-400 font-bold mb-1.5 uppercase text-[10px] tracking-wider font-sans">Human Players (2 to {numPlayers})</label>
-                <input 
-                  type="number" 
-                  min="2" max={numPlayers} 
-                  value={actualNumHumans} 
-                  onChange={e => setNumHumansChoice(parseInt(e.target.value) || 2)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-bold text-lg outline-none focus:border-purple-500 transition-colors"
-                />
+                <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl p-1.5 shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setNumHumansChoice(Math.max(2, actualNumHumans - 1))}
+                    disabled={actualNumHumans <= 2}
+                    className="w-11 h-11 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
+                    title="Decrease human players"
+                  >
+                    −
+                  </button>
+                  <div className="flex-1 text-center font-black text-xl text-white font-mono select-none">
+                    {actualNumHumans} <span className="text-xs text-slate-400 font-sans font-medium">Humans</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNumHumansChoice(Math.min(numPlayers, actualNumHumans + 1))}
+                    disabled={actualNumHumans >= numPlayers}
+                    className="w-11 h-11 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
+                    title="Increase human players"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             ) : null}
 

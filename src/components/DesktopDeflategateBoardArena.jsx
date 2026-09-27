@@ -11,7 +11,6 @@ export const DesktopDeflategateBoardArena = ({
   vsCpu, 
   playMode, 
   numHumans: initialNumHumans, 
-  setIsMobile, 
   toggleDesktopUi 
 }) => {
   const [showRules, setShowRules] = useState(false);
@@ -845,17 +844,6 @@ export const DesktopDeflategateBoardArena = ({
           >
             📖 Rules
           </button>
-
-          {/* Mobile Switcher */}
-          {setIsMobile && (
-            <button
-              onClick={() => setIsMobile(true)}
-              className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700 text-indigo-300 font-bold px-2 py-1 rounded-lg text-xs"
-              title="Switch to Mobile View"
-            >
-              📱 Mobile
-            </button>
-          )}
 
           {/* Classic Desktop UI Revert Button */}
           {toggleDesktopUi && (

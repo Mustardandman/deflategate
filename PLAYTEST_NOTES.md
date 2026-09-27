@@ -411,4 +411,40 @@ Playtest #23: (Complete)
      - Integrated Chargers ability into the top banner during the refresh phase (`calculateRefreshResults`).
      - Corrected CPU outbidding tracking so the outbidding franchise (rather than the outbid player) is awarded outbid credits.
      - Posts top banner event and franchise ability notification: `⚡ Chargers Ability: Chargers gained X coins by outbiding opposing teams`.
+-----------------
+Playtest #24: (Complete)
+Let's switch to working on the Mobile version of the game.
+Don't allow there to be a desktop view switch when the user is using a phone. Also don't allow the desktop version to have a switch to mobile view. Delete that button and functionality in the game.
+On mobile, when trying to edit teams in the Pre-Game Setup, it makes me type the number of teams I want. I would rather there be a button that allows me to alter the teams up or down 1
+For mobile, under the my team tab, I like the setup, but it also needs to include the special power of the team I selected
+For Auction tab, I need to be able to see the player card like in the desktop. I need to be able to see what each player does. You can probably fit 2 or 3 columns of cards on the screen at once. I think you should still have the selected card for the auction be displayed at the top, just smaller. 
+The team icon on the top of the auction tab, when clicked should jump me straight to the My Team tab
+Delete the My turn and Refresh buttons. Just have the next cpu action button for mobile
+
+- Completed / Fixed in Playtest #24:
+  1. Automatic View Detection & Switcher Removal:
+     - Deleted the `🖥️ Desktop View` buttons from Mobile (`MobileDeflategateBoard.jsx`).
+     - Deleted the `📱 Mobile View` buttons from both Desktop UIs (`DesktopDeflategateBoardArena.jsx` and `DesktopDeflategateBoardClassic.jsx`).
+     - View mode dynamically and automatically matches window width (`<= 768px`) or mobile user agent (`iPhone|iPad|iPod|Android`) with active resize listeners in `App.jsx`.
+  2. Pre-Game Setup Steppers:
+     - Replaced manual number input fields for Total Teams (4-10) and Human Players (2 to N) with tactile `[−]` and `[+]` button steppers.
+     - Added instant min/max bounds checking and visual styling.
+  3. Franchise Special Power in "My Team" Tab:
+     - Added a dedicated, premium Franchise Hero Card at the top of the "My Team" (`myRoster`) tab.
+     - Displays franchise name, icon, full special ability description, coin and deflation balances, and starting lineup slot capacity.
+     - If the player is Buccaneers copying another team's power, clearly displays the copied power and "COPIED" badge.
+     - Made lineup cards clickable to open the player inspection modal.
+  4. Desktop-Style Player Cards in Mobile Auction Tab:
+     - Organized the auction prospects pool into a responsive 2 to 3 column grid (`grid grid-cols-2 gap-2 sm:grid-cols-3`).
+     - Displays full desktop-parity player card details on mobile: position badge, phase badge, card name, min/max bids, card effects with TURN/INSTANT badges, and special ability preview.
+     - Rendered the currently nominated active auction card at the top in a compact format to conserve vertical screen space.
+     - Included a full-screen player inspect modal with floating chevron navigation arrows (`◀` and `▶`), header `◀ X/Y ▶` quick-stepper, and bottom prev/next buttons.
+  5. Jump to My Team Tab from Header:
+     - Made the persistent team icon/vitals card at the top of the mobile screen clickable to jump directly to the "My Team" (`myRoster`) tab.
+     - Added visual indicator (`➔`) and subtitle ("Tap to view").
+  6. Cleaned Up CPU Action Bar:
+     - Removed redundant `My Turn ⏩` and `Refresh ⏩` buttons from the mobile action bar during CPU turns.
+     - Replaced with a single prominent, full-width `Next CPU Action ➔` button.
+
+
 

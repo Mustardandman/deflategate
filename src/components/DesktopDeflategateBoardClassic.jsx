@@ -3,7 +3,7 @@ import { getEffectiveTeamId, getEffectiveCardMaxBid, isGenuinePlayerCard } from 
 import { TEAMS } from '../GameData';
 import { RulesModal, RollingSlotCounter } from './RulesModal';
 
-export const DesktopDeflategateBoardClassic = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans: initialNumHumans, setIsMobile, toggleDesktopUi }) => {
+export const DesktopDeflategateBoardClassic = ({ G, ctx, moves, playerID, vsCpu, playMode, numHumans: initialNumHumans, toggleDesktopUi }) => {
   const [showRules, setShowRules] = useState(false);
   const [showLog, setShowLog] = useState(true);
   const [peekLineupModal, setPeekLineupModal] = useState(false);
@@ -1843,18 +1843,6 @@ export const DesktopDeflategateBoardClassic = ({ G, ctx, moves, playerID, vsCpu,
           >
             <span>📖</span> Rules Guide
           </button>
-
-          {/* Mobile View Switcher */}
-          {setIsMobile && (
-            <button 
-              type="button"
-              onClick={() => setIsMobile(true)}
-              className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-300 font-bold px-3 py-2.5 rounded-xl text-xs shadow flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
-              title="Preview Mobile / iPhone Layout"
-            >
-              <span>📱</span> Mobile View
-            </button>
-          )}
 
           {/* Tabletop Arena View Switcher */}
           {toggleDesktopUi && (
