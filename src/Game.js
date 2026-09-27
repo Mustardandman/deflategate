@@ -2012,6 +2012,188 @@ export const calculateRefreshResults = (G) => {
   G.board.inRefreshSummary = true;
 };
 
+export const selectCpuBucsTeamToCopy = (availableTeams) => {
+  // Never copy negative, non-ability, or self teams
+  const BLACKLIST = ['broncos', 'browns', 'patriots', 'buccaneers'];
+  const candidates = availableTeams.filter(t => t && !BLACKLIST.includes(t.id));
+  if (candidates.length === 0) {
+    const fallbackCandidates = TEAMS.filter(t => !BLACKLIST.includes(t.id));
+    return fallbackCandidates[Math.floor(Math.random() * fallbackCandidates.length)] || availableTeams[0];
+  }
+
+  // Tier bonuses for powerful franchise powers
+  const TIER_BONUSES = {
+    colts: 18,     // Unlimited lineup slots
+    panthers: 12,  // Passive -2 PSI every round
+    rams: 10,      // 2x multiplier token
+    packers: 9,    // Phase 1 deflation & coin synergy
+    texans: 8,     // QB coins + deflation
+    cowboys: 8,    // 2 coins every round
+    lions: 8,      // First claim coins
+    seahawks: 7,   // 4th lineup slot
+    falcons: 6,    // Mulligan auction row
+    chiefs: 6,     // Free claim at minimum
+    jets: 6,       // -4 PSI on max bid
+    eagles: 6,     // Tush push opponents
+    dolphins: 5,   // 0 coins emergency 3 coins
+    chargers: 5,   // Outbid bonus coins
+    cardinals: 5,  // Swap top deck card
+    ravens: 4,     // 3 positions bonus coins
+    saints: 4,     // Immunity to negative coins & inflation
+    vikings: 4,
+    bears: 3,
+    bills: 3
+  };
+
+  // Score candidate teams: higher initialPsi and lower starting coins indicate stronger abilities
+  const scored = candidates.map(team => {
+    const psiBonus = (team.initialPsi || 45) * 1.5;
+    const coinPenalty = team.coins || 10;
+    const tierBonus = TIER_BONUSES[team.id] || 0;
+    const score = psiBonus - coinPenalty + tierBonus;
+    return { team, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+
+  // Slight controlled randomness: 75% pick top choice, 25% pick second choice if available
+  if (scored.length > 1 && Math.random() < 0.25) {
+    return scored[1].team;
+  }
+  return scored[0].team;
+};
+
+export const executeActiveEvent = (G) => {
+  const ev = G.board.activeEvent;
+  if (!ev) return;
+
+  if (ev.category === 'instant_inflate') {
+    Object.keys(G.players).forEach(id => applyPsiInflated(G, id, ev.amount || 7));
+    G.board.eventNotification = `🔥 Hot Air: All eligible players inflated by +${ev.amount || 7} PSI!`;
+    addLog(G, G.board.eventNotification);
+  } else if (ev.category === 'instant_deflate') {
+    Object.keys(G.players).forEach(id => applyPsiDeflated(G, id, ev.amount || 7));
+    G.board.eventNotification = `❄️ Cold Air: All players deflated by -${ev.amount || 7} PSI!`;
+    addLog(G, G.board.eventNotification);
+  } else if (ev.category === 'match_second_psi') {
+    const sorted = Object.values(G.players).sort((a, b) => b.psi - a.psi);
+    if (sorted.length >= 2) {
+      const highest = sorted[0];
+      const secondHighest = sorted[1];
+      if (highest.psi === secondHighest.psi) {
+        G.board.eventNotification = `1st Overall Pick: Tie for highest PSI (${highest.psi}). No deflation occurred.`;
+      } else {
+        const diff = highest.psi - secondHighest.psi;
+        highest.psi = secondHighest.psi;
+        G.board.eventNotification = `1st Overall Pick: ${highest.team?.name || 'Player'} deflated by -${diff} PSI to match 2nd highest (${secondHighest.psi}).`;
+      }
+      addLog(G, G.board.eventNotification);
+      addBannerEvent(G, {
+        icon: '🎯',
+        title: '1st Overall Pick',
+        text: G.board.eventNotification
+      });
+    }
+  } else if (ev.category === 'legend_returns') {
+    let chosenCard;
+    if (G.board.round <= 6 && PHASE_2_PLAYERS.length > 0) {
+      chosenCard = { ...PHASE_2_PLAYERS[Math.floor(Math.random() * PHASE_2_PLAYERS.length)], uniqueId: `p2_leg_${Date.now()}` };
+    } else if (HOF_PLAYERS.length > 0) {
+      chosenCard = { ...HOF_PLAYERS[Math.floor(Math.random() * HOF_PLAYERS.length)], uniqueId: `hof_leg_${Date.now()}` };
+    }
+    if (chosenCard) {
+      G.decks.activePlayers.push(chosenCard);
+      G.board.legendNotification = `⭐ Team Legend Returns! ${chosenCard.name} (${chosenCard.phase === 'hof' ? 'Hall of Fame' : 'Phase 2'}) was placed on top of the Player Deck!`;
+      addLog(G, G.board.legendNotification);
+    }
+  } else if (ev.category === 'overpaid') {
+    addLog(G, `Round ${G.board.round} Event: ${ev.name} — Player card maximum purchase prices increased by +${ev.maxAdd || 4}!`);
+  } else if (ev.category === 'give_psi') {
+    const numP = Object.keys(G.players).length;
+    const startP = parseInt(G.board.firstPlayer || '0');
+    const order = [];
+    for (let i = 0; i < numP; i++) {
+      order.push(((startP + i) % numP).toString());
+    }
+    G.board.pendingRivalry = {
+      order,
+      step: 0,
+      currentGiverId: order[0]
+    };
+    processRivalryStep(G);
+  } else if (ev.category === 'pass_right') {
+    G.board.pendingTradeRumors = {
+      picks: {}
+    };
+    Object.keys(G.players).forEach(id => {
+      const p = G.players[id];
+      if (p.isCpu && p.lineup.length > 0) {
+        let bestIdx = 0;
+        let lowestScore = Infinity;
+        p.lineup.forEach((c, idx) => {
+          let score = 0;
+          if (c.isPracticeSquad) score = -10;
+          else if (c.effects) {
+            c.effects.forEach(e => score += (e.type === 'deflate' ? e.amount * 2 : e.amount));
+          }
+          if (score < lowestScore) {
+            lowestScore = score;
+            bestIdx = idx;
+          }
+        });
+        G.board.pendingTradeRumors.picks[id] = bestIdx;
+      }
+    });
+  } else if (ev.category === 'bonus_auction') {
+    if (G.decks.activePlayers.length > 0) {
+      const card = G.decks.activePlayers.pop();
+      const tradeCard = { ...card, uniqueId: `trade_demand_${G.board.round}` };
+      G.board.tradeDemandCard = tradeCard;
+      G.board.isTradeDemandActive = true;
+      G.board.bonusAuction = null;
+      G.board.eventNotification = `🚨 Player Demands a Trade! ${tradeCard.name} (Min: ${tradeCard.minBid}, Max: ${tradeCard.maxBid}) will be auctioned first before the regular auction!`;
+      addLog(G, G.board.eventNotification);
+    }
+  } else if (ev.category === 'free_agency') {
+    Object.keys(G.players).forEach(id => {
+      const p = G.players[id];
+      if (p.isCpu && G.decks.activePlayers.length > 0) {
+        const cpuCard = G.decks.activePlayers.pop();
+        if (p.coins >= cpuCard.maxBid) {
+          let worstIdx = 0;
+          let worstScore = Infinity;
+          p.lineup.forEach((c, idx) => {
+            let score = c.isPracticeSquad ? -5 : (c.effects ? c.effects.reduce((a, e) => a + e.amount, 0) : 0);
+            if (score < worstScore) {
+              worstScore = score;
+              worstIdx = idx;
+            }
+          });
+          const discarded = p.lineup[worstIdx];
+          p.coins -= cpuCard.maxBid;
+          if (p.lineup.length > 0 && worstIdx < p.lineup.length) {
+            p.lineup[worstIdx] = cpuCard;
+          } else {
+            p.lineup.push(cpuCard);
+          }
+          if (discarded) {
+            if (!G.decks.discard) G.decks.discard = [];
+            G.decks.discard.push(discarded);
+          }
+          addLog(G, `Free Agency: CPU Player ${parseInt(id) + 1} signed ${cpuCard.name} for ${cpuCard.maxBid} coins${discarded ? `, replacing ${discarded.name}` : ''}!`);
+        } else {
+          if (!G.decks.discard) G.decks.discard = [];
+          G.decks.discard.push(cpuCard);
+          addLog(G, `Free Agency: CPU Player ${parseInt(id) + 1} passed on ${cpuCard.name}.`);
+        }
+      }
+    });
+    const humanIds = Object.keys(G.players).filter(id => !G.players[id].isCpu);
+    G.board.pendingFreeAgencyQueue = [...humanIds];
+    advanceFreeAgencyQueue(G);
+  }
+};
+
 export const DeflategateGame = {
   name: 'deflategate',
 
@@ -2547,8 +2729,19 @@ export const DeflategateGame = {
     confirmEventReveal: ({ G }) => {
       G.board.eventFlipRevealed = false;
       G.board.eventConfirmed = true;
-      if (G.board.pendingRivalry && G.board.pendingRivalry.step === 0) {
-        processRivalryStep(G);
+      executeActiveEvent(G);
+    },
+    proceedToRefresh: ({ G, events }) => {
+      G.board.pendingBills = null;
+      G.board.pendingBillsQueue = [];
+      G.board.pendingEagles = null;
+      G.board.pendingEaglesQueue = [];
+      G.pendingReplacement = null;
+      G.board.postAuctionComplete = true;
+      if (events && events.setPhase) {
+        events.setPhase('refreshPhase');
+      } else if (events && events.endPhase) {
+        events.endPhase();
       }
     },
     confirmRefreshSummary: ({ G }) => {
@@ -2798,7 +2991,7 @@ export const DeflategateGame = {
         const otherDrafted = Object.values(G.players).filter(p => p.team && p.team.id !== 'buccaneers').map(p => p.team);
 
         if (bucsPlayer.isCpu) {
-          const chosenTeam = otherDrafted[Math.floor(Math.random() * otherDrafted.length)] || TEAMS[0];
+          const chosenTeam = selectCpuBucsTeamToCopy(otherDrafted);
           bucsPlayer.copiedTeam = chosenTeam;
           if (chosenTeam.id === 'seahawks' && bucsPlayer.lineup.length < 4) {
             bucsPlayer.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${bucsPlayerId}_3` });
@@ -3007,132 +3200,6 @@ export const DeflategateGame = {
 
         addLog(G, `Round ${G.board.round} Event Revealed: ${ev.name} — ${ev.effect}`);
 
-        if (ev.category === 'instant_inflate') {
-          Object.keys(G.players).forEach(id => applyPsiInflated(G, id, ev.amount || 7));
-          G.board.eventNotification = `🔥 Hot Air: All eligible players inflated by +${ev.amount || 7} PSI!`;
-          addLog(G, G.board.eventNotification);
-        } else if (ev.category === 'instant_deflate') {
-          Object.keys(G.players).forEach(id => applyPsiDeflated(G, id, ev.amount || 7));
-          G.board.eventNotification = `❄️ Cold Air: All players deflated by -${ev.amount || 7} PSI!`;
-          addLog(G, G.board.eventNotification);
-        } else if (ev.category === 'match_second_psi') {
-          const sorted = Object.values(G.players).sort((a, b) => b.psi - a.psi);
-          if (sorted.length >= 2) {
-            const highest = sorted[0];
-            const secondHighest = sorted[1];
-            if (highest.psi === secondHighest.psi) {
-              G.board.eventNotification = `1st Overall Pick: Tie for highest PSI (${highest.psi}). No deflation occurred.`;
-            } else {
-              const diff = highest.psi - secondHighest.psi;
-              highest.psi = secondHighest.psi;
-              G.board.eventNotification = `1st Overall Pick: ${highest.team?.name || 'Player'} deflated by -${diff} PSI to match 2nd highest (${secondHighest.psi}).`;
-            }
-            addLog(G, G.board.eventNotification);
-            addBannerEvent(G, {
-              icon: '🎯',
-              title: '1st Overall Pick',
-              text: G.board.eventNotification
-            });
-          }
-        } else if (ev.category === 'legend_returns') {
-          let chosenCard;
-          if (G.board.round <= 6 && PHASE_2_PLAYERS.length > 0) {
-            chosenCard = { ...PHASE_2_PLAYERS[Math.floor(Math.random() * PHASE_2_PLAYERS.length)], uniqueId: `p2_leg_${Date.now()}` };
-          } else if (HOF_PLAYERS.length > 0) {
-            chosenCard = { ...HOF_PLAYERS[Math.floor(Math.random() * HOF_PLAYERS.length)], uniqueId: `hof_leg_${Date.now()}` };
-          }
-          if (chosenCard) {
-            G.decks.activePlayers.push(chosenCard);
-            G.board.legendNotification = `⭐ Team Legend Returns! ${chosenCard.name} (${chosenCard.phase === 'hof' ? 'Hall of Fame' : 'Phase 2'}) was placed on top of the Player Deck!`;
-            addLog(G, G.board.legendNotification);
-          }
-        } else if (ev.category === 'overpaid') {
-          addLog(G, `Round ${G.board.round} Event: ${ev.name} — Player card maximum purchase prices increased by +${ev.maxAdd || 4}!`);
-        } else if (ev.category === 'give_psi') {
-          const numP = Object.keys(G.players).length;
-          const startP = parseInt(G.board.firstPlayer || '0');
-          const order = [];
-          for (let i = 0; i < numP; i++) {
-            order.push(((startP + i) % numP).toString());
-          }
-          G.board.pendingRivalry = {
-            order,
-            step: 0,
-            currentGiverId: order[0]
-          };
-        } else if (ev.category === 'pass_right') {
-          G.board.pendingTradeRumors = {
-            picks: {}
-          };
-          Object.keys(G.players).forEach(id => {
-            const p = G.players[id];
-            if (p.isCpu && p.lineup.length > 0) {
-              let bestIdx = 0;
-              let lowestScore = Infinity;
-              p.lineup.forEach((c, idx) => {
-                let score = 0;
-                if (c.isPracticeSquad) score = -10;
-                else if (c.effects) {
-                  c.effects.forEach(e => score += (e.type === 'deflate' ? e.amount * 2 : e.amount));
-                }
-                if (score < lowestScore) {
-                  lowestScore = score;
-                  bestIdx = idx;
-                }
-              });
-              G.board.pendingTradeRumors.picks[id] = bestIdx;
-            }
-          });
-        } else if (ev.category === 'bonus_auction') {
-          if (G.decks.activePlayers.length > 0) {
-            const card = G.decks.activePlayers.pop();
-            const tradeCard = { ...card, uniqueId: `trade_demand_${G.board.round}` };
-            G.board.tradeDemandCard = tradeCard;
-            G.board.isTradeDemandActive = true;
-            G.board.bonusAuction = null;
-            G.board.eventNotification = `🚨 Player Demands a Trade! ${tradeCard.name} (Min: ${tradeCard.minBid}, Max: ${tradeCard.maxBid}) will be auctioned first before the regular auction!`;
-            addLog(G, G.board.eventNotification);
-          }
-        } else if (ev.category === 'free_agency') {
-          Object.keys(G.players).forEach(id => {
-            const p = G.players[id];
-            if (p.isCpu && G.decks.activePlayers.length > 0) {
-              const cpuCard = G.decks.activePlayers.pop();
-              if (p.coins >= cpuCard.maxBid) {
-                let worstIdx = 0;
-                let worstScore = Infinity;
-                p.lineup.forEach((c, idx) => {
-                  let score = c.isPracticeSquad ? -5 : (c.effects ? c.effects.reduce((a, e) => a + e.amount, 0) : 0);
-                  if (score < worstScore) {
-                    worstScore = score;
-                    worstIdx = idx;
-                  }
-                });
-                const discarded = p.lineup[worstIdx];
-                p.coins -= cpuCard.maxBid;
-                if (p.lineup.length > 0 && worstIdx < p.lineup.length) {
-                  p.lineup[worstIdx] = cpuCard;
-                } else {
-                  p.lineup.push(cpuCard);
-                }
-                if (discarded) {
-                  if (!G.decks.discard) G.decks.discard = [];
-                  G.decks.discard.push(discarded);
-                }
-                addLog(G, `Free Agency: CPU Player ${parseInt(id) + 1} signed ${cpuCard.name} for ${cpuCard.maxBid} coins${discarded ? `, replacing ${discarded.name}` : ''}!`);
-              } else {
-                if (!G.decks.discard) G.decks.discard = [];
-                G.decks.discard.push(cpuCard);
-                addLog(G, `Free Agency: CPU Player ${parseInt(id) + 1} passed on ${cpuCard.name}.`);
-              }
-            }
-          });
-          const humanIds = Object.keys(G.players).filter(id => !G.players[id].isCpu);
-          G.board.pendingFreeAgencyQueue = [...humanIds];
-          advanceFreeAgencyQueue(G);
-        }
-
-
         // Nominator & First Player Determination
         if (G.board.round === 1 || G.board.round1Nominator === null) {
           let first = '0';
@@ -3168,9 +3235,7 @@ export const DeflategateGame = {
         confirmEventReveal: ({ G }) => {
           G.board.eventFlipRevealed = false;
           G.board.eventConfirmed = true;
-          if (G.board.pendingRivalry && G.board.pendingRivalry.step === 0) {
-            processRivalryStep(G);
-          }
+          executeActiveEvent(G);
         },
         buyPracticeSquad: ({ G, playerID }, actingPlayerId) => {
           if (!G.board.pendingNewCapLimit) return INVALID_MOVE;
@@ -4050,6 +4115,19 @@ export const DeflategateGame = {
         },
         dismissJaguarsPopup: ({ G }) => {
           G.board.jaguarsPopupNotification = null;
+        },
+        proceedToRefresh: ({ G, events }) => {
+          G.board.pendingBills = null;
+          G.board.pendingBillsQueue = [];
+          G.board.pendingEagles = null;
+          G.board.pendingEaglesQueue = [];
+          G.pendingReplacement = null;
+          G.board.postAuctionComplete = true;
+          if (events && events.setPhase) {
+            events.setPhase('refreshPhase');
+          } else if (events && events.endPhase) {
+            events.endPhase();
+          }
         }
       },
       endIf: ({ G }) => (

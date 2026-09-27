@@ -516,3 +516,46 @@ Changes Implemented:
    - Stepper arrows (`◀` / `▶`): enlarged with `text-base px-3 py-2`.
    - Bid X button: reduced to `flex-1 py-2.5 px-2`, ensuring it remains the primary, largest button in the bar while giving balanced spacing to controls.
 -----------
+Playtest #27:
+- Event effects (e.g. Free Agency, Instant Inflate/Deflate, Trade Rumors, Rivalry) should not trigger or execute until the user confirms the Event Reveal notification modal.
+- In the top header of the mobile screen, delete the info icon (`ℹ️`) to the right of the event name.
+- In the inspected player card modal, allow the user to swipe left/right across the entire screen (backdrop and card) to navigate between cards.
+- Remove the floating side chevron arrows (`◀` / `▶`) on the left and right of the inspected player card modal.
+- CPU Buccaneers franchise ability copy logic overhaul: never copy negative or blank abilities (Broncos, Browns, Patriots); prioritize high starting PSI and low starting coins, with weighting for high-tier abilities and slight variance.
+- In the My Team tab and Team Detail modal: move the player name to the same row directly to the right of the position badge (`WR`, `QB`), saving vertical space without a separate title line. (Keep Auction tab cards unchanged).
+- In the My Team tab: add a prominent outline to the Special Ability box.
+- In the Team Detail modal: fix "PSI" wrapping to a new line in key vitals by expanding the Deflation box and shrinking the Coins box.
+- Auction to Refresh transition flow overhaul:
+  - When the last auction player is acquired, hide the "Next CPU Action" button and "Awaiting Nomination" banner; render a dedicated "Proceed to Refresh Phase" screen and button.
+  - In refreshPhase, display the team revenue/deflation results directly on the Auction tab (mobile-fitted layout).
+  - In the sticky footer bar during refreshPhase, show a button labeled "Proceed to Next Round ➔" that triggers confirmRefreshSummary.
+  - Remove redundant floating intro/advance modals for the refresh phase.
+
+Status: COMPLETE
+Changes Implemented:
+1. Event Effect Execution Order Deferred (`src/Game.js`):
+   - Refactored event processing so `eventPhase.onBegin` solely flips and announces the round event without executing state modifications or AI queues immediately.
+   - Centralized all event execution inside `executeActiveEvent(G)`, which is called only when the player confirms the event modal via `confirmEventReveal`.
+   - Prevented Free Agency, Trade Rumors, Rivalry, and instant deflate/inflate effects from occurring before the player sees the event announcement.
+2. Event Header Pill Info Icon Removed (`src/components/MobileDeflategateBoard.jsx`):
+   - Removed the `ℹ️` icon to the right of the event name pill in the header while maintaining clickability to view the event details modal.
+3. Screen-Wide Touch Swipe for Player Inspection (`src/components/MobileDeflategateBoard.jsx`):
+   - Bound horizontal swipe touch handlers (`onTouchStart` and `onTouchEnd`) to the outer full-screen backdrop overlay of the inspected player modal, enabling swiping anywhere on the screen.
+4. Floating Chevrons Removed (`src/components/MobileDeflategateBoard.jsx`):
+   - Removed the floating side chevron arrows (`◀` / `▶`) from the left and right edges of the inspected player card container.
+5. Buccaneers CPU Copy Logic Overhaul (`src/Game.js`):
+   - Added `selectCpuBucsTeamToCopy(availableTeams)` with a strict blacklist preventing CPU Buccaneers from ever copying `broncos` (-3 coins), `browns` (cannot inflate), `patriots` (no ability), or `buccaneers` (self).
+   - Implemented scoring formula `(startingPsi * 1.5) - startingCoins + tierBonus` with 75/25 top-choice variance to ensure strategic franchise choices.
+6. Player Card Layout in My Team & Teams (`src/components/MobileDeflategateBoard.jsx`, `src/components/TeamDetailModal.jsx`):
+   - In both `myRoster` active lineup cards and `TeamDetailModal` lineup cards, aligned the player name directly to the right of the position badge on the same row, saving vertical space.
+   - Kept the Auction tab prospect card layout unchanged.
+7. Prominent Special Ability Box Outline (`src/components/MobileDeflategateBoard.jsx`):
+   - Styled the Special Ability card in the `myRoster` tab with `border-2 border-indigo-400 shadow-md ring-1 ring-indigo-400/30`.
+8. Team Detail Vitals Sizing & Layout (`src/components/TeamDetailModal.jsx`):
+   - Rebalanced the key vitals grid into a 5-column layout with 3 columns for Deflation (`col-span-3`) and 2 columns for Coins (`col-span-2`), with `whitespace-nowrap` to prevent "PSI" from wrapping.
+9. Auction -> Refresh Transition Flow & In-Tab Payouts (`src/components/MobileDeflategateBoard.jsx`, `src/Game.js`):
+   - Added `proceedToRefresh` move in `src/Game.js` to transition immediately to `refreshPhase`.
+   - When the last auction card is acquired (`isAuctionComplete`), hid "Next CPU Action ➔" and "Awaiting Nomination"; rendered a "Proceed to Refresh Phase 🔄" screen and button.
+   - In `refreshPhase`, rendered team payouts directly on the Auction tab in a mobile-fitted layout.
+   - Replaced floating refresh modals with a sticky footer button labeled "Proceed to Next Round ➔" that triggers `confirmRefreshSummary`.
+-----------

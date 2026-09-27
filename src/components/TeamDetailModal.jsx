@@ -172,16 +172,16 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
 
         {/* Modal Scrollable Body */}
         <div className="p-3 sm:p-4 overflow-y-auto space-y-2.5 flex-1">
-          {/* Key Vitals Grid - Condensed Single-Row Cards */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center justify-between">
-              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Deflation</span>
-              <span className="text-sm font-black font-mono text-emerald-400">🏈 {psiVal} PSI</span>
+          {/* Key Vitals Grid - Deflation box expanded (3/5) to prevent PSI overlap, Coins (2/5) */}
+          <div className="grid grid-cols-5 gap-2">
+            <div className="col-span-3 bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center justify-between min-w-0">
+              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 shrink-0">Deflation</span>
+              <span className="text-xs sm:text-sm font-black font-mono text-emerald-400 whitespace-nowrap shrink-0">🏈 {psiVal} PSI</span>
             </div>
 
-            <div className="bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center justify-between">
-              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Coins</span>
-              <span className="text-sm font-black font-mono text-yellow-400">🪙 {player.coins}</span>
+            <div className="col-span-2 bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center justify-between min-w-0">
+              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 shrink-0">Coins</span>
+              <span className="text-xs sm:text-sm font-black font-mono text-yellow-400 whitespace-nowrap shrink-0">🪙 {player.coins}</span>
             </div>
           </div>
 
@@ -250,18 +250,20 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
                       )}
 
                       <div>
-                        <div className="flex justify-between items-center mb-0.5 text-[10px]">
-                          <span className="bg-slate-900 border border-slate-700 text-cyan-400 font-mono font-black px-1.5 py-0.2 rounded uppercase">
-                            {card.position || 'WR'}
-                          </span>
-                          <div className="flex items-center gap-1">
+                        {/* Header: Position Badge + Player Name on the same line */}
+                        <div className="flex justify-between items-center mb-1 text-[10px]">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-1">
+                            <span className="bg-slate-900 border border-slate-700 text-cyan-400 font-mono font-black px-1.5 py-0.5 rounded uppercase text-[9px] shrink-0">
+                              {card.position || 'WR'}
+                            </span>
+                            <h5 className="font-extrabold text-white text-xs sm:text-sm leading-tight truncate">
+                              {card.name}
+                            </h5>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
                             {renderPhaseBadgeHelper(card.phase)}
                           </div>
                         </div>
-
-                        <h5 className="font-extrabold text-white text-xs sm:text-sm leading-snug truncate">
-                          {card.name}
-                        </h5>
 
                         <div className="mt-1 text-xs">
                           {renderCardEffectsHelper(card.effects, card.specialText || card.customText)}
