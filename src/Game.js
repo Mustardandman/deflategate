@@ -4351,6 +4351,9 @@ export const DeflategateGame = {
             G.board.postAuctionComplete = true;
           }
         },
+        dismissCardWonFlyAnimation: ({ G }) => {
+          G.board.cardWonFlyAnimation = null;
+        },
         replaceLineupCard: ({ G, playerID }, discardIndex, actingPlayerId) => {
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (!G.pendingReplacement || String(G.pendingReplacement.playerID) !== String(targetPlayerId)) {

@@ -559,3 +559,32 @@ Changes Implemented:
    - In `refreshPhase`, rendered team payouts directly on the Auction tab in a mobile-fitted layout.
    - Replaced floating refresh modals with a sticky footer button labeled "Proceed to Next Round ➔" that triggers `confirmRefreshSummary`.
 -----------
+Playtest #28:
+- In the Cardinals Peek & Swap modal (`pendingCardinals`), show complete details of the incoming top-deck card and all auction prospects available to swap out: Min/Max bids, Everyturn/Instant effects, Name, Position, Phase badge, formatted consistently with the auction tab prospect cards.
+- Add a freeze delay (750ms lock) in two specific situations:
+  - When human bidding turn starts (prevents accidental Pass/Bid/Max/Stepper clicks while repeatedly tapping "Next CPU Action").
+  - When a player is acquired and human nomination turn starts (prevents accidental nomination clicks).
+- On the Teams tab (`activeTab === 'teams'`) during the auction phase (`ctx.phase === 'auctionPhase'`), highlight teams that have already acquired a player in red (`border-red-600 bg-red-950/40 ring-1 ring-red-500/40`) with an explicit "Acquired (Out)" badge.
+- When any player is acquired in the auction (by human or CPU), display a celebration popup matching the desktop version (`G.board.cardWonFlyAnimation`), showing winner team name, coins paid, and full card details, with a "Continue ➔" button and 4-second auto-dismiss.
+- On the Auction tab during `refreshPhase`, display the team payouts/revenue results in a 2-column grid (`grid grid-cols-2 gap-2`) rather than each team taking up a full row.
+
+Status: COMPLETE
+Changes Implemented:
+1. Cardinals Peek & Swap Modal Visual Overhaul (`src/components/MobileDeflategateBoard.jsx`):
+   - Overhauled the modal for incoming top-deck card and all auction prospect swap candidates to display full card layouts matching the auction block.
+   - Includes Position badge, Phase badge, Min/Max pricing, and full Everyturn/Instant effects helper (`renderCardEffectsHelper`).
+   - Added tactile "Swap ➔" action buttons for each candidate and styled with phase-based color schemes.
+2. 750ms Freeze Delay Locks for Misclick Prevention (`src/components/MobileDeflategateBoard.jsx`):
+   - Added `biddingLocked` state hook with a 750ms timer that activates as soon as `isMyBiddingTurn` becomes true, disabling Pass, Bid, Max, and Stepper controls to protect players repeatedly tapping "Next CPU Action".
+   - Added `nominateLocked` state hook with a 750ms timer that activates when `isMyTurnToNominate` becomes true, preventing accidental rapid taps on prospect cards right after an acquisition.
+3. Teams Tab Auction Acquired Highlighting in Red (`src/components/MobileDeflategateBoard.jsx`):
+   - During `auctionPhase` and `postAuctionPhase`, any team that has already acquired a player (`p.hasWonAuction || p.cardsWonThisRound > 0`) is highlighted in red (`border-red-600 bg-red-950/40 ring-1 ring-red-500/40`).
+   - Added a red `🔒 Acquired (Out)` badge next to their team name for immediate visual clarity on who is eliminated from bidding.
+4. Acquired Player Celebration Modal Popup on Mobile (`src/components/MobileDeflategateBoard.jsx`, `src/Game.js`):
+   - Ported the celebration popup from desktop (`G.board.cardWonFlyAnimation`) to mobile, showing the winning team name, coins paid, and the full acquired player card with Min/Max, Position, Effects, and Phase badge.
+   - Added a manual "Continue ➔" dismissal button and an automatic 4-second dismissal timer (`clientDismissedCardFlyTimestamp`).
+   - Added `dismissCardWonFlyAnimation` move to `postAuctionPhase` in `src/Game.js` for clean state handling when the final card of the round is won.
+5. Refresh Phase 2-Column Responsive Layout (`src/components/MobileDeflategateBoard.jsx`):
+   - Converted the refresh phase revenue/deflation results on the Auction tab from a single-column full-width list to a 2-column grid (`grid grid-cols-2 gap-2`).
+   - Styled each card with team icon, team name, YOU badge, current balances, and round gain pills (`+X 🪙`, `-Y PSI`) for a compact and readable display.
+-----------
