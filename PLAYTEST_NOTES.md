@@ -444,7 +444,37 @@ Delete the My turn and Refresh buttons. Just have the next cpu action button for
      - Added visual indicator (`➔`) and subtitle ("Tap to view").
   6. Cleaned Up CPU Action Bar:
      - Removed redundant `My Turn ⏩` and `Refresh ⏩` buttons from the mobile action bar during CPU turns.
-     - Replaced with a single prominent, full-width `Next CPU Action ➔` button.
+-----------
+Playtest #25:
+New cap limit event has two problems, one is that it pops up with a screen for the user to choose the new cap limit for this round. That isn't what it's supposed to do at all. It's supposed to increase all the players in the auction row's max bid by 4. Not sure why the user is picking how much they want it increased. Second, there is no event notification pop up saying the new cap limit event is the event this round, it just goes to the other screen where the user chooses the cap limit instead. Also the game gets stuck at the screen and doesn't allow me to continue when I click
+In the teams section when I click on a team. Delete the lineup slots and per round gain boxes, no need for them.
+Also delete the per round effect symbol and description that is right to the right of the active lineup description
+When looking at a team in the teams section, allow the user to be able to swipe to the left or right to navigate to the next team. Also allow the user to swipe left or right to navigate to a new tab when they are in a tab but not looking at the full details of a team. Also, allow the user to swipe when they click into a player in the auction tab. So they can scroll through the players that way. Also works in the my team and teams tab when they are looking at the player cards of a team. Have it scroll through the players in the active lineup when the user swipes
+In the my team tab, delete the starting lineup capacity description
+The event name is labeled in the top right side of all screens right now. Allow the user to click it to see what the current event is and the description of that event
+The top of the screen says rounds 1/9 when it should be rounds 1/10
 
-
-
+Status: COMPLETE
+Changes Implemented:
+1. "New Cap Limit" Event Rule Overhaul & Fixes:
+   - Fixed event definition in `src/GameData.js` from `buy_practice_squad` to `category: 'overpaid'`, `maxAdd: 4`, with effect text: "Increases the maximum purchase price of all auction players by +4".
+   - Removed the broken `pendingNewCapLimit` decision queue in `eventPhase` `onBegin`, allowing the event to show standard Event Reveal notification modal popup smoothly without freezing or blocking.
+   - Updated `getEffectiveCardMaxBid` in `src/Game.js` to automatically boost maximum purchase price of all auction prospects by +4 during New Cap Limit.
+   - Removed obsolete/broken `pendingNewCapLimit` modal from `MobileDeflategateBoard.jsx`.
+2. Team Inspection Detail Modal Cleanup (`TeamDetailModal.jsx`):
+   - Deleted the "Lineup Slots" and "Per Round Gain" vitals boxes.
+   - Simplified key vitals grid into a clean 2-column layout displaying Deflation (PSI) and Coins.
+   - Deleted the `🔄 = Per Round Effect` symbol and description next to Active Lineup.
+3. Mobile Touch Swipe Navigation System:
+   - **Between Teams**: Added horizontal touch swipe detection (`onTouchStart`/`onTouchEnd`) and tactile `◀ Prev Team` / `Next Team ▶` steppers in `TeamDetailModal.jsx` to cycle between all teams.
+   - **Between Main Screen Tabs**: Added horizontal touch swipe gesture handling to `<main>` in `MobileDeflategateBoard.jsx`, smoothly transitioning between `'auction'`, `'myRoster'`, `'teams'`, and `'log'` tabs when no modal is open.
+   - **Between Player Cards in Inspection Modal**: Added horizontal touch swipe support to the inspected card modal.
+   - **Lineup Inspection from Teams Tab**: Enabled clicking any player card in `TeamDetailModal` to inspect that player, passing the team's active lineup to cycle/swipe through all players in that team's lineup.
+4. "My Team" Tab Roster Hero Cleanup:
+   - Removed the "Starting Lineup Capacity: X / Y Cards" description box from the Franchise Hero card in `myRoster` tab.
+5. Clickable Top-Right Event Pill:
+   - Replaced static event label in header with an interactive button with info icon (`ℹ️`).
+   - Clicking opens a dedicated Event Details Info modal displaying the event name, round, full effect description, and modifier highlights.
+6. Round Counter Parity:
+   - Updated mobile header round counter from `Round ${G.board.round} / 9` to `Round ${G.board.round} / 10`.
+-----------

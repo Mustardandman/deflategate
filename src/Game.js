@@ -185,7 +185,7 @@ export const applyPenaltyCoinLoss = (G, playerID, amount) => {
 export const getEffectiveCardMaxBid = (card, activeEvent) => {
   if (!card) return 0;
   let max = card.maxBid;
-  if (activeEvent?.category === 'overpaid') {
+  if (activeEvent?.category === 'overpaid' || activeEvent?.name === 'New Cap Limit' || activeEvent?.name === 'Overpaid') {
     max += (activeEvent.maxAdd || 4);
   }
   return max;
@@ -3048,23 +3048,8 @@ export const DeflategateGame = {
             G.board.legendNotification = `⭐ Team Legend Returns! ${chosenCard.name} (${chosenCard.phase === 'hof' ? 'Hall of Fame' : 'Phase 2'}) was placed on top of the Player Deck!`;
             addLog(G, G.board.legendNotification);
           }
-        } else if (ev.category === 'buy_practice_squad') {
-          Object.keys(G.players).forEach(id => {
-            const p = G.players[id];
-            if (p.isCpu) {
-              if (p.coins >= 14) {
-                p.coins -= 10;
-                p.extraLineupSlots = (p.extraLineupSlots || 0) + 1;
-                p.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_cap_${id}_${Date.now()}_${Math.random()}` });
-                addLog(G, `New Cap Limit: CPU Player ${parseInt(id) + 1} (${p.team?.name}) paid 10 coins to add a Practice Squad Player!`);
-              } else {
-                addLog(G, `New Cap Limit: CPU Player ${parseInt(id) + 1} passed.`);
-              }
-            }
-          });
-          const humanIds = Object.keys(G.players).filter(id => !G.players[id].isCpu);
-          G.board.pendingNewCapLimitQueue = [...humanIds];
-          advanceNewCapLimitQueue(G);
+        } else if (ev.category === 'overpaid') {
+          addLog(G, `Round ${G.board.round} Event: ${ev.name} — Player card maximum purchase prices increased by +${ev.maxAdd || 4}!`);
         } else if (ev.category === 'give_psi') {
           const numP = Object.keys(G.players).length;
           const startP = parseInt(G.board.firstPlayer || '0');

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { getEffectiveCardMaxBid } from '../Game.js';
 
 export const renderCardEffectsHelper = (effects, specialText) => {
   return (
@@ -75,7 +76,7 @@ export const getCardPhaseStyleHelper = (card) => {
   return 'border-slate-800 bg-slate-950';
 };
 
-export const TeamDetailModal = ({ teamPlayerId, G, onClose }) => {
+export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId, onInspectCard }) => {
   if (teamPlayerId === null || teamPlayerId === undefined) return null;
   const player = G.players[String(teamPlayerId)];
   if (!player || !player.team) return null;
@@ -85,18 +86,44 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose }) => {
   const isCpu = Boolean(player.isCpu);
   const psiVal = typeof player.psi === 'number' ? player.psi.toFixed(1) : player.psi;
 
-  // Calculate passive income & deflation from active lineup
-  let totalCoinsPerRound = 0;
-  let totalDeflatePerRound = 0;
-  (player.lineup || []).forEach(c => {
-    if (!c.effects) return;
-    c.effects.forEach(eff => {
-      if (eff.perRound) {
-        if (eff.type === 'coins') totalCoinsPerRound += eff.amount;
-        if (eff.type === 'deflate') totalDeflatePerRound += eff.amount;
+  const allTeamPlayerIds = Object.keys(G.players).filter(id => G.players[id]?.team);
+  const currentIndex = allTeamPlayerIds.indexOf(String(teamPlayerId));
+  const hasMultipleTeams = allTeamPlayerIds.length > 1;
+
+  const handlePrevTeam = () => {
+    if (!hasMultipleTeams || !onSelectTeamPlayerId) return;
+    const prevIdx = (currentIndex - 1 + allTeamPlayerIds.length) % allTeamPlayerIds.length;
+    onSelectTeamPlayerId(allTeamPlayerIds[prevIdx]);
+  };
+
+  const handleNextTeam = () => {
+    if (!hasMultipleTeams || !onSelectTeamPlayerId) return;
+    const nextIdx = (currentIndex + 1) % allTeamPlayerIds.length;
+    onSelectTeamPlayerId(allTeamPlayerIds[nextIdx]);
+  };
+
+  const touchStartRef = useRef({ x: 0, y: 0 });
+
+  const handleTouchStart = (e) => {
+    if (!e.touches || e.touches.length === 0) return;
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+    };
+  };
+
+  const handleTouchEnd = (e) => {
+    if (!e.changedTouches || e.changedTouches.length === 0) return;
+    const deltaX = e.changedTouches[0].clientX - touchStartRef.current.x;
+    const deltaY = e.changedTouches[0].clientY - touchStartRef.current.y;
+    if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+      if (deltaX < 0) {
+        handleNextTeam();
+      } else {
+        handlePrevTeam();
       }
-    });
-  });
+    }
+  };
 
   return (
     <div 
@@ -104,8 +131,10 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose }) => {
       onClick={onClose}
     >
       <div 
-        className="bg-slate-900 border-2 border-indigo-500/80 rounded-3xl max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-white"
+        className="bg-slate-900 border-2 border-indigo-500/80 rounded-3xl max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-white select-none"
         onClick={(e) => e.stopPropagation()}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
       >
         {/* Modal Header */}
         <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between shrink-0">
@@ -125,6 +154,29 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose }) => {
                 }`}>
                   Player {displayId} • {isCpu ? 'CPU' : 'Human'}
                 </span>
+                {hasMultipleTeams && (
+                  <div className="flex items-center gap-1.5 bg-slate-950/80 border border-slate-700/80 px-2 py-0.5 rounded-full text-xs shadow-inner">
+                    <button
+                      type="button"
+                      onClick={handlePrevTeam}
+                      className="text-slate-400 hover:text-white px-1 font-black transition-colors"
+                      title="Previous Team"
+                    >
+                      ◀
+                    </button>
+                    <span className="font-mono text-slate-300 font-bold text-[10px]">
+                      {currentIndex + 1} / {allTeamPlayerIds.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleNextTeam}
+                      className="text-slate-400 hover:text-white px-1 font-black transition-colors"
+                      title="Next Team"
+                    >
+                      ▶
+                    </button>
+                  </div>
+                )}
               </div>
               <p className="text-xs text-slate-400 font-medium">Full Roster & Franchise Overview</p>
             </div>
@@ -141,8 +193,8 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose }) => {
 
         {/* Modal Scrollable Body */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
-          {/* Key Vitals Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          {/* Key Vitals Grid (Lineup slots and per round gain boxes deleted per Playtest #25) */}
+          <div className="grid grid-cols-2 gap-2.5">
             <div className="bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center">
               <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block mb-0.5">Deflation</span>
               <span className="text-xl font-black font-mono text-emerald-400">{psiVal}</span>
@@ -153,20 +205,6 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose }) => {
               <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block mb-0.5">Coins</span>
               <span className="text-xl font-black font-mono text-yellow-400">🪙 {player.coins}</span>
               <span className="text-[10px] text-slate-500 font-mono block">Initial: {team.coins}</span>
-            </div>
-
-            <div className="bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center">
-              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block mb-0.5">Per-Round Gain</span>
-              <span className="text-base font-black font-mono text-yellow-300">+{totalCoinsPerRound} 🪙</span>
-              <span className="text-base font-black font-mono text-emerald-400 ml-1">-{totalDeflatePerRound} 🏈</span>
-            </div>
-
-            <div className="bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center">
-              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block mb-0.5">Lineup</span>
-              <span className="text-xl font-black font-mono text-blue-400">
-                {(player.lineup || []).length} / {(team.id === 'colts' ? '∞' : (team.id === 'seahawks' ? 4 : 3) + (player.extraLineupSlots || 0))}
-              </span>
-              <span className="text-[10px] text-slate-500 font-mono block">Slots</span>
             </div>
           </div>
 
@@ -197,7 +235,7 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose }) => {
                   {(player.lineup || []).length} Active
                 </span>
               </h4>
-              <span className="text-[11px] text-slate-400 italic">🔄 = Per Round Effect</span>
+              <span className="text-[10px] text-indigo-400 font-bold">Tap card to inspect</span>
             </div>
 
             {(!player.lineup || player.lineup.length === 0) ? (
@@ -209,15 +247,18 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose }) => {
                 {player.lineup.map((card, cidx) => {
                   const isBroncosIgnored = team.id === 'broncos' && card.broncosRoundAcquired === G.board.round;
                   const hasRamsMultiplier = Boolean(card.ramsMultiplier);
+                  const effMax = getEffectiveCardMaxBid ? getEffectiveCardMaxBid(card, G.board.activeEvent) : (card.maxBid || 8);
 
                   return (
                     <div 
                       key={card.uniqueId || cidx} 
-                      className={`p-3.5 rounded-2xl border-2 flex flex-col justify-between text-left transition-all relative ${
+                      onClick={() => onInspectCard && onInspectCard(card, player.lineup)}
+                      className={`p-3.5 rounded-2xl border-2 flex flex-col justify-between text-left transition-all relative cursor-pointer hover:border-indigo-400 active:scale-[0.98] ${
                         isBroncosIgnored
                           ? 'border-red-500 bg-red-950/20 shadow-[0_0_12px_rgba(239,68,68,0.4)]'
                           : getCardPhaseStyleHelper(card)
                       }`}
+                      title="Tap to inspect player"
                     >
                       {/* Rams 2x badge if attached */}
                       {hasRamsMultiplier && (
@@ -254,7 +295,7 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose }) => {
 
                       <div className="mt-3 pt-2 border-t border-slate-800/80 flex justify-between items-center text-[10px] text-slate-400 font-mono">
                         <span>Min: {card.minBid || 1} Coins</span>
-                        <span>Max: {card.maxBid || 8} Coins</span>
+                        <span>Max: {effMax} Coins</span>
                       </div>
                     </div>
                   );
@@ -264,11 +305,32 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose }) => {
           </div>
         </div>
 
-        {/* Modal Footer */}
-        <div className="bg-slate-950 p-3 sm:p-4 border-t border-slate-800 text-right shrink-0">
+        {/* Modal Footer with Swipe / Prev-Next Controls */}
+        <div className="bg-slate-950 p-3 sm:p-4 border-t border-slate-800 flex items-center justify-between gap-2 shrink-0">
+          {hasMultipleTeams ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handlePrevTeam}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                title="Previous Team"
+              >
+                ◀ Prev Team
+              </button>
+              <button
+                type="button"
+                onClick={handleNextTeam}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                title="Next Team"
+              >
+                Next Team ▶
+              </button>
+            </div>
+          ) : <div />}
+
           <button
             onClick={onClose}
-            className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
+            className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-5 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
           >
             Close Details
           </button>

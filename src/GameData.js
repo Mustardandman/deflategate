@@ -43,7 +43,7 @@ export const EVENTS = [
   { id: 'e8', name: 'Player Demands a Trade', effect: 'Draw top card of the deck, players may bid before regular bidding phase', category: 'bonus_auction' },
   { id: 'e9', name: 'Free Agency', effect: 'Every player draws top card; may pay max price to swap into lineup', category: 'free_agency' },
   { id: 'e10', name: 'Trade Rumors', effect: 'Everyone picks one active player and passes it to the right', category: 'pass_right' },
-  { id: 'e11', name: 'New Cap Limit', effect: 'Each player can pay 10 coins to add a practice squad player', category: 'buy_practice_squad' },
+  { id: 'e11', name: 'New Cap Limit', effect: 'Increases the maximum purchase price of all auction players by +4', category: 'overpaid', maxAdd: 4 },
   { id: 'e12', name: 'Rookie Class', effect: 'Draw twice the number of players during Auction Phase', category: 'double_draft' },
   { id: 'e13', name: 'Team Legend Returns', effect: 'Add a random Phase 2 player to the top of the Player Deck (Hall of Fame player instead if it is round 7 or later)', category: 'legend_returns' },
   { id: 'e14', name: '1st Overall Pick', effect: 'Player with highest PSI deflates to match second highest', category: 'match_second_psi' },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TeamDetailModal, renderCardEffectsHelper, renderPhaseBadgeHelper, getCardPhaseStyleHelper } from './TeamDetailModal.jsx';
 import { getEffectiveTeamId, getEffectiveCardMaxBid } from '../Game.js';
 
@@ -18,6 +18,7 @@ export const MobileDeflategateBoard = ({
   const [replaceLocked, setReplaceLocked] = useState(false);
   const [dismissedAbilityIds, setDismissedAbilityIds] = useState([]);
   const [abilityCarouselIdx, setAbilityCarouselIdx] = useState(0);
+  const [showEventInfoModal, setShowEventInfoModal] = useState(false);
 
   // Inspected Player Card Modal State with Carousel Navigation
   const [inspectedCard, setInspectedCard] = useState(null);
@@ -47,6 +48,59 @@ export const MobileDeflategateBoard = ({
     setInspectedCard(inspectedCardList[nextIdx]);
   };
 
+  // Touch swipe handling for Inspected Player Card
+  const inspectTouchStartRef = useRef({ x: 0, y: 0 });
+  const handleInspectTouchStart = (e) => {
+    if (!e.touches || e.touches.length === 0) return;
+    inspectTouchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+    };
+  };
+  const handleInspectTouchEnd = (e) => {
+    if (!e.changedTouches || e.changedTouches.length === 0) return;
+    const deltaX = e.changedTouches[0].clientX - inspectTouchStartRef.current.x;
+    const deltaY = e.changedTouches[0].clientY - inspectTouchStartRef.current.y;
+    if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+      if (deltaX < 0) {
+        handleNextInspectedCard();
+      } else {
+        handlePrevInspectedCard();
+      }
+    }
+  };
+
+  // Touch swipe handling for Main Screen Tabs
+  const mainTabTouchStartRef = useRef({ x: 0, y: 0 });
+  const handleMainTabTouchStart = (e) => {
+    if (!e.touches || e.touches.length === 0) return;
+    mainTabTouchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+    };
+  };
+  const handleMainTabTouchEnd = (e) => {
+    // Only switch tabs if not currently looking at a team modal or player inspect modal
+    if (selectedTeamDetailId !== null || inspectedCard !== null || showEventInfoModal) return;
+    if (G.board.pendingFreeAgency || G.board.pendingPukaChoice || G.board.pendingRivalry) return;
+    if (!e.changedTouches || e.changedTouches.length === 0) return;
+
+    const deltaX = e.changedTouches[0].clientX - mainTabTouchStartRef.current.x;
+    const deltaY = e.changedTouches[0].clientY - mainTabTouchStartRef.current.y;
+
+    if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
+      const tabs = ['auction', 'myRoster', 'teams', 'log'];
+      const curIdx = tabs.indexOf(activeTab);
+      if (curIdx !== -1) {
+        if (deltaX < 0 && curIdx < tabs.length - 1) {
+          setActiveTab(tabs[curIdx + 1]);
+        } else if (deltaX > 0 && curIdx > 0) {
+          setActiveTab(tabs[curIdx - 1]);
+        }
+      }
+    }
+  };
+
   useEffect(() => {
     if (!inspectedCard) return;
     const handleKeyDown = (e) => {
@@ -72,8 +126,6 @@ export const MobileDeflategateBoard = ({
     activeTurnPlayerId = String(G.board.pendingTitansDraft.playerID);
   } else if (G.board.pendingFreeAgency && G.board.pendingFreeAgency.card) {
     activeTurnPlayerId = String(G.board.pendingFreeAgency.playerID);
-  } else if (G.board.pendingNewCapLimit && G.board.pendingNewCapLimit.active) {
-    activeTurnPlayerId = String(G.board.pendingNewCapLimit.playerID);
   } else if (G.board.pendingPukaChoice) {
     activeTurnPlayerId = String(G.board.pendingPukaChoice.playerID);
   } else if (G.board.pendingRivalry) {
@@ -176,7 +228,7 @@ export const MobileDeflategateBoard = ({
   const isBearsActive = G.board.highestBidder !== null && getEffectiveTeamId(G.players[G.board.highestBidder]) === 'bears';
   const bidIncrement = isBearsActive ? 2 : 1;
   const minRequiredBid = activeCard ? (G.board.highestBid === null ? activeCard.minBid : G.board.highestBid + bidIncrement) : 1;
-  const effMaxBid = activeCard ? (G.board.activeEvent?.category === 'overpaid' ? activeCard.maxBid + 4 : activeCard.maxBid) : 8;
+  const effMaxBid = activeCard ? getEffectiveCardMaxBid(activeCard, G.board.activeEvent) : 8;
   const maxAllowedBid = Math.min(myPlayer.coins || 0, effMaxBid);
   const nextBid = Math.min(minRequiredBid, maxAllowedBid);
 
@@ -497,16 +549,22 @@ export const MobileDeflategateBoard = ({
               Deflategate
             </h1>
             <span className="text-[10px] font-bold text-slate-400 block -mt-0.5">
-              Round {G.board.round} / 9 • {ctx.phase === 'auctionPhase' ? 'Auction' : ctx.phase === 'refreshPhase' ? 'Refresh' : 'Event'}
+              Round {G.board.round} / 10 • {ctx.phase === 'auctionPhase' ? 'Auction' : ctx.phase === 'refreshPhase' ? 'Refresh' : 'Event'}
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5">
           {G.board.activeEvent && (
-            <div className="bg-indigo-950/80 border border-indigo-500/50 px-2.5 py-1 rounded-xl text-[10px] font-black text-indigo-300 truncate max-w-[150px]">
-              {G.board.activeEvent.name}
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowEventInfoModal(true)}
+              className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/60 hover:border-indigo-400 px-2.5 py-1 rounded-xl text-[10px] font-black text-indigo-300 hover:text-white truncate max-w-[150px] flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm"
+              title="Click to view event details"
+            >
+              <span>{G.board.activeEvent.name}</span>
+              <span className="text-[9px] text-indigo-400">ℹ️</span>
+            </button>
           )}
         </div>
       </header>
@@ -560,8 +618,12 @@ export const MobileDeflategateBoard = ({
         </div>
       </div>
 
-      {/* Main Tab Content Panels */}
-      <main className="flex-1">
+      {/* Main Tab Content Panels with Horizontal Touch Swipe Navigation */}
+      <main 
+        className="flex-1"
+        onTouchStart={handleMainTabTouchStart}
+        onTouchEnd={handleMainTabTouchEnd}
+      >
         {/* TAB 1: AUCTION BLOCK */}
         {activeTab === 'auction' && (
           <div className="space-y-3">
@@ -708,7 +770,7 @@ export const MobileDeflategateBoard = ({
                         {/* Min / Max Bids */}
                         <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between mb-1.5 pb-1 border-b border-slate-800/80">
                           <span>Min <b className="text-yellow-400">{card.minBid}</b></span>
-                          <span>Max <b className="text-amber-400">{card.maxBid}</b></span>
+                          <span>Max <b className="text-amber-400">{getEffectiveCardMaxBid(card, G.board.activeEvent)}</b></span>
                         </div>
 
                         {/* Card Effects */}
@@ -795,13 +857,6 @@ export const MobileDeflategateBoard = ({
                       <span>⚡ Special Ability</span>
                     </div>
                     {effectiveTeam.ability || 'No special ability active.'}
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[11px] text-slate-400">
-                    <span>Starting Lineup Capacity:</span>
-                    <span className="font-mono font-bold text-slate-200">
-                      {(myPlayer.lineup || []).length} / {effectiveTeam.id === 'colts' ? '∞' : (effectiveTeam.id === 'seahawks' ? 4 : 3) + (myPlayer.extraLineupSlots || 0)} Cards
-                    </span>
                   </div>
                 </div>
               )}
@@ -988,16 +1043,20 @@ export const MobileDeflategateBoard = ({
         teamPlayerId={selectedTeamDetailId}
         G={G}
         onClose={() => setSelectedTeamDetailId(null)}
+        onSelectTeamPlayerId={(id) => setSelectedTeamDetailId(id)}
+        onInspectCard={(card, list) => openInspectCard(card, list)}
       />
 
-      {/* Inspected Player Card Full Detail Modal with Left/Right Navigation for Mobile */}
+      {/* Inspected Player Card Full Detail Modal with Left/Right Navigation & Touch Swipe for Mobile */}
       {inspectedCard && (
         <div 
           onClick={() => setInspectedCard(null)}
-          className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 cursor-pointer"
+          className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 cursor-pointer select-none"
         >
           <div 
             onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleInspectTouchStart}
+            onTouchEnd={handleInspectTouchEnd}
             className="relative max-w-sm w-full flex items-center justify-center cursor-default"
           >
             {/* Left Side Button: Prev Player (Floating Chevron) */}
@@ -1474,32 +1533,52 @@ export const MobileDeflategateBoard = ({
         </div>
       )}
 
-      {/* New Cap Limit Event Modal */}
-      {G.board.pendingNewCapLimit && G.board.pendingNewCapLimit.active && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border-2 border-yellow-500 p-5 rounded-3xl max-w-sm w-full text-center shadow-2xl space-y-3">
-            <span className="text-3xl block">💰</span>
-            <h3 className="text-lg font-black text-yellow-300 uppercase">New Cap Limit!</h3>
-            {String(G.board.pendingNewCapLimit.playerID) === String(effectivePlayerID) ? (
-              <>
-                <p className="text-slate-300 text-xs">Choose the new coin cap for this round:</p>
-                <div className="grid grid-cols-2 gap-2 pt-2">
-                  {[6, 8, 10, 12].map(limit => (
-                    <button
-                      key={limit}
-                      onClick={() => moves.setNewCapLimit(limit, effectivePlayerID)}
-                      className="bg-yellow-500 hover:bg-yellow-400 text-black font-black py-2.5 rounded-xl text-xs uppercase"
-                    >
-                      {limit} Coins
-                    </button>
-                  ))}
+      {/* Event Details Info Modal (opened by clicking header event name) */}
+      {showEventInfoModal && G.board.activeEvent && (
+        <div 
+          onClick={() => setShowEventInfoModal(false)}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150 cursor-pointer select-none"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-slate-900 border-2 border-indigo-500/80 rounded-3xl p-5 max-w-sm w-full text-center shadow-2xl space-y-4 cursor-default animate-in zoom-in-95 duration-150 text-white"
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="text-[10px] uppercase font-black tracking-widest text-indigo-400">
+                Round {G.board.round} / 10 Event
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowEventInfoModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-xs font-black transition-colors cursor-pointer"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-4xl block">📣</span>
+              <h3 className="text-xl font-black text-white tracking-wide uppercase drop-shadow">
+                {G.board.activeEvent.name}
+              </h3>
+              <div className="p-3.5 rounded-2xl bg-indigo-950/60 border border-indigo-500/40 text-xs sm:text-sm text-indigo-100 leading-relaxed font-medium">
+                {G.board.activeEvent.effect || G.board.activeEvent.description}
+              </div>
+              {(G.board.activeEvent.category === 'overpaid' || G.board.activeEvent.name === 'New Cap Limit' || G.board.activeEvent.name === 'Overpaid') && (
+                <div className="p-2.5 rounded-xl bg-amber-950/50 border border-amber-500/40 text-[11px] text-amber-300 font-bold leading-snug">
+                  ⚡ All auction prospects have their Max Bid increased by +{G.board.activeEvent.maxAdd || 4} this round!
                 </div>
-              </>
-            ) : (
-              <p className="text-slate-400 text-xs">
-                Waiting for Player {displayPlayerNumber(G.board.pendingNewCapLimit.playerID)} to set coin cap...
-              </p>
-            )}
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowEventInfoModal(false)}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer shadow-md"
+            >
+              Got It
+            </button>
           </div>
         </div>
       )}
