@@ -1,10 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Client } from 'boardgame.io/react';
-import { Local, SocketIO } from 'boardgame.io/multiplayer';
+import { SocketIO } from 'boardgame.io/multiplayer';
 import { DeflategateGame } from './Game';
-import { TEAMS } from './GameData';
 import { MobileDeflategateBoard } from './components/MobileDeflategateBoard';
-import { DesktopDeflategateBoardClassic } from './components/DesktopDeflategateBoardClassic';
 import { DesktopDeflategateBoardArena } from './components/DesktopDeflategateBoardArena';
 import { RulesModal } from './components/RulesModal';
 
@@ -16,7 +14,7 @@ const DeflategateBoard = (props) => {
     return isMobileWidth || isIPhoneOrMobile;
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleResize = () => {
       const isMobileWidth = window.innerWidth <= 768;
       const isIPhoneOrMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
@@ -26,61 +24,76 @@ const DeflategateBoard = (props) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const [desktopUiMode, setDesktopUiMode] = useState(() => {
-    if (typeof window === 'undefined') return 'arena';
-    return localStorage.getItem('deflategate_desktop_ui') || 'arena';
-  });
-
-  const toggleDesktopUi = () => {
-    setDesktopUiMode(prev => {
-      const next = prev === 'arena' ? 'classic' : 'arena';
-      try {
-        localStorage.setItem('deflategate_desktop_ui', next);
-      } catch (e) {}
-      return next;
-    });
-  };
-
   if (isMobileView) {
     return <MobileDeflategateBoard {...props} />;
   }
 
-  if (desktopUiMode === 'classic') {
-    return (
-      <DesktopDeflategateBoardClassic 
-        {...props} 
-        toggleDesktopUi={toggleDesktopUi} 
-      />
-    );
-  }
-
-  return (
-    <DesktopDeflategateBoardArena 
-      {...props} 
-      toggleDesktopUi={toggleDesktopUi} 
-    />
-  );
+  // Always use Arena layout on desktop
+  return <DesktopDeflategateBoardArena {...props} />;
 };
+
+const DIFFICULTY_OPTIONS = [
+  {
+    id: 'easy',
+    label: 'Easy',
+    icon: '🟢',
+    description: 'Relaxed pacing & conservative bids',
+    borderActive: 'border-emerald-400 bg-emerald-950/60 text-emerald-200 shadow-md shadow-emerald-500/20'
+  },
+  {
+    id: 'normal',
+    label: 'Normal',
+    icon: '🔵',
+    description: 'Balanced strategy & standard bids (Default)',
+    borderActive: 'border-blue-400 bg-blue-950/60 text-blue-200 shadow-md shadow-blue-500/20'
+  },
+  {
+    id: 'hard',
+    label: 'Hard',
+    icon: '🟠',
+    description: 'Aggressive nominations & roster counter-picks',
+    borderActive: 'border-amber-400 bg-amber-950/60 text-amber-200 shadow-md shadow-amber-500/20'
+  },
+  {
+    id: 'extreme',
+    label: 'Extreme',
+    icon: '🔴',
+    description: 'Ruthless cap pressure & maximum competition',
+    borderActive: 'border-red-400 bg-red-950/60 text-red-200 shadow-md shadow-red-500/20'
+  }
+];
 
 const App = () => {
   const [inGame, setInGame] = useState(false);
   const [showRules, setShowRules] = useState(false);
-  const [playMode, setPlayMode] = useState('local_vs_cpu'); // 'local_vs_cpu', 'pvp_cpu', 'pass_and_play', 'online'
+  
+  // Game Mode: Only 2 options ('solo_cpu' or 'with_friends')
+  const [gameMode, setGameMode] = useState('solo_cpu');
   const [numPlayers, setNumPlayers] = useState(4);
   const [numHumansChoice, setNumHumansChoice] = useState(2);
   const [playerID, setPlayerID] = useState('0');
   const [matchIdChoice, setMatchIdChoice] = useState('room-1');
-  const [desktopUiChoice, setDesktopUiChoice] = useState(() => {
-    if (typeof window === 'undefined') return 'arena';
-    return localStorage.getItem('deflategate_desktop_ui') || 'arena';
-  });
 
+  // CPU Difficulty: 4 options in 1 column
+  const [cpuDifficulty, setCpuDifficulty] = useState('normal');
+  const [difficultyExpanded, setDifficultyExpanded] = useState(true);
+
+  // Calculate actual humans & CPU counts
   let actualNumHumans = 1;
-  if (playMode === 'local_vs_cpu') actualNumHumans = 1;
-  else if (playMode === 'pass_and_play') actualNumHumans = numPlayers;
-  else if (playMode === 'pvp_cpu' || playMode === 'online') {
-    actualNumHumans = Math.max(2, Math.min(numPlayers, numHumansChoice));
+  if (gameMode === 'solo_cpu') {
+    actualNumHumans = 1;
+  } else {
+    // In "Play with Friends", defaults to 2, can range from 1 to numPlayers
+    actualNumHumans = Math.max(1, Math.min(numPlayers, numHumansChoice));
   }
+  const cpuOpponentsCount = Math.max(0, numPlayers - actualNumHumans);
+
+  // Keep playerID within bounds of available human slots
+  useEffect(() => {
+    if (parseInt(playerID, 10) >= actualNumHumans) {
+      setPlayerID('0');
+    }
+  }, [actualNumHumans, playerID]);
 
   const DeflategateClient = React.useMemo(() => {
     const config = {
@@ -88,149 +101,134 @@ const App = () => {
       board: DeflategateBoard,
       numPlayers: numPlayers,
       debug: false,
-      setupData: { numHumans: actualNumHumans }
+      setupData: { 
+        numHumans: actualNumHumans,
+        cpuDifficulty: cpuDifficulty
+      }
     };
-    if (playMode === 'online') {
+
+    if (gameMode === 'with_friends') {
       let serverUrl;
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.port === '3000') {
+      if (
+        window.location.hostname === 'localhost' || 
+        window.location.hostname === '127.0.0.1' || 
+        window.location.port === '3000' || 
+        window.location.port === '5173'
+      ) {
         serverUrl = `http://${window.location.hostname || 'localhost'}:8000`;
       } else {
         serverUrl = window.location.origin;
       }
       config.multiplayer = SocketIO({ server: serverUrl });
     }
+
     return Client(config);
-  }, [numPlayers, playMode, actualNumHumans]);
+  }, [numPlayers, gameMode, actualNumHumans, cpuDifficulty]);
 
   if (!inGame) {
+    const selectedDiffObj = DIFFICULTY_OPTIONS.find(d => d.id === cpuDifficulty) || DIFFICULTY_OPTIONS[1];
+
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white p-4 font-body">
-        <div className="bg-slate-900 p-8 sm:p-10 rounded-3xl border-2 border-slate-800 max-w-lg w-full text-center shadow-2xl space-y-5">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white p-3 sm:p-6 font-body">
+        <div className="bg-slate-900 p-5 sm:p-8 rounded-3xl border-2 border-slate-800 max-w-lg w-full text-center shadow-2xl space-y-4">
+          
+          {/* Header */}
           <div>
             <h1 className="text-3xl sm:text-4xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500 tracking-wide uppercase px-1">
               DEFLATEGATE
             </h1>
-            <p className="text-slate-400 mt-1 italic text-xs sm:text-sm">The Ultimate NFL Auction & Strategy Game</p>
+            <p className="text-slate-400 mt-0.5 italic text-xs sm:text-sm">
+              The Ultimate NFL Auction & Strategy Game
+            </p>
           </div>
 
-          {/* Mode Selector */}
+          {/* Mode Selector - Exactly 2 Options */}
           <div className="text-left">
-            <label className="block text-slate-400 font-bold mb-2 uppercase text-[10px] tracking-wider font-sans">Select Game Mode</label>
+            <label className="block text-slate-400 font-bold mb-1.5 uppercase text-[10px] tracking-wider font-sans">
+              Select Game Mode
+            </label>
             <div className="grid grid-cols-2 gap-2 text-xs font-black uppercase tracking-wider">
               <button 
-                onClick={() => setPlayMode('local_vs_cpu')}
-                className={`py-3 px-2 rounded-xl transition-all text-center cursor-pointer border ${
-                  playMode === 'local_vs_cpu' 
-                    ? 'bg-blue-600 text-white border-blue-400 shadow-lg shadow-blue-500/25' 
+                type="button"
+                id="btn-mode-solo-cpu"
+                onClick={() => setGameMode('solo_cpu')}
+                className={`py-3 px-2 rounded-xl transition-all text-center cursor-pointer border flex flex-col items-center justify-center gap-1 ${
+                  gameMode === 'solo_cpu' 
+                    ? 'bg-blue-600 text-white border-blue-400 shadow-lg shadow-blue-500/25 ring-2 ring-blue-400/30' 
                     : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
                 }`}
               >
-                vs CPU (Solo)
+                <div className="flex items-center gap-1.5">
+                  <span className="text-base">🤖</span>
+                  <span className="font-black text-xs sm:text-sm tracking-wide">vs CPU (Solo)</span>
+                </div>
+                <span className="text-[10px] font-sans font-medium opacity-75 normal-case tracking-normal">
+                  Play solo against bots
+                </span>
               </button>
+
               <button 
-                onClick={() => setPlayMode('pvp_cpu')}
-                className={`py-3 px-2 rounded-xl transition-all text-center cursor-pointer border ${
-                  playMode === 'pvp_cpu' 
-                    ? 'bg-purple-600 text-white border-purple-400 shadow-lg shadow-purple-500/25' 
+                type="button"
+                id="btn-mode-with-friends"
+                onClick={() => {
+                  setGameMode('with_friends');
+                  if (numHumansChoice < 2) setNumHumansChoice(2);
+                }}
+                className={`py-3 px-2 rounded-xl transition-all text-center cursor-pointer border flex flex-col items-center justify-center gap-1 ${
+                  gameMode === 'with_friends' 
+                    ? 'bg-purple-600 text-white border-purple-400 shadow-lg shadow-purple-500/25 ring-2 ring-purple-400/30' 
                     : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
                 }`}
               >
-                PvP vs CPU
-              </button>
-              <button 
-                onClick={() => setPlayMode('pass_and_play')}
-                className={`py-3 px-2 rounded-xl transition-all text-center cursor-pointer border ${
-                  playMode === 'pass_and_play' 
-                    ? 'bg-emerald-600 text-white border-emerald-400 shadow-lg shadow-emerald-500/25' 
-                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
-                }`}
-              >
-                Pass & Play (All Humans)
-              </button>
-              <button 
-                onClick={() => setPlayMode('online')}
-                className={`py-3 px-2 rounded-xl transition-all text-center cursor-pointer border ${
-                  playMode === 'online' 
-                    ? 'bg-indigo-600 text-white border-indigo-400 shadow-lg shadow-indigo-500/25' 
-                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
-                }`}
-              >
-                Online Multi-Device
+                <div className="flex items-center gap-1.5">
+                  <span className="text-base">👥</span>
+                  <span className="font-black text-xs sm:text-sm tracking-wide">Play with Friends</span>
+                </div>
+                <span className="text-[10px] font-sans font-medium opacity-75 normal-case tracking-normal">
+                  Unjoined spots fill with CPU
+                </span>
               </button>
             </div>
           </div>
 
-          {/* Desktop UI Style Choice */}
-          <div className="text-left bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
-            <div className="flex justify-between items-center mb-1.5">
-              <label className="text-slate-400 font-bold uppercase text-[10px] tracking-wider font-sans">
-                Desktop Layout
-              </label>
-              <span className="text-[10px] text-slate-500">Switchable anytime</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs font-black uppercase tracking-wider">
-              <button
-                type="button"
-                onClick={() => {
-                  setDesktopUiChoice('arena');
-                  localStorage.setItem('deflategate_desktop_ui', 'arena');
-                }}
-                className={`py-2 px-2 rounded-xl transition-all text-center cursor-pointer border ${
-                  desktopUiChoice === 'arena'
-                    ? 'bg-emerald-600 text-white border-emerald-400 shadow-md shadow-emerald-500/20'
-                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-                }`}
-              >
-                🏟️ Arena (New)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDesktopUiChoice('classic');
-                  localStorage.setItem('deflategate_desktop_ui', 'classic');
-                }}
-                className={`py-2 px-2 rounded-xl transition-all text-center cursor-pointer border ${
-                  desktopUiChoice === 'classic'
-                    ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-500/20'
-                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-                }`}
-              >
-                🎮 Classic
-              </button>
-            </div>
-          </div>
-
-          {playMode === 'online' && (
-            <div className="bg-indigo-950/50 border border-indigo-500/40 p-4 rounded-2xl text-left space-y-2">
+          {/* If Play with Friends is selected: Room / Match ID */}
+          {gameMode === 'with_friends' && (
+            <div className="bg-purple-950/30 border border-purple-500/40 p-3.5 rounded-2xl text-left space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-xs uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                <span className="font-bold text-xs uppercase tracking-wider text-purple-300 flex items-center gap-1.5 font-sans">
                   <span>🌐</span> Room / Match ID
                 </span>
-                <span className="text-[10px] text-slate-400">Must match on both laptops</span>
+                <span className="text-[10px] text-slate-400">Match room on friend devices</span>
               </div>
               <input 
                 type="text"
+                id="input-room-id"
                 value={matchIdChoice}
                 onChange={e => setMatchIdChoice(e.target.value || 'room-1')}
                 placeholder="e.g. room-1"
-                className="w-full bg-slate-950 border border-indigo-500/50 rounded-xl px-4 py-2.5 text-white font-mono font-bold text-sm outline-none focus:border-indigo-400"
+                className="w-full bg-slate-950 border border-purple-500/50 rounded-xl px-3.5 py-2 text-white font-mono font-bold text-sm outline-none focus:border-purple-400 transition-colors"
               />
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
+          {/* Steppers & View Selector */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+            {/* Total Teams (4-10) */}
             <div>
-              <label className="block text-slate-400 font-bold mb-1.5 uppercase text-[10px] tracking-wider font-sans">Total Teams (4-10)</label>
+              <label className="block text-slate-400 font-bold mb-1.5 uppercase text-[10px] tracking-wider font-sans">
+                Total Teams (4-10)
+              </label>
               <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl p-1.5 shadow-inner">
                 <button
                   type="button"
+                  id="btn-decrease-teams"
                   onClick={() => {
                     const next = Math.max(4, numPlayers - 1);
                     setNumPlayers(next);
                     if (numHumansChoice > next) setNumHumansChoice(next);
                   }}
                   disabled={numPlayers <= 4}
-                  className="w-11 h-11 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
+                  className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
                   title="Decrease teams"
                 >
                   −
@@ -240,12 +238,13 @@ const App = () => {
                 </div>
                 <button
                   type="button"
+                  id="btn-increase-teams"
                   onClick={() => {
                     const next = Math.min(10, numPlayers + 1);
                     setNumPlayers(next);
                   }}
                   disabled={numPlayers >= 10}
-                  className="w-11 h-11 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
+                  className="w-10 h-10 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
                   title="Increase teams"
                 >
                   +
@@ -253,15 +252,19 @@ const App = () => {
               </div>
             </div>
 
-            {playMode === 'pvp_cpu' || playMode === 'online' ? (
+            {/* Human Players count (only shown if Play with Friends) */}
+            {gameMode === 'with_friends' ? (
               <div>
-                <label className="block text-slate-400 font-bold mb-1.5 uppercase text-[10px] tracking-wider font-sans">Human Players (2 to {numPlayers})</label>
+                <label className="block text-slate-400 font-bold mb-1.5 uppercase text-[10px] tracking-wider font-sans">
+                  Human Players (1 to {numPlayers})
+                </label>
                 <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl p-1.5 shadow-inner">
                   <button
                     type="button"
-                    onClick={() => setNumHumansChoice(Math.max(2, actualNumHumans - 1))}
-                    disabled={actualNumHumans <= 2}
-                    className="w-11 h-11 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
+                    id="btn-decrease-humans"
+                    onClick={() => setNumHumansChoice(Math.max(1, actualNumHumans - 1))}
+                    disabled={actualNumHumans <= 1}
+                    className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
                     title="Decrease human players"
                   >
                     −
@@ -271,69 +274,166 @@ const App = () => {
                   </div>
                   <button
                     type="button"
+                    id="btn-increase-humans"
                     onClick={() => setNumHumansChoice(Math.min(numPlayers, actualNumHumans + 1))}
                     disabled={actualNumHumans >= numPlayers}
-                    className="w-11 h-11 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
+                    className="w-10 h-10 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-25 disabled:cursor-not-allowed text-white font-black text-2xl flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow"
                     title="Increase human players"
                   >
                     +
                   </button>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div>
+                <label className="block text-slate-400 font-bold mb-1.5 uppercase text-[10px] tracking-wider font-sans">
+                  Default View As
+                </label>
+                <div className="h-[52px] bg-slate-950 border border-slate-800 rounded-xl px-4 flex items-center text-white font-bold text-base font-mono">
+                  Player 1 <span className="ml-2 text-xs text-blue-400 font-sans font-medium">(You)</span>
+                </div>
+              </div>
+            )}
 
-            <div>
-              <label className="block text-slate-400 font-bold mb-1.5 uppercase text-[10px] tracking-wider font-sans">
-                {playMode === 'online' ? 'Play On This Computer As' : 'Default View As'}
-              </label>
-              <select 
-                value={playerID} 
-                onChange={e => setPlayerID(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-bold text-lg outline-none focus:border-blue-500 transition-colors appearance-none cursor-pointer"
-              >
-                {[...Array(actualNumHumans)].map((_, i) => (
-                  <option key={i} value={i.toString()}>Player {i + 1} {playMode === 'online' && i === 0 ? '(Host)' : ''}</option>
-                ))}
-              </select>
-            </div>
+            {/* Play on this device as (for multi-human with_friends mode) */}
+            {gameMode === 'with_friends' && actualNumHumans > 1 && (
+              <div className="sm:col-span-2">
+                <label className="block text-slate-400 font-bold mb-1.5 uppercase text-[10px] tracking-wider font-sans">
+                  Play On This Device As
+                </label>
+                <select 
+                  id="select-player-device"
+                  value={playerID} 
+                  onChange={e => setPlayerID(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-bold text-base outline-none focus:border-purple-500 transition-colors appearance-none cursor-pointer"
+                >
+                  {[...Array(actualNumHumans)].map((_, i) => (
+                    <option key={i} value={i.toString()}>
+                      Player {i + 1} {i === 0 ? '(Host)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
-          <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800/80 text-xs text-slate-400 text-left space-y-1">
+          {/* CPU Difficulty Selector - Button with 4 options in 1 column */}
+          <div className="text-left bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800 space-y-2">
+            <button
+              type="button"
+              id="btn-toggle-difficulty"
+              onClick={() => setDifficultyExpanded(prev => !prev)}
+              className="w-full flex items-center justify-between cursor-pointer group text-left"
+              title="Click to expand/collapse difficulty options"
+            >
+              <div className="flex items-center gap-2">
+                <label className="text-slate-300 font-bold uppercase text-[10px] tracking-wider font-sans cursor-pointer flex items-center gap-1.5">
+                  <span>⚙️</span> CPU Difficulty
+                </label>
+                <span className="text-[10px] font-sans text-slate-500">
+                  (4 options)
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-750 text-blue-300 flex items-center gap-1.5 shadow-sm">
+                  <span>{selectedDiffObj.icon}</span>
+                  <span>{selectedDiffObj.label}</span>
+                </span>
+                <span className={`text-slate-400 text-xs transition-transform duration-200 ${difficultyExpanded ? 'rotate-180' : ''}`}>
+                  ▼
+                </span>
+              </div>
+            </button>
+
+            {/* 4 Options in 1 Column */}
+            {difficultyExpanded && (
+              <div className="grid grid-cols-1 gap-1.5 pt-1">
+                {DIFFICULTY_OPTIONS.map((opt) => {
+                  const isSelected = cpuDifficulty === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      id={`btn-diff-${opt.id}`}
+                      onClick={() => setCpuDifficulty(opt.id)}
+                      className={`w-full py-2 px-3 rounded-xl transition-all cursor-pointer border flex items-center justify-between text-left ${
+                        isSelected 
+                          ? opt.borderActive
+                          : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700 hover:bg-slate-850'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-sm select-none">{opt.icon}</span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`font-black text-xs uppercase tracking-wider ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                              {opt.label}
+                            </span>
+                            {opt.id === 'normal' && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800/80 text-blue-300 font-sans uppercase font-semibold">
+                                Default
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-sans font-normal opacity-70 block -mt-0.5">
+                            {opt.description}
+                          </span>
+                        </div>
+                      </div>
+                      {isSelected ? (
+                        <span className="text-xs font-black text-emerald-400">● Active</span>
+                      ) : (
+                        <span className="text-[10px] text-slate-600 font-medium">Select</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Roster & Auto-Fill Summary Card */}
+          <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800/80 text-xs text-slate-400 text-left space-y-1.5">
             <div className="flex justify-between font-mono">
-              <span>Human Players:</span>
+              <span className="flex items-center gap-1.5">
+                <span>👤</span> Human Players:
+              </span>
               <span className="text-emerald-400 font-bold">{actualNumHumans}</span>
             </div>
             <div className="flex justify-between font-mono">
-              <span>CPU Opponents:</span>
-              <span className="text-yellow-400 font-bold">{Math.max(0, numPlayers - actualNumHumans)}</span>
+              <span className="flex items-center gap-1.5">
+                <span>🤖</span> CPU Opponents:
+              </span>
+              <span className="text-yellow-400 font-bold">{cpuOpponentsCount}</span>
             </div>
+
+            {gameMode === 'with_friends' && cpuOpponentsCount > 0 && (
+              <div className="pt-1.5 border-t border-slate-800/80 text-[11px] text-indigo-300/90 flex items-start gap-1.5 font-sans leading-tight">
+                <span className="text-xs">⚡</span>
+                <span>
+                  <strong>Auto-fill active:</strong> All {cpuOpponentsCount} remaining unfilled spot{cpuOpponentsCount > 1 ? 's' : ''} will automatically be played by CPU opponents!
+                </span>
+              </div>
+            )}
           </div>
 
-          {playMode === 'online' && (
-            <div className="bg-slate-950/80 border border-indigo-500/30 p-4 rounded-2xl text-left space-y-2 text-xs">
-              <div className="font-bold text-indigo-300 flex items-center gap-2">
-                <span>💡</span> Wi-Fi Connection Guide:
-              </div>
-              <ul className="text-slate-300 text-[11px] space-y-1 list-disc list-inside">
-                <li>Host computer: Run <code className="bg-slate-900 text-amber-300 px-1 py-0.5 rounded font-mono">npm run server</code> in terminal.</li>
-                <li>Wife's laptop: Open browser to <code className="bg-slate-900 text-emerald-300 px-1 py-0.5 rounded font-mono">http://{window.location.hostname || '192.168.12.74'}:3000</code></li>
-                <li>Both select <strong>Online Multi-Device</strong> and match Room ID (<strong>{matchIdChoice}</strong>).</li>
-                <li>Host joins as <strong>Player 1</strong>; Wife joins as <strong>Player 2</strong>!</li>
-              </ul>
-            </div>
-          )}
-
+          {/* How to Play Button - OUTLINED IN UNC CHARLOTTE / CAROLINA BLUE (#4B9CD3) */}
           <button 
             type="button"
+            id="btn-how-to-play"
             onClick={() => setShowRules(true)}
-            className="w-full bg-slate-950 hover:bg-slate-850 border border-slate-750 hover:border-slate-500 text-slate-200 font-bold text-xs py-3 rounded-2xl shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full bg-[#4B9CD3]/10 hover:bg-[#4B9CD3]/20 border-2 border-[#4B9CD3] hover:border-[#7BAFD4] text-[#93c5fd] hover:text-white font-bold text-xs py-3 rounded-2xl shadow-lg shadow-[#4B9CD3]/15 hover:shadow-[#4B9CD3]/30 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
           >
-            <span>📖</span> How to Play & Rules Guide
+            <span className="text-base">📖</span>
+            <span className="tracking-wide">How to Play & Rules Guide</span>
           </button>
 
+          {/* Start Game Button */}
           <button 
+            type="button"
+            id="btn-start-game"
             onClick={() => setInGame(true)}
-            className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black text-lg py-4 rounded-2xl shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black text-lg py-3.5 sm:py-4 rounded-2xl shadow-xl transition-all transform hover:scale-[1.01] active:scale-[0.98] cursor-pointer tracking-wider"
           >
             START GAME 🏈
           </button>
@@ -350,9 +450,13 @@ const App = () => {
       matchID={matchIdChoice || "deflategate-match"} 
       playerID={playerID} 
       vsCpu={actualNumHumans < numPlayers}
-      playMode={playMode}
+      playMode={gameMode === 'with_friends' ? 'online' : 'local_vs_cpu'}
       numHumans={actualNumHumans}
-      setupData={{ numHumans: actualNumHumans }}
+      cpuDifficulty={cpuDifficulty}
+      setupData={{ 
+        numHumans: actualNumHumans,
+        cpuDifficulty: cpuDifficulty
+      }}
     />
   );
 };

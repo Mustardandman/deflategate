@@ -10,8 +10,7 @@ export const DesktopDeflategateBoardArena = ({
   playerID, 
   vsCpu, 
   playMode, 
-  numHumans: initialNumHumans, 
-  toggleDesktopUi 
+  numHumans: initialNumHumans 
 }) => {
   const [showRules, setShowRules] = useState(false);
   const [showLog, setShowLog] = useState(false);

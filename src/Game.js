@@ -2237,6 +2237,7 @@ export const DeflategateGame = {
       players,
       vsCpu: numHumans < numPlayers,
       numHumans,
+      cpuDifficulty: setupData?.cpuDifficulty || 'normal',
       pendingReplacement: null,
       logs: [],
       decks: {
@@ -2327,6 +2328,9 @@ export const DeflategateGame = {
   moves: {
     setVsCpu: ({ G }, value) => {
       G.vsCpu = value;
+    },
+    setCpuDifficulty: ({ G }, difficulty) => {
+      G.cpuDifficulty = difficulty;
     },
     setNumHumans: ({ G }, count) => {
       if (typeof count !== 'number' || count < 1) return;
@@ -2913,6 +2917,9 @@ export const DeflategateGame = {
       start: true,
       turn: { activePlayers: ActivePlayers.ALL },
       moves: {
+        setCpuDifficulty: ({ G }, difficulty) => {
+          G.cpuDifficulty = difficulty;
+        },
         setNumHumans: ({ G }, count) => {
           if (typeof count !== 'number' || count < 1) return;
           const numPlayers = Object.keys(G.players).length;
