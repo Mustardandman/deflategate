@@ -427,7 +427,7 @@ async function main() {
   // 4. Bears: +2 coin outbid requirement for opponents
   // 5. Eagles: Post-auction Tush Push table deflation
   // 6. Texans: +2 coins / +2 deflate per QB
-  // 7. Patriots: Low coin start (3), relies on early aggressive deflation
+  // 7. Patriots: Starts with low PSI (36), 7 starting coins, aggressive sprint to 0 PSI
   // 8. Packers: All-Phase-1 synergy bonus (+3 deflate/round)
   const focusTeams = ['browns', 'colts', 'dolphins', 'bears', 'eagles', 'texans', 'patriots', 'packers'];
 

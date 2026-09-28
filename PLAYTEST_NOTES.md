@@ -529,10 +529,10 @@ Evolutionary Algorithm (Genetic Self-Play Optimization) & League Franchise Balan
      - *Benchmark*: 33.3% Win Rate, 18.0 Avg PSI.
      - *Evolved Outcome*: **50.0% Win Rate**, **3.3 Avg PSI** (+3.8 PSI advantage over baseline).
      - *What the AI Learned*: Raised `synergyBonus` to 1.90, `coinWeight` to 1.60, and dropped `reserveCoins` to 0. The AI goes all-in on acquiring QBs. Achieved a **100% win rate in 4P tables** where QBs are readily available, but struggled in 8P (0%) where high player count dilutes QB availability.
-   - **New England Patriots (Low 3-Coin Starting Purse)**:
+   - **New England Patriots (Starts with League-Lowest 36 PSI, 7 Starting Coins)**:
      - *Benchmark*: 33.3% Win Rate, 8.3 Avg PSI.
      - *Evolved Outcome*: **83.3% Win Rate**, **1.8 Avg PSI** (36.4% Win Rate across 11 tournament games).
-     - *What the AI Learned*: Lowered `recurringMult` to 0.41 while maintaining high `deflateWeight` (2.31). With only 3 starting coins, waiting for long-term recurring engines is too slow; the Patriots evolved to prioritize immediate instant deflation cards to win rapid low-turn games.
+     - *What the AI Learned*: Lowered `recurringMult` to 0.41 while maintaining high `deflateWeight` (2.31) and high `synergyBonus` (1.65). Because the Patriots start at only 36 PSI (a massive 6–14 PSI head start over rivals at 42–50 PSI) with a moderate 7-coin purse, waiting for slow multi-round recurring engines is unnecessary; the AI learned that snapping up immediate instant deflation cards lets them sprint directly to 0 PSI before opponents can build up their engines.
    - **Green Bay Packers (All-Phase-1 Cards Bonus: +3 Deflate/Round)**:
      - *Benchmark*: 16.7% Win Rate, 13.5 Avg PSI.
      - *Evolved Outcome*: **50.0% Win Rate**, **5.5 Avg PSI** (+2.8 PSI advantage over baseline).
