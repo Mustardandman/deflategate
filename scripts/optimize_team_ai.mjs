@@ -251,7 +251,7 @@ export function evaluateCandidateVsBaseline(teamId, candidateGenome, baselineGen
 /**
  * Optimize genomes for a specific team using Evolutionary Algorithm
  */
-export function optimizeTeam(teamId, { generations = 3, populationSize = 4, matchesPerCount = 2, baseSeed = 10000 }) {
+export function optimizeTeam(teamId, { generations = 2, populationSize = 3, matchesPerCount = 2, playerCounts = [4, 7, 10], baseSeed = 10000 }) {
   console.log(`\n======================================================`);
   console.log(`🧬 Optimizing Strategy Genome for Team: ${teamId.toUpperCase()}`);
   console.log(`======================================================`);
@@ -261,12 +261,13 @@ export function optimizeTeam(teamId, { generations = 3, populationSize = 4, matc
 
   // Baseline performance benchmark
   const initialBenchmark = evaluateCandidateVsBaseline(teamId, currentChampion, currentChampion, {
-    playerCounts: [4, 6, 8],
+    playerCounts,
     matchesPerCount,
     baseSeed
   });
+  const countStr = playerCounts.map(c => `${c}P: ${(initialBenchmark.countBreakdown[c]?.candidateWinRate || 0).toFixed(0)}%`).join(', ');
   console.log(`Initial Benchmark: Win Rate = ${initialBenchmark.candidateWinRate.toFixed(1)}%, Avg Final PSI = ${initialBenchmark.avgCandidatePsi.toFixed(1)}`);
-  console.log(`Per-Player-Count Win Rates: 4P: ${initialBenchmark.countBreakdown[4].candidateWinRate.toFixed(0)}%, 6P: ${initialBenchmark.countBreakdown[6].candidateWinRate.toFixed(0)}%, 8P: ${initialBenchmark.countBreakdown[8].candidateWinRate.toFixed(0)}%`);
+  console.log(`Per-Player-Count Win Rates: ${countStr}`);
 
   const history = [];
 
@@ -289,11 +290,10 @@ export function optimizeTeam(teamId, { generations = 3, populationSize = 4, matc
       const genome = pop[idx];
       let evalRes;
       if (idx === 0 && gen > 1) {
-        // Reuse champion evaluation from previous gen if applicable
         evalRes = history[history.length - 1].bestEval;
       } else {
         evalRes = evaluateCandidateVsBaseline(teamId, genome, currentChampion, {
-          playerCounts: [4, 6, 8],
+          playerCounts,
           matchesPerCount,
           baseSeed: baseSeed + gen * 500 + idx * 73
         });
@@ -320,9 +320,10 @@ export function optimizeTeam(teamId, { generations = 3, populationSize = 4, matc
       bestEval: best
     });
 
+    const splitStr = playerCounts.map(c => `${c}P: ${(best.countBreakdown[c]?.candidateWinRate || 0).toFixed(0)}%`).join(' | ');
     console.log(`🏆 Gen ${gen} Champion: WinRate = ${best.candidateWinRate.toFixed(1)}% (vs Base ${best.baselineWinRate.toFixed(1)}%), Avg PSI = ${best.avgCandidatePsi.toFixed(1)}`);
     console.log(`   Weights: Deflate=${best.genome.deflateWeight.toFixed(2)}, Coin=${best.genome.coinWeight.toFixed(2)}, Recurr=${best.genome.recurringMult.toFixed(2)}, Aggr=${best.genome.aggression.toFixed(2)}, Reserve=${best.genome.reserveCoins}, Bump=${best.genome.priceBumpProb.toFixed(2)}, Synergy=${best.genome.synergyBonus.toFixed(2)}`);
-    console.log(`   Format Split: 4P: ${best.countBreakdown[4].candidateWinRate.toFixed(0)}% | 6P: ${best.countBreakdown[6].candidateWinRate.toFixed(0)}% | 8P: ${best.countBreakdown[8].candidateWinRate.toFixed(0)}%`);
+    console.log(`   Format Split: ${splitStr}`);
   }
 
   return {
@@ -337,10 +338,10 @@ export function optimizeTeam(teamId, { generations = 3, populationSize = 4, matc
 /**
  * Run a multi-franchise League Balance Tournament to measure overall win rates
  */
-export function runLeagueBalanceTournament(targetTeams, teamGenomes = {}, totalGames = 45, seed = 2026) {
+export function runLeagueBalanceTournament(targetTeams, teamGenomes = {}, totalGames = 45, seed = 2026, playerCounts = [4, 7, 10]) {
   console.log(`\n======================================================`);
   console.log(`🏆 LEAGUE BALANCE TOURNAMENT: Testing Franchise Equity`);
-  console.log(`   Running ${totalGames} automated games across 4, 6, and 8 player tables...`);
+  console.log(`   Running ${totalGames} automated games across ${playerCounts.join(', ')} player tables...`);
   console.log(`======================================================`);
 
   const teamStats = {};
@@ -348,16 +349,16 @@ export function runLeagueBalanceTournament(targetTeams, teamGenomes = {}, totalG
     teamStats[t.id] = {
       name: t.name,
       id: t.id,
-      games4P: 0, wins4P: 0,
-      games6P: 0, wins6P: 0,
-      games8P: 0, wins8P: 0,
+      counts: {},
       totalGames: 0,
       totalWins: 0,
       totalPsi: 0
     };
+    playerCounts.forEach(c => {
+      teamStats[t.id].counts[c] = { games: 0, wins: 0 };
+    });
   });
 
-  const playerCounts = [4, 6, 8];
   for (let g = 0; g < totalGames; g++) {
     const numPlayers = playerCounts[g % playerCounts.length];
     const gameSeed = seed + g * 313;
@@ -373,15 +374,9 @@ export function runLeagueBalanceTournament(targetTeams, teamGenomes = {}, totalG
       if (stats) {
         stats.totalGames++;
         stats.totalPsi += s.psi;
-        if (numPlayers === 4) {
-          stats.games4P++;
-          if (s.won) stats.wins4P++;
-        } else if (numPlayers === 6) {
-          stats.games6P++;
-          if (s.won) stats.wins6P++;
-        } else if (numPlayers === 8) {
-          stats.games8P++;
-          if (s.won) stats.wins8P++;
+        if (stats.counts[numPlayers]) {
+          stats.counts[numPlayers].games++;
+          if (s.won) stats.counts[numPlayers].wins++;
         }
         if (s.won) stats.totalWins++;
       }
@@ -397,16 +392,16 @@ export function runLeagueBalanceTournament(targetTeams, teamGenomes = {}, totalG
     .map(t => {
       const overallWinRate = (t.totalWins / t.totalGames) * 100;
       const avgPsi = t.totalPsi / t.totalGames;
-      const winRate4P = t.games4P > 0 ? (t.wins4P / t.games4P) * 100 : 0;
-      const winRate6P = t.games6P > 0 ? (t.wins6P / t.games6P) * 100 : 0;
-      const winRate8P = t.games8P > 0 ? (t.wins8P / t.games8P) * 100 : 0;
+      const countWinRates = {};
+      playerCounts.forEach(c => {
+        const cStats = t.counts[c];
+        countWinRates[c] = cStats && cStats.games > 0 ? (cStats.wins / cStats.games) * 100 : 0;
+      });
       return {
         ...t,
         overallWinRate,
         avgPsi,
-        winRate4P,
-        winRate6P,
-        winRate8P
+        countWinRates
       };
     });
 
@@ -420,32 +415,45 @@ async function main() {
   console.log(`🚀 Starting Deflategate Evolutionary Optimization Pipeline`);
   console.log(`Start Time: ${new Date().toISOString()}\n`);
 
-  // Target representative teams covering distinct mechanical archetypes:
-  // 1. Browns: Zero coins possible, 20 starting coins, 45 PSI
-  // 2. Colts: Infinite lineup capacity, 5 coins, 50 PSI
-  // 3. Dolphins: 0-coin end of round bailout (+3 coins)
-  // 4. Bears: +2 coin outbid requirement for opponents
-  // 5. Eagles: Post-auction Tush Push table deflation
-  // 6. Texans: +2 coins / +2 deflate per QB
-  // 7. Patriots: Starts with low PSI (36), 7 starting coins, aggressive sprint to 0 PSI
-  // 8. Packers: All-Phase-1 synergy bonus (+3 deflate/round)
-  const focusTeams = ['browns', 'colts', 'dolphins', 'bears', 'eagles', 'texans', 'patriots', 'packers'];
+  // Teams already optimized in Phase 1:
+  const alreadyTrainedTeams = ['browns', 'colts', 'dolphins', 'bears', 'eagles', 'texans', 'patriots', 'packers'];
+  const allTeamIds = TEAMS.map(t => t.id);
+  const remainingTeams = allTeamIds.filter(id => !alreadyTrainedTeams.includes(id));
 
-  const optimizedGenomes = { ...BASELINE_TEAM_GENOMES };
+  // Load existing optimized weights
+  let existingWeights = {};
+  const weightsPath = path.resolve('src/ai/team_weights.json');
+  try {
+    if (fs.existsSync(weightsPath)) {
+      existingWeights = JSON.parse(fs.readFileSync(weightsPath, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Could not load existing weights:', e);
+  }
+
+  const optimizedGenomes = { ...BASELINE_TEAM_GENOMES, ...existingWeights };
   const teamReports = [];
+  const playerCounts = [4, 7, 10];
 
-  for (const teamId of focusTeams) {
+  console.log(`Found ${alreadyTrainedTeams.length} previously trained teams. Retaining their genomes.`);
+  console.log(`Starting Phase 1 Deep Optimization for remaining ${remainingTeams.length} teams across 4P, 7P, and 10P tables...\n`);
+
+  for (let i = 0; i < remainingTeams.length; i++) {
+    const teamId = remainingTeams[i];
+    console.log(`\n[${i + 1}/${remainingTeams.length}] Running Deep Evolution for: ${teamId.toUpperCase()}`);
+
     const report = optimizeTeam(teamId, {
-      generations: 3,
-      populationSize: 4,
-      matchesPerCount: 2,
-      baseSeed: 12000
+      generations: 2,
+      populationSize: 3,
+      matchesPerCount: 2, // 2 matches per count = 12 games per candidate evaluation
+      playerCounts,
+      baseSeed: 25000 + i * 1337
     });
+
     optimizedGenomes[teamId] = report.bestGenome;
     teamReports.push(report);
 
     // Save progressively after each team
-    const weightsPath = path.resolve('src/ai/team_weights.json');
     fs.writeFileSync(weightsPath, JSON.stringify(optimizedGenomes, null, 2), 'utf8');
     
     const evolvedJsPath = path.resolve('src/ai/evolvedWeights.js');
@@ -459,24 +467,24 @@ export const EVOLVED_TEAM_GENOMES = ${JSON.stringify(optimizedGenomes, null, 2)}
     console.log(`💾 Progress saved to: ${weightsPath} and ${evolvedJsPath}`);
   }
 
-  // Run comprehensive League Balance Tournament with optimized genomes
-  const tournamentResults = runLeagueBalanceTournament(focusTeams, optimizedGenomes, 45, 42000);
+  // Run comprehensive League Balance Tournament across 4P, 7P, and 10P tables
+  const tournamentResults = runLeagueBalanceTournament(allTeamIds, optimizedGenomes, 45, 54321, playerCounts);
 
   console.log(`\n======================================================`);
-  console.log(`📊 TOURNAMENT LEAGUE STANDINGS & BALANCE METRICS`);
+  console.log(`📊 TOURNAMENT LEAGUE STANDINGS & BALANCE METRICS (${playerCounts.map(c => `${c}P`).join('/')})`);
   console.log(`======================================================`);
-  console.log(`Team         | Total | Wins | Win %  | Avg PSI | 4P Win% | 6P Win% | 8P Win%`);
-  console.log(`-------------|-------|------|--------|---------|---------|---------|--------`);
-  tournamentResults.slice(0, 15).forEach(t => {
+  console.log(`Team         | Total | Wins | Win %  | Avg PSI | 4P Win% | 7P Win% | 10P Win%`);
+  console.log(`-------------|-------|------|--------|---------|---------|---------|---------`);
+  tournamentResults.forEach(t => {
     const nameStr = t.name.padEnd(12, ' ');
     const totalStr = String(t.totalGames).padStart(5, ' ');
     const winsStr = String(t.totalWins).padStart(4, ' ');
     const winRateStr = `${t.overallWinRate.toFixed(1)}%`.padStart(6, ' ');
     const psiStr = t.avgPsi.toFixed(1).padStart(7, ' ');
-    const wr4P = `${t.winRate4P.toFixed(0)}%`.padStart(7, ' ');
-    const wr6P = `${t.winRate6P.toFixed(0)}%`.padStart(7, ' ');
-    const wr8P = `${t.winRate8P.toFixed(0)}%`.padStart(7, ' ');
-    console.log(`${nameStr} | ${totalStr} | ${winsStr} | ${winRateStr} | ${psiStr} | ${wr4P} | ${wr6P} | ${wr8P}`);
+    const wr4P = `${(t.countWinRates[4] || 0).toFixed(0)}%`.padStart(7, ' ');
+    const wr7P = `${(t.countWinRates[7] || 0).toFixed(0)}%`.padStart(7, ' ');
+    const wr10P = `${(t.countWinRates[10] || 0).toFixed(0)}%`.padStart(8, ' ');
+    console.log(`${nameStr} | ${totalStr} | ${winsStr} | ${winRateStr} | ${psiStr} | ${wr4P} | ${wr7P} | ${wr10P}`);
   });
 
   const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);

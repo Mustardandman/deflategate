@@ -35,7 +35,17 @@ export const BASELINE_TEAM_GENOMES = {
   vikings: { deflateWeight: 1.8, coinWeight: 1.3, recurringMult: 1.0, aggression: 1.0, reserveCoins: 3, priceBumpProb: 0.2, synergyBonus: 1.3 },
   saints: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 3, priceBumpProb: 0.2, synergyBonus: 1.4 },
   rams: { deflateWeight: 2.0, coinWeight: 0.8, recurringMult: 1.1, aggression: 1.1, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.3 },
-  seahawks: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.3, aggression: 1.0, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.3 }
+  seahawks: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.3, aggression: 1.0, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.3 },
+  jets: { deflateWeight: 1.8, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.2, reserveCoins: 1, priceBumpProb: 0.2, synergyBonus: 1.4 },
+  jaguars: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 3, priceBumpProb: 0.2, synergyBonus: 1.2 },
+  titans: { deflateWeight: 1.7, coinWeight: 1.0, recurringMult: 1.1, aggression: 1.1, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.3 },
+  broncos: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 4, priceBumpProb: 0.2, synergyBonus: 1.2 },
+  chiefs: { deflateWeight: 1.7, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.2, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.3 },
+  cowboys: { deflateWeight: 1.8, coinWeight: 0.7, recurringMult: 1.1, aggression: 1.2, reserveCoins: 0, priceBumpProb: 0.2, synergyBonus: 1.2 },
+  panthers: { deflateWeight: 2.0, coinWeight: 0.9, recurringMult: 1.0, aggression: 1.1, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.2 },
+  buccaneers: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.1, reserveCoins: 3, priceBumpProb: 0.25, synergyBonus: 1.3 },
+  '49ers': { deflateWeight: 1.7, coinWeight: 0.6, recurringMult: 1.1, aggression: 1.3, reserveCoins: 0, priceBumpProb: 0.2, synergyBonus: 1.5 },
+  falcons: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.1, reserveCoins: 2, priceBumpProb: 0.25, synergyBonus: 1.2 }
 };
 
 export const ACTIVE_TEAM_GENOMES = {

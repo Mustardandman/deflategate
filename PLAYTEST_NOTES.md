@@ -561,5 +561,68 @@ Evolutionary Algorithm (Genetic Self-Play Optimization) & League Franchise Balan
    - Generated evolved weights saved to `src/ai/team_weights.json`.
    - Exported `EVOLVED_TEAM_GENOMES` via `src/ai/evolvedWeights.js`.
    - Wired `ACTIVE_TEAM_GENOMES` directly into `src/Game.js` (`scoreCardForPlayer` and `evaluateCpuAuctionBid`), ensuring all solo and multiplayer matches automatically utilize the optimized AI strategies.
+Playtest #31:
+Full League Deep Evolutionary Optimization (23 Remaining Teams in 4P, 7P, and 10P Tables):
+
+1. Setup & Testing Formats:
+   - Evaluated the remaining 23 franchises (`bills`, `jets`, `ravens`, `bengals`, `steelers`, `jaguars`, `titans`, `broncos`, `chiefs`, `raiders`, `chargers`, `cowboys`, `commanders`, `lions`, `vikings`, `falcons`, `saints`, `panthers`, `buccaneers`, `cardinals`, `rams`, `49ers`, `seahawks`) while preserving the 8 previously trained genomes.
+   - Evaluated every candidate across **4-Player, 7-Player, and 10-Player tables** using paired duplicate seeds (Game A vs Game B on identical shuffles).
+   - Each candidate played 12 games per evaluation (4 games in 4P, 4 games in 7P, 4 games in 10P), with each team playing 60+ games throughout the evolutionary cycle.
+
+2. Key Franchise Observations & Evolved Behaviors:
+   - **New Orleans Saints (Immune to Negative Coins & Inflation)**:
+     - *Tournament Result*: **45.5% Win Rate** (5/11), **3.1 Avg PSI** (Dominant across 4P at 100% and 10P at 43%).
+     - *Weights*: Deflate=1.80, Coin=1.00, Recurr=1.29, Aggr=1.00, Reserve=3, Bump=0.20, Synergy=1.40.
+     - *Observation*: Saints exploit drawback cards with zero penalty. Cards that penalize coins or inflate rivals are huge bargains for New Orleans, making them one of the league's most consistent top-tier performers across all table sizes.
+   - **San Francisco 49ers (Double Deflation when < 5 Coins in Refresh Phase)**:
+     - *Candidate Evaluation*: **83.3% Win Rate**, **1.0 Avg Final PSI** (100% Win Rate in 4P and 10P).
+     - *Weights*: Deflate=1.19, Coin=0.60, Recurr=1.33, Aggr=1.30, Reserve=0, Bump=0.22, Synergy=1.24.
+     - *Observation*: The AI learned to drop `reserveCoins` strictly to 0 and reduce coin valuation to 0.60. By spending down below 5 coins every auction, the 49ers trigger continuous double deflation every round.
+   - **Seattle Seahawks (Starts with 4 Practice Squad Players / 4 Roster Slots)**:
+     - *Candidate Evaluation*: **83.3% Win Rate**, **2.5 Avg Final PSI** (100% in 4P and 7P).
+     - *Weights*: Deflate=2.11, Coin=1.20, Recurr=1.30, Aggr=1.11, Reserve=2, Bump=0.20, Synergy=1.04.
+     - *Observation*: With 4 roster slots instead of 3, Seattle's cumulative recurring effect multiplier (`recurringMult = 1.30`) and high deflation weight (`deflateWeight = 2.11`) allow them to build a 4-player engine that outpaces 3-slot rivals.
+   - **Dallas Cowboys (Gain 2 Coins at End of Every Round)**:
+     - *Candidate Evaluation*: **50.0% Win Rate**, **3.3 Avg Final PSI** (100% in 4P, 50% in 7P).
+     - *Weights*: Deflate=1.80, Coin=0.47, Recurr=1.17, Aggr=1.20, Reserve=0, Bump=0.20, Synergy=1.20.
+     - *Observation*: Because 2 coins replenish passively every single round, hoarding coins is suboptimal. The AI reduced `coinWeight` to 0.47 and kept 0 reserve, maximizing aggressive bidding during auctions.
+   - **Detroit Lions (First Player to Claim Gains Coins Equal to Player Count)**:
+     - *Tournament Result*: **22.2% Win Rate** (100% Win Rate in 4P).
+     - *Weights*: Deflate=1.70, Coin=0.96, Recurr=0.61, Aggr=1.30, Reserve=1, Bump=0.20, Synergy=1.73.
+     - *Observation*: High aggression (1.30) and low reserve (1) ensure the Lions strike first during nomination, immediately claiming the coin bonus equal to table size.
+   - **Minnesota Vikings (If < 27 PSI, Players Generate 2x Coins)**:
+     - *Tournament Result*: **40.0% Win Rate** (4/10), 12.1 Avg PSI (75% Win Rate in 4P).
+     - *Weights*: Deflate=1.80, Coin=1.65, Recurr=1.00, Aggr=1.00, Reserve=2, Bump=0.20, Synergy=1.30.
+     - *Observation*: High coin valuation (1.65) enables Vikings to amass extreme coin totals once below 27 PSI, buying out late-game HOF superstars.
+   - **Pittsburgh Steelers (If Richest Player at Start of Round, Give Opponents 1 PSI)**:
+     - *Weights*: Deflate=1.40, Coin=1.44, Recurr=1.00, Aggr=0.90, Reserve=7, Bump=0.23, Synergy=1.30.
+     - *Observation*: The AI evolved a deep 7-coin savings reserve (`reserveCoins = 7`) and cool aggression (0.90) to stay wealthier than opponents and trigger round-start inflation penalties on rivals.
+   - **Cincinnati Bengals (+2 Coins/Deflate on Instant Abilities)**:
+     - *Weights*: Deflate=2.29, Coin=1.50, Recurr=1.05, Aggr=0.85, Reserve=2, Bump=0.25, Synergy=1.64.
+     - *Observation*: Extremely high `deflateWeight` (2.29) and high `synergyBonus` (1.64) prioritizing instant-effect players.
+
+3. 45-Game Multi-Format Tournament Leaderboard (4P, 7P, and 10P Tables):
+   - **Tier 1 (40% - 45.5% Win Rate)**:
+     - **Browns**: 45.5% Win Rate (4.8 Avg PSI) — 100% in 4P, 33% in 7P, 33% in 10P.
+     - **Saints**: 45.5% Win Rate (3.1 Avg PSI) — 100% in 4P, 33% in 7P, 43% in 10P.
+     - **Vikings**: 40.0% Win Rate (12.1 Avg PSI) — 75% in 4P, 25% in 7P.
+   - **Tier 2 (20% - 30% Win Rate)**:
+     - **Dolphins**: 28.6% Win Rate (9.4 Avg PSI) — Consistent across table sizes.
+     - **Jets**: 25.0% Win Rate (7.2 Avg PSI) — 50% in 7P.
+     - **Texans**: 25.0% Win Rate (10.8 Avg PSI) — 33% in 10P.
+     - **49ers**: 25.0% Win Rate (7.1 Avg PSI) — 33% in 4P, 25% in 7P.
+     - **Lions**: 22.2% Win Rate (11.6 Avg PSI) — 100% in 4P.
+     - **Panthers**: 20.0% Win Rate (4.6 Avg PSI) — 33% in 7P.
+     - **Seahawks**: 20.0% Win Rate (7.2 Avg PSI) — 67% in 4P.
+     - **Falcons**: 20.0% Win Rate (17.6 Avg PSI) — 50% in 10P.
+     - **Colts**: 20.0% Win Rate (14.4 Avg PSI) — 100% in 7P.
+   - **Tier 3 (Underperforming in Large Tables / Needing Balance Tweaks)**:
+     - **Broncos (0% in 24 appearances)**: 20 starting coins but ability only ignores drawbacks on the first refresh, leaving them with mediocre late-game engine scaling.
+     - **Bills (0% in 8 appearances)**: 1-time discard pickup is too weak in fast 7P/10P games.
+     - **Steelers (0% in 12 appearances)**: Hoarding coins to stay richest starves them of board presence in high-player tables.
+
+4. Implementation:
+   - All 31 franchises now have custom evolved genomes stored in `src/ai/team_weights.json` and `src/ai/evolvedWeights.js`.
+   - All weights are active in live gameplay across solo and multiplayer modes.
 ------------
 

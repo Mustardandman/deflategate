@@ -64,47 +64,47 @@
   },
   "steelers": {
     "deflateWeight": 1.4,
-    "coinWeight": 1.6,
+    "coinWeight": 1.44,
     "recurringMult": 1,
     "aggression": 0.9,
-    "reserveCoins": 4,
-    "priceBumpProb": 0.2,
+    "reserveCoins": 7,
+    "priceBumpProb": 0.23,
     "synergyBonus": 1.3
   },
   "lions": {
     "deflateWeight": 1.7,
-    "coinWeight": 0.9,
-    "recurringMult": 1,
+    "coinWeight": 0.96,
+    "recurringMult": 0.61,
     "aggression": 1.3,
     "reserveCoins": 1,
     "priceBumpProb": 0.2,
-    "synergyBonus": 1.3
+    "synergyBonus": 1.73
   },
   "bengals": {
-    "deflateWeight": 1.8,
-    "coinWeight": 1.2,
-    "recurringMult": 0.8,
-    "aggression": 1.1,
+    "deflateWeight": 2.29,
+    "coinWeight": 1.5,
+    "recurringMult": 1.05,
+    "aggression": 0.85,
     "reserveCoins": 2,
     "priceBumpProb": 0.25,
-    "synergyBonus": 1.5
+    "synergyBonus": 1.64
   },
   "ravens": {
     "deflateWeight": 1.6,
-    "coinWeight": 1.1,
-    "recurringMult": 1,
+    "coinWeight": 0.9,
+    "recurringMult": 0.99,
     "aggression": 1,
     "reserveCoins": 3,
     "priceBumpProb": 0.2,
-    "synergyBonus": 1.3
+    "synergyBonus": 1.42
   },
   "bills": {
     "deflateWeight": 1.6,
-    "coinWeight": 1,
+    "coinWeight": 0.9,
     "recurringMult": 1,
-    "aggression": 1,
-    "reserveCoins": 4,
-    "priceBumpProb": 0.2,
+    "aggression": 0.87,
+    "reserveCoins": 5,
+    "priceBumpProb": 0.14,
     "synergyBonus": 1.2
   },
   "cardinals": {
@@ -117,7 +117,7 @@
     "synergyBonus": 1.2
   },
   "commanders": {
-    "deflateWeight": 1.6,
+    "deflateWeight": 2.12,
     "coinWeight": 1,
     "recurringMult": 1,
     "aggression": 1,
@@ -126,13 +126,13 @@
     "synergyBonus": 1.2
   },
   "raiders": {
-    "deflateWeight": 1.8,
-    "coinWeight": 1,
+    "deflateWeight": 1.51,
+    "coinWeight": 0.69,
     "recurringMult": 1,
     "aggression": 1.1,
-    "reserveCoins": 3,
+    "reserveCoins": 4,
     "priceBumpProb": 0.35,
-    "synergyBonus": 1.3
+    "synergyBonus": 1.32
   },
   "chargers": {
     "deflateWeight": 1.6,
@@ -154,17 +154,17 @@
   },
   "vikings": {
     "deflateWeight": 1.8,
-    "coinWeight": 1.3,
+    "coinWeight": 1.65,
     "recurringMult": 1,
     "aggression": 1,
-    "reserveCoins": 3,
+    "reserveCoins": 2,
     "priceBumpProb": 0.2,
     "synergyBonus": 1.3
   },
   "saints": {
-    "deflateWeight": 1.6,
+    "deflateWeight": 1.8,
     "coinWeight": 1,
-    "recurringMult": 1,
+    "recurringMult": 1.29,
     "aggression": 1,
     "reserveCoins": 3,
     "priceBumpProb": 0.2,
@@ -180,12 +180,102 @@
     "synergyBonus": 1.3
   },
   "seahawks": {
+    "deflateWeight": 2.11,
+    "coinWeight": 1.2,
+    "recurringMult": 1.3,
+    "aggression": 1.11,
+    "reserveCoins": 2,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.04
+  },
+  "jets": {
+    "deflateWeight": 1.8,
+    "coinWeight": 1,
+    "recurringMult": 1,
+    "aggression": 1.2,
+    "reserveCoins": 1,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.25
+  },
+  "jaguars": {
     "deflateWeight": 1.6,
     "coinWeight": 1,
-    "recurringMult": 1.3,
+    "recurringMult": 1,
     "aggression": 1,
+    "reserveCoins": 3,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.2
+  },
+  "titans": {
+    "deflateWeight": 1.7,
+    "coinWeight": 1,
+    "recurringMult": 1.1,
+    "aggression": 1.1,
     "reserveCoins": 2,
     "priceBumpProb": 0.2,
     "synergyBonus": 1.3
+  },
+  "broncos": {
+    "deflateWeight": 1.56,
+    "coinWeight": 1,
+    "recurringMult": 0.73,
+    "aggression": 0.91,
+    "reserveCoins": 4,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.32
+  },
+  "chiefs": {
+    "deflateWeight": 1.44,
+    "coinWeight": 0.46,
+    "recurringMult": 1,
+    "aggression": 1.2,
+    "reserveCoins": 2,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.55
+  },
+  "cowboys": {
+    "deflateWeight": 1.8,
+    "coinWeight": 0.47,
+    "recurringMult": 1.17,
+    "aggression": 1.2,
+    "reserveCoins": 0,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.2
+  },
+  "panthers": {
+    "deflateWeight": 2,
+    "coinWeight": 0.9,
+    "recurringMult": 1,
+    "aggression": 1.1,
+    "reserveCoins": 2,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.2
+  },
+  "buccaneers": {
+    "deflateWeight": 1.6,
+    "coinWeight": 1,
+    "recurringMult": 1,
+    "aggression": 0.97,
+    "reserveCoins": 3,
+    "priceBumpProb": 0.34,
+    "synergyBonus": 1.3
+  },
+  "49ers": {
+    "deflateWeight": 1.19,
+    "coinWeight": 0.6,
+    "recurringMult": 1.33,
+    "aggression": 1.3,
+    "reserveCoins": 0,
+    "priceBumpProb": 0.22,
+    "synergyBonus": 1.24
+  },
+  "falcons": {
+    "deflateWeight": 1.92,
+    "coinWeight": 1,
+    "recurringMult": 1,
+    "aggression": 1.02,
+    "reserveCoins": 1,
+    "priceBumpProb": 0.25,
+    "synergyBonus": 1.2
   }
 }
