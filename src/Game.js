@@ -1,5 +1,6 @@
 import { INVALID_MOVE, ActivePlayers } from 'boardgame.io/dist/cjs/core.js';
 import { TEAMS, EVENTS, PRACTICE_SQUAD_CARD, PHASE_1_PLAYERS, PHASE_2_PLAYERS, HOF_PLAYERS } from './GameData.js';
+import { DEFAULT_GENOME, BASELINE_TEAM_GENOMES, ACTIVE_TEAM_GENOMES } from './ai/teamGenomes.js';
 
 export const fisherYatesShuffle = (array) => {
   const result = [...array];
@@ -237,14 +238,16 @@ export const resolveAuctionWin = (G, playerID, card) => {
     }
   }
 
-  // Acquisition Card Won Fly Animation
-  G.board.cardWonFlyAnimation = {
-    card: { ...card },
-    winnerId: playerID,
-    winnerTeamName: p.team ? p.team.name : `Player ${displayId}`,
-    bidAmount: G.board.highestBid,
-    timestamp: Date.now()
-  };
+  // Acquisition Card Won Fly Animation (only needed when human players are present)
+  if (G.numHumans > 0) {
+    G.board.cardWonFlyAnimation = {
+      card: { ...card },
+      winnerId: playerID,
+      winnerTeamName: p.team ? p.team.name : `Player ${displayId}`,
+      bidAmount: G.board.highestBid,
+      timestamp: Date.now()
+    };
+  }
 
   addLog(G, `Player ${displayId} (${p.team ? p.team.name : 'Team'}) won ${card.name} for ${G.board.highestBid} coins.`);
 
@@ -706,21 +709,25 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   const estimatedEndRound = G ? calculateEstimatedGameEndRound(G) : 10;
   const roundsLeft = Math.max(1, estimatedEndRound - currentRound);
 
-  let deflateWeight = 1.6;
-  let coinWeight = 1.0;
+  const teamGenome = p?.genome || G?.teamGenomes?.[effectiveTeamId] || ACTIVE_TEAM_GENOMES[effectiveTeamId] || BASELINE_TEAM_GENOMES[effectiveTeamId] || DEFAULT_GENOME;
+
+  let deflateWeight = teamGenome.deflateWeight;
+  let coinWeight = teamGenome.coinWeight;
+  const recurringMult = teamGenome.recurringMult || 1.0;
+  const synergyBonus = teamGenome.synergyBonus || 1.2;
 
   if (archetype === 'rusher') {
-    deflateWeight = 2.2;
-    coinWeight = 0.7;
+    deflateWeight *= 1.15;
+    coinWeight *= 0.85;
   } else if (archetype === 'tycoon') {
-    deflateWeight = 1.1;
-    coinWeight = 1.6;
+    deflateWeight *= 0.85;
+    coinWeight *= 1.25;
   } else if (archetype === 'bully') {
-    deflateWeight = 1.8;
-    coinWeight = 1.1;
+    deflateWeight *= 1.1;
+    coinWeight *= 1.05;
   } else if (archetype === 'wildcard') {
-    deflateWeight = 1.3 + Math.random() * 0.8;
-    coinWeight = 0.8 + Math.random() * 0.8;
+    deflateWeight *= (0.9 + Math.random() * 0.2);
+    coinWeight *= (0.9 + Math.random() * 0.2);
   }
 
   // Playtest 20 User Directive: When the game is 1-2 turns away from being over,
@@ -733,26 +740,9 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     coinWeight *= 0.85;
   }
 
-  // Franchise-specific economic weight tuning:
+  // Hard constraints: Browns cannot gain coins under any circumstance
   if (effectiveTeamId === 'browns') {
-    deflateWeight = 3.5;
-    coinWeight = 0.0; // Coins from cards are 100% useless
-  } else if (effectiveTeamId === 'patriots') {
-    deflateWeight = 2.4;
-    coinWeight = 0.6; // Rush to 0 PSI
-  } else if (effectiveTeamId === 'eagles') {
-    coinWeight = 1.45; // 3 coins converts to table-wide PSI damage
-    deflateWeight = 1.5;
-  } else if (effectiveTeamId === 'steelers') {
-    coinWeight = 1.6; // Maintaining coin lead applies +1 PSI to all rivals
-  } else if (effectiveTeamId === 'vikings') {
-    if (p.psi >= 27) {
-      deflateWeight = 2.2; // Rush under 27 PSI
-      coinWeight = 0.9;
-    } else {
-      deflateWeight = 1.4;
-      coinWeight = 1.85; // 2x coins active!
-    }
+    coinWeight = 0.0;
   }
 
   // Colts absolute rule: CANNOT replace players! Recurring negative cards are lethal!
@@ -771,9 +761,9 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       let amt = eff.amount || 0;
       const isRecurring = eff.perRound || eff.trigger === 'refresh' || eff.trigger === 'end_round' || eff.type === 'deflate_every_round' || eff.type === 'every_round';
       if (isRecurring) {
-        if (eff.type === 'deflate' || eff.type === 'deflate_every_round') totalDeflate += amt * roundsLeft;
-        if (eff.type === 'coins') totalCoins += amt * roundsLeft;
-        if (eff.type === 'inflate') totalDeflate -= amt * roundsLeft;
+        if (eff.type === 'deflate' || eff.type === 'deflate_every_round') totalDeflate += amt * roundsLeft * recurringMult;
+        if (eff.type === 'coins') totalCoins += amt * roundsLeft * recurringMult;
+        if (eff.type === 'inflate') totalDeflate -= amt * roundsLeft * recurringMult;
       } else {
         // Bengals Ability: +2 coins/deflate for instant abilities
         if (effectiveTeamId === 'bengals' && (eff.type === 'deflate' || eff.type === 'coins')) {
@@ -962,10 +952,18 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       }
     });
 
-    return rawScore - lowestOpportunityCost;
+    let finalScore = rawScore - lowestOpportunityCost;
+    if (doesCardFitTeamStrategy(effectiveTeamId, card, p, G)) {
+      finalScore *= synergyBonus;
+    }
+    return Math.round(finalScore * 10) / 10;
   }
 
-  return rawScore;
+  let finalScore = rawScore;
+  if (doesCardFitTeamStrategy(effectiveTeamId, card, p, G)) {
+    finalScore *= synergyBonus;
+  }
+  return Math.round(finalScore * 10) / 10;
 };
 
 export const chooseCpuCommandersMarkCard = (G, commandersId) => {
@@ -1086,6 +1084,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (!card) return { shouldBid: false, bidAmount: 0 };
 
   const effectiveTeamId = getEffectiveTeamId(currentPlayer);
+  const teamGenome = currentPlayer?.genome || G?.teamGenomes?.[effectiveTeamId] || ACTIVE_TEAM_GENOMES[effectiveTeamId] || BASELINE_TEAM_GENOMES[effectiveTeamId] || DEFAULT_GENOME;
   const highestBidderPlayer = G.board.highestBidder !== null ? G.players[G.board.highestBidder] : null;
   const highestTeamId = getEffectiveTeamId(highestBidderPlayer);
   const bidStep = (highestTeamId === 'bears') ? 2 : 1;
@@ -1114,12 +1113,17 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // If the human or another team nominates the worst card on the board for 1 coin,
   // no CPU should outbid them for 2+ coins when better cards are available on the board!
   const otherAvailableCards = G.board.auctionPlayers.filter((c, idx) => c !== null && idx !== cardIndex);
+  const scoredOtherCards = otherAvailableCards.map(c => ({
+    card: c,
+    score: scoreCardForPlayer(G, currentPlayerId, c)
+  }));
+  const otherScores = scoredOtherCards.map(o => o.score).sort((a, b) => b - a);
+  const secondBestScore = otherScores.length > 0 ? otherScores[0] : 0;
+  const floorScore = otherScores.length > 0 ? otherScores[otherScores.length - 1] : 0;
+
   if (otherAvailableCards.length > 0) {
-    const betterAvailableCards = otherAvailableCards.filter(c => {
-      const otherScore = scoreCardForPlayer(G, currentPlayerId, c);
-      return otherScore > cardScore && c.minBid <= nextBid;
-    });
-    const isLowestScoringOnBoard = otherAvailableCards.every(c => scoreCardForPlayer(G, currentPlayerId, c) >= cardScore);
+    const betterAvailableCards = scoredOtherCards.filter(o => o.score > cardScore && o.card.minBid <= nextBid);
+    const isLowestScoringOnBoard = scoredOtherCards.every(o => o.score >= cardScore);
     
     if (isLowestScoringOnBoard && nextBid >= 2 && betterAvailableCards.length > 0) {
       return { shouldBid: false, bidAmount: 0 };
@@ -1148,13 +1152,6 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   // Scarcity & Drop-Off Factor (FOMO)
-  const otherScores = [];
-  otherAvailableCards.forEach(c => {
-    otherScores.push(scoreCardForPlayer(G, currentPlayerId, c));
-  });
-  otherScores.sort((a, b) => b - a);
-  const secondBestScore = otherScores.length > 0 ? otherScores[0] : 0;
-  const floorScore = otherScores.length > 0 ? otherScores[otherScores.length - 1] : 0;
 
   let scarcityMultiplier = 1.0;
   if (otherScores.length > 0) {
@@ -1167,7 +1164,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   // Era Anticipation Savings (Rounds 3 & 6)
-  let savingsReserve = 0;
+  let savingsReserve = teamGenome.reserveCoins !== undefined ? teamGenome.reserveCoins : 0;
   const isApproachingPhase2 = (G.board.round === 3);
   const isApproachingHoF = (G.board.round === 6);
   const teamExemptFromHoarding = (effectiveTeamId === 'packers' || effectiveTeamId === 'browns' || effectiveTeamId === 'dolphins');
@@ -1180,12 +1177,12 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     const thisCardGood = isCardEspeciallyGood(card, G, currentPlayerId);
 
     if (!anyEspeciallyGoodOnBoard && !anyFitsStrategyOnBoard) {
-      if (archetype === 'tycoon') savingsReserve = isApproachingHoF ? 6 : 5;
-      else if (archetype === 'opportunist') savingsReserve = isApproachingHoF ? 5 : 4;
-      else if (archetype === 'rusher') savingsReserve = isApproachingHoF ? 3 : 2;
-      else savingsReserve = isApproachingHoF ? 4 : 3;
+      if (archetype === 'tycoon') savingsReserve = Math.max(savingsReserve, isApproachingHoF ? 6 : 5);
+      else if (archetype === 'opportunist') savingsReserve = Math.max(savingsReserve, isApproachingHoF ? 5 : 4);
+      else if (archetype === 'rusher') savingsReserve = Math.max(savingsReserve, isApproachingHoF ? 3 : 2);
+      else savingsReserve = Math.max(savingsReserve, isApproachingHoF ? 4 : 3);
     } else if (!thisCardGood && !thisCardFits) {
-      savingsReserve = 4;
+      savingsReserve = Math.max(savingsReserve, 4);
     }
   }
 
@@ -1221,7 +1218,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
   const isCoinLeader = currentPlayer.coins > richestOpponentCoins;
 
-  let baseValuation = Math.max(card.minBid, Math.min(effMax, Math.round(cardScore * 0.75 * scarcityMultiplier)));
+  const aggression = teamGenome.aggression || 1.0;
+  let baseValuation = Math.max(card.minBid, Math.min(effMax, Math.round(cardScore * 0.75 * scarcityMultiplier * aggression)));
   if (is4DeflateCard && G.board.round >= 5) {
     baseValuation = Math.max(baseValuation, Math.round(effMax * 0.85)); // Fight aggressively for 4-deflate cards!
   }
@@ -1314,7 +1312,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
 
     const isBullyOrOpportunist = (archetype === 'bully' || archetype === 'opportunist');
-    const bumpChance = isBullyOrOpportunist ? 0.35 : 0.15;
+    const bumpChance = teamGenome.priceBumpProb !== undefined ? teamGenome.priceBumpProb : (isBullyOrOpportunist ? 0.35 : 0.15);
     const isBargainPrice = G.board.highestBid < Math.round(effMax * 0.45);
 
     if (opponentCanAffordRaise && isBargainPrice && safeRiskForMe && currentPlayer.coins >= nextBid && Math.random() < bumpChance) {
@@ -2063,6 +2061,41 @@ export const selectCpuBucsTeamToCopy = (availableTeams) => {
   return scored[0].team;
 };
 
+export const resolveTradeRumors = (G) => {
+  if (!G.board.pendingTradeRumors || !G.board.pendingTradeRumors.picks) return;
+  const numP = Object.keys(G.players).length;
+  const passedCards = {};
+  Object.keys(G.players).forEach(id => {
+    const pl = G.players[id];
+    const pickIdx = G.board.pendingTradeRumors.picks[id];
+    passedCards[id] = (pickIdx !== undefined && pl.lineup[pickIdx]) ? pl.lineup[pickIdx] : pl.lineup[0];
+  });
+
+  const summaries = [];
+  Object.keys(G.players).forEach(id => {
+    const idx = parseInt(id);
+    const giverId = ((idx - 1 + numP) % numP).toString();
+    const receivedCard = passedCards[giverId];
+    const givenCard = passedCards[id];
+
+    const pl = G.players[id];
+    if (givenCard && receivedCard) {
+      const cardLoc = pl.lineup.findIndex(c => c.uniqueId === givenCard.uniqueId);
+      if (cardLoc !== -1) {
+        pl.lineup[cardLoc] = receivedCard;
+      } else {
+        pl.lineup.push(receivedCard);
+      }
+      summaries.push(`Player ${parseInt(giverId) + 1} passed ${receivedCard.name} to Player ${idx + 1}`);
+    }
+  });
+
+  const hasHumans = Object.values(G.players).some(p => !p.isCpu);
+  G.board.tradeRumorsSummary = hasHumans ? summaries : null;
+  addLog(G, `Trade Rumors Complete: All players passed 1 active player to the right.`);
+  G.board.pendingTradeRumors = null;
+};
+
 export const executeActiveEvent = (G) => {
   const ev = G.board.activeEvent;
   if (!ev) return;
@@ -2144,6 +2177,10 @@ export const executeActiveEvent = (G) => {
         G.board.pendingTradeRumors.picks[id] = bestIdx;
       }
     });
+    const allPicked = Object.keys(G.players).every(id => G.board.pendingTradeRumors?.picks?.[id] !== undefined);
+    if (allPicked) {
+      resolveTradeRumors(G);
+    }
   } else if (ev.category === 'bonus_auction') {
     if (G.decks.activePlayers.length > 0) {
       const card = G.decks.activePlayers.pop();
@@ -2206,7 +2243,7 @@ export const DeflategateGame = {
     const shuffledTeams = fisherYatesShuffle([...TEAMS]);
     const numPlayers = (ctx && ctx.numPlayers) || 4;
     const numHumans = typeof setupData?.numHumans === 'number'
-      ? Math.max(1, Math.min(numPlayers, setupData.numHumans))
+      ? Math.max(0, Math.min(numPlayers, setupData.numHumans))
       : (setupData?.vsCpu === false ? numPlayers : 1);
 
     const players = {};
@@ -2238,6 +2275,8 @@ export const DeflategateGame = {
       vsCpu: numHumans < numPlayers,
       numHumans,
       cpuDifficulty: setupData?.cpuDifficulty || 'normal',
+      teamGenomes: setupData?.teamGenomes || null,
+      forcedTeams: setupData?.forcedTeams || null,
       pendingReplacement: null,
       logs: [],
       decks: {
@@ -2333,13 +2372,20 @@ export const DeflategateGame = {
       G.cpuDifficulty = difficulty;
     },
     setNumHumans: ({ G }, count) => {
-      if (typeof count !== 'number' || count < 1) return;
+      if (typeof count !== 'number' || count < 0) return;
       const numPlayers = Object.keys(G.players).length;
       G.numHumans = Math.min(numPlayers, count);
       G.vsCpu = G.numHumans < numPlayers;
       Object.keys(G.players).forEach(id => {
         G.players[id].isCpu = parseInt(id) >= G.numHumans;
       });
+    },
+    setTeamGenome: ({ G }, teamId, genome) => {
+      if (!G.teamGenomes) G.teamGenomes = {};
+      G.teamGenomes[teamId] = genome;
+    },
+    setAllTeamGenomes: ({ G }, genomes) => {
+      G.teamGenomes = { ...(G.teamGenomes || {}), ...genomes };
     },
     selectTeam: ({ G, playerID, events }, teamIndex, actingPlayerId) => {
       const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
@@ -2916,18 +2962,68 @@ export const DeflategateGame = {
     teamSelection: {
       start: true,
       turn: { activePlayers: ActivePlayers.ALL },
+      onBegin: ({ G }) => {
+        // If all players are CPU (e.g. headless AI simulation), auto-assign all teams immediately
+        const humanCount = Object.values(G.players).filter(p => !p.isCpu).length;
+        if (humanCount === 0) {
+          Object.keys(G.players).forEach(id => {
+            const cpu = G.players[id];
+            if (cpu && !cpu.team) {
+              if (G.forcedTeams?.[id]) {
+                const forced = TEAMS.find(t => t.id === G.forcedTeams[id]);
+                if (forced) cpu.team = forced;
+              }
+              if (!cpu.team) {
+                if (!cpu.personality) cpu.personality = CPU_ARCHETYPES[parseInt(id) % CPU_ARCHETYPES.length];
+                cpu.team = selectCpuTeamFromChoices(cpu.teamChoices, cpu.personality) || cpu.teamChoices[0];
+              }
+              cpu.psi = cpu.team.initialPsi;
+              cpu.coins = cpu.team.coins;
+              const cpuPsCount = cpu.team.id === 'seahawks' ? 4 : 3;
+              for (let i = 0; i < cpuPsCount; i++) {
+                cpu.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${id}_${i}` });
+              }
+              addLog(G, `CPU Player ${parseInt(id) + 1} selected team ${cpu.team.name}.`);
+            }
+          });
+        }
+      },
       moves: {
         setCpuDifficulty: ({ G }, difficulty) => {
           G.cpuDifficulty = difficulty;
         },
+        setTeamGenome: ({ G }, teamId, genome) => {
+          if (!G.teamGenomes) G.teamGenomes = {};
+          G.teamGenomes[teamId] = genome;
+        },
+        setAllTeamGenomes: ({ G }, genomes) => {
+          G.teamGenomes = { ...(G.teamGenomes || {}), ...genomes };
+        },
         setNumHumans: ({ G }, count) => {
-          if (typeof count !== 'number' || count < 1) return;
+          if (typeof count !== 'number' || count < 0) return;
           const numPlayers = Object.keys(G.players).length;
           G.numHumans = Math.min(numPlayers, count);
           G.vsCpu = G.numHumans < numPlayers;
           Object.keys(G.players).forEach(id => {
             G.players[id].isCpu = parseInt(id) >= G.numHumans;
           });
+          // If set to 0 humans, immediately auto-assign teams for any CPU that hasn't picked
+          if (G.numHumans === 0) {
+            Object.keys(G.players).forEach(id => {
+              const cpu = G.players[id];
+              if (cpu && !cpu.team) {
+                if (!cpu.personality) cpu.personality = CPU_ARCHETYPES[parseInt(id) % CPU_ARCHETYPES.length];
+                cpu.team = selectCpuTeamFromChoices(cpu.teamChoices, cpu.personality) || cpu.teamChoices[0];
+                cpu.psi = cpu.team.initialPsi;
+                cpu.coins = cpu.team.coins;
+                const cpuPsCount = cpu.team.id === 'seahawks' ? 4 : 3;
+                for (let i = 0; i < cpuPsCount; i++) {
+                  cpu.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${id}_${i}` });
+                }
+                addLog(G, `CPU Player ${parseInt(id) + 1} selected team ${cpu.team.name}.`);
+              }
+            });
+          }
         },
         selectTeam: ({ G, playerID, events }, teamIndex, actingPlayerId) => {
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
@@ -2945,7 +3041,9 @@ export const DeflategateGame = {
           if (!chosenTeam) return INVALID_MOVE;
 
           p.team = chosenTeam;
-          p.isCpu = false;
+          if (typeof p.isCpu !== 'boolean') {
+            p.isCpu = false;
+          }
           p.psi = chosenTeam.initialPsi;
           p.coins = chosenTeam.coins;
 
@@ -3316,35 +3414,8 @@ export const DeflategateGame = {
 
           const numP = Object.keys(G.players).length;
           const allPicked = Object.keys(G.players).every(id => G.board.pendingTradeRumors.picks[id] !== undefined);
-
           if (allPicked) {
-            const passedCards = {};
-            Object.keys(G.players).forEach(id => {
-              const pl = G.players[id];
-              const pickIdx = G.board.pendingTradeRumors.picks[id];
-              passedCards[id] = pl.lineup[pickIdx] || pl.lineup[0];
-            });
-
-            const summaries = [];
-            Object.keys(G.players).forEach(id => {
-              const idx = parseInt(id);
-              const giverId = ((idx - 1 + numP) % numP).toString();
-              const receivedCard = passedCards[giverId];
-              const givenCard = passedCards[id];
-
-              const pl = G.players[id];
-              const cardLoc = pl.lineup.findIndex(c => c.uniqueId === givenCard.uniqueId);
-              if (cardLoc !== -1) {
-                pl.lineup[cardLoc] = receivedCard;
-              } else {
-                pl.lineup.push(receivedCard);
-              }
-              summaries.push(`Player ${parseInt(giverId) + 1} passed ${receivedCard.name} to Player ${idx + 1}`);
-            });
-
-            G.board.tradeRumorsSummary = summaries;
-            addLog(G, `Trade Rumors Complete: All players passed 1 active player to the right.`);
-            G.board.pendingTradeRumors = null;
+            resolveTradeRumors(G);
           }
         },
         bonusAuctionBid: ({ G, playerID }, amount, actingPlayerId) => {
@@ -4580,3 +4651,8 @@ export const DeflategateGame = {
     }
   }
 };
+
+export const createDeflategateGame = (customOptions = {}) => ({
+  ...DeflategateGame,
+  setup: (context, setupData) => DeflategateGame.setup(context, { ...setupData, ...customOptions })
+});

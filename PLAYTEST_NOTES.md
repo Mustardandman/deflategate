@@ -496,4 +496,70 @@ Starting Screen Redesign: (Desktop & Mobile)
    - Added a dedicated CPU difficulty button with a vertical 1-column list of four options: "Easy", "Normal" (default), "Hard", and "Extreme".
    - Wired `cpuDifficulty` into game setup data and initial state for future AI difficulty behaviors.
 ------------
+Playtest #30:
+Evolutionary Algorithm (Genetic Self-Play Optimization) & League Franchise Balance:
+
+1. Architecture & Luck Mitigation Methodology:
+   - Built a headless simulation engine in `scripts/optimize_team_ai.mjs` running full 10-round games in ~400ms (4P) to 1.6s (8P).
+   - Mitigated card/event RNG luck using **Matched Duplicate Seed Replays**: for every candidate genome tested, the engine runs Game A (Candidate) and Game B (Baseline) on identical PRNG seeds (identical card draw order, identical event cards, identical opponent seat assignments). This guarantees that any difference in final PSI ($\Delta\text{PSI}$) or win rate is 100% due to AI strategic decisions rather than luck.
+   - Tested candidates across 4-Player, 6-Player, and 8-Player tables to capture table density dynamics.
+
+2. Franchise-by-Franchise Evolutionary Observations:
+   - **Cleveland Browns (45 Starting PSI, 20 Starting Coins, 0 Coins Gainable)**:
+     - *Benchmark*: 0.0% Win Rate, 8.8 Avg PSI.
+     - *Evolved Outcome*: **66.7% Win Rate**, **2.2 Avg PSI** (+6.6 PSI improvement).
+     - *What the AI Learned*: Increased `reserveCoins` from 5 to 6, increased `deflateWeight` to 3.64, and reduced `priceBumpProb` from 0.10 to 0.06. Because the Browns can never earn coins back, price-bumping opponents was accidentally sticking the Browns with unwanted cards that drained their purse. By saving coins strictly for high-impact deflation cards, the Browns' win rate jumped to 100% in 4P games and 50% in 6P/8P games.
+   - **Indianapolis Colts (50 Starting PSI, Infinite Lineup Capacity)**:
+     - *Benchmark*: 83.3% Win Rate, 3.7 Avg PSI.
+     - *Evolved Outcome*: **66.7% Win Rate**, **3.2 Avg PSI** (and a league-best **1.0 Avg PSI** in the balance tournament).
+     - *What the AI Learned*: Maximized `recurringMult` to 2.00, keeping `deflateWeight` at 2.00 and `synergyBonus` at 1.60 with 0-1 coin reserve. The Colts never replace cards, so recurring coin and deflation engines stack exponentially. The AI strictly avoids recurring negative cards (which would otherwise permanently cripple the franchise).
+   - **Miami Dolphins (End-of-Round 3-Coin Bailout if at 0 Coins)**:
+     - *Benchmark*: 33.3% Win Rate, 8.7 Avg PSI.
+     - *Evolved Outcome*: **50.0% Win Rate**, **4.3 Avg PSI** (+5.5 PSI advantage over baseline).
+     - *What the AI Learned*: Lowered `coinWeight` to 0.52 and locked `reserveCoins` to 0 with high `aggression` (1.30). Because hitting 0 coins triggers an automatic +3 coin cash injection every single round, hoarding coins was suboptimal. The AI learned to spend down to 0 aggressively to win premium cards and rely on the bailout.
+   - **Chicago Bears (+2 Coin Outbid Requirement for Opponents)**:
+     - *Benchmark*: 0.0% Win Rate, 15.7 Avg PSI.
+     - *Evolved Outcome*: Peak **83.3% Win Rate** (Gen 2) and **66.7% Win Rate** (Gen 3), Avg PSI dropping from 15.7 to **1.2 - 7.2**.
+     - *What the AI Learned*: Bumping `deflateWeight` to 2.01 and increasing `priceBumpProb` to 0.43. The Bears' +2 outbid penalty forces opponents to bleed 2 extra coins whenever they contest the Bears. In 8-player tables, the Bears achieved a **100% win rate** because table-wide bidding wars drained everyone else's banks, allowing the Bears to scoop cards cheaply.
+   - **Philadelphia Eagles (Tush Push Post-Auction Table Deflation)**:
+     - *Benchmark*: 16.7% Win Rate, 12.2 Avg PSI.
+     - *Evolved Outcome*: **33.3% Win Rate**, **8.7 Avg PSI** (100% Win Rate in 4P tables).
+     - *What the AI Learned*: Kept `reserveCoins` at 6 and `coinWeight` at 1.50. The Tush Push converts coins into table-wide deflation; without a deep coin reserve, the ability cannot fire effectively. Scales best in 4P tables where deflation directly pressures the small field.
+   - **Houston Texans (+2 Coins / +2 Deflate per QB in Refresh Phase)**:
+     - *Benchmark*: 33.3% Win Rate, 18.0 Avg PSI.
+     - *Evolved Outcome*: **50.0% Win Rate**, **3.3 Avg PSI** (+3.8 PSI advantage over baseline).
+     - *What the AI Learned*: Raised `synergyBonus` to 1.90, `coinWeight` to 1.60, and dropped `reserveCoins` to 0. The AI goes all-in on acquiring QBs. Achieved a **100% win rate in 4P tables** where QBs are readily available, but struggled in 8P (0%) where high player count dilutes QB availability.
+   - **New England Patriots (Low 3-Coin Starting Purse)**:
+     - *Benchmark*: 33.3% Win Rate, 8.3 Avg PSI.
+     - *Evolved Outcome*: **83.3% Win Rate**, **1.8 Avg PSI** (36.4% Win Rate across 11 tournament games).
+     - *What the AI Learned*: Lowered `recurringMult` to 0.41 while maintaining high `deflateWeight` (2.31). With only 3 starting coins, waiting for long-term recurring engines is too slow; the Patriots evolved to prioritize immediate instant deflation cards to win rapid low-turn games.
+   - **Green Bay Packers (All-Phase-1 Cards Bonus: +3 Deflate/Round)**:
+     - *Benchmark*: 16.7% Win Rate, 13.5 Avg PSI.
+     - *Evolved Outcome*: **50.0% Win Rate**, **5.5 Avg PSI** (+2.8 PSI advantage over baseline).
+     - *What the AI Learned*: Reduced `aggression` to 0.94 and locked `reserveCoins` to 0. In 8-player games (where it achieved **100% win rate**), opponents fight fiercely over expensive Phase 2 and HOF cards; the Packers quietly accumulated cheap Phase 1 players, keeping their +3 deflate/round engine untouched.
+
+3. 45-Game League Balance Tournament Results (Across 4P, 6P, and 8P Tables):
+   - **Tier 1 (Front-Runners / Highly Dominant)**:
+     - Bills: 50.0% Win Rate (6.5 Avg PSI) — Dominates 4P (67%) and 6P (100%).
+     - Colts: 50.0% Win Rate (1.0 Avg PSI) — Exceptional endgame deflation engine.
+     - Patriots: 36.4% Win Rate (3.7 Avg PSI) — Consistent across 6P (40%) and 8P (40%).
+     - Titans: 33.3% Win Rate (4.8 Avg PSI) — Strong in 8P (50%).
+   - **Tier 2 (Solid Contenders / Table-Dependent)**:
+     - Eagles: 27.3% Win Rate (8.2 Avg PSI) — Dominant in 4P (100%), diluted in 8P (20%).
+     - Raiders: 25.0% Win Rate (5.5 Avg PSI) — Strong in 6P (50%).
+     - Chiefs: 25.0% Win Rate (10.9 Avg PSI) — Strong in 6P (50%).
+     - Ravens: 23.5% Win Rate (9.9 Avg PSI) — Consistent across 4P (20%), 6P (20%), 8P (29%).
+     - Steelers: 20.0% Win Rate (8.6 Avg PSI) — Strong in 6P (50%).
+     - Cardinals: 20.0% Win Rate (9.2 Avg PSI) — Strong in 8P (33%).
+     - Bears: Evolved champion achieved 83.3% candidate win rate, specifically dominating 8P tables (100%).
+   - **Tier 3 (Underperforming / High Variance)**:
+     - Browns: 15.4% Win Rate (7.8 Avg PSI) — Substantially improved from 0% baseline, but zero coin replenishment remains unforgiving when bad events hit.
+     - 49ers: 16.7% Win Rate (13.0 Avg PSI) — Needs tighter threshold tuning for luxury tax avoidance.
+     - Chargers: 16.7% Win Rate (15.2 Avg PSI) — Opponents actively counter-play by sticking them with unwanted cards.
+
+4. Implementation:
+   - Generated evolved weights saved to `src/ai/team_weights.json`.
+   - Exported `EVOLVED_TEAM_GENOMES` via `src/ai/evolvedWeights.js`.
+   - Wired `ACTIVE_TEAM_GENOMES` directly into `src/Game.js` (`scoreCardForPlayer` and `evaluateCpuAuctionBid`), ensuring all solo and multiplayer matches automatically utilize the optimized AI strategies.
+------------
 

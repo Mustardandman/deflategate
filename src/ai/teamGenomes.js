@@ -1,0 +1,97 @@
+/**
+ * Team Genomes and Genetic Operators for Deflategate CPU Optimization
+ */
+
+import { EVOLVED_TEAM_GENOMES } from './evolvedWeights.js';
+
+export const DEFAULT_GENOME = {
+  deflateWeight: 1.6,
+  coinWeight: 1.0,
+  recurringMult: 1.0,
+  aggression: 1.0,
+  reserveCoins: 3,
+  priceBumpProb: 0.25,
+  synergyBonus: 1.2
+};
+
+export const BASELINE_TEAM_GENOMES = {
+  browns: { deflateWeight: 3.5, coinWeight: 0.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 5, priceBumpProb: 0.1, synergyBonus: 1.5 },
+  colts: { deflateWeight: 2.0, coinWeight: 0.9, recurringMult: 2.0, aggression: 1.1, reserveCoins: 0, priceBumpProb: 0.1, synergyBonus: 1.6 },
+  eagles: { deflateWeight: 1.5, coinWeight: 1.5, recurringMult: 1.0, aggression: 1.0, reserveCoins: 6, priceBumpProb: 0.3, synergyBonus: 1.3 },
+  dolphins: { deflateWeight: 1.7, coinWeight: 0.8, recurringMult: 1.1, aggression: 1.3, reserveCoins: 0, priceBumpProb: 0.2, synergyBonus: 1.2 },
+  bears: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.2, reserveCoins: 3, priceBumpProb: 0.4, synergyBonus: 1.3 },
+  texans: { deflateWeight: 1.6, coinWeight: 1.2, recurringMult: 1.2, aggression: 1.1, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.8 },
+  patriots: { deflateWeight: 2.4, coinWeight: 0.6, recurringMult: 1.0, aggression: 1.2, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.4 },
+  steelers: { deflateWeight: 1.4, coinWeight: 1.6, recurringMult: 1.0, aggression: 0.9, reserveCoins: 4, priceBumpProb: 0.2, synergyBonus: 1.3 },
+  lions: { deflateWeight: 1.7, coinWeight: 0.9, recurringMult: 1.0, aggression: 1.3, reserveCoins: 1, priceBumpProb: 0.2, synergyBonus: 1.3 },
+  bengals: { deflateWeight: 1.8, coinWeight: 1.2, recurringMult: 0.8, aggression: 1.1, reserveCoins: 2, priceBumpProb: 0.25, synergyBonus: 1.5 },
+  ravens: { deflateWeight: 1.6, coinWeight: 1.1, recurringMult: 1.0, aggression: 1.0, reserveCoins: 3, priceBumpProb: 0.2, synergyBonus: 1.3 },
+  bills: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 4, priceBumpProb: 0.2, synergyBonus: 1.2 },
+  cardinals: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 3, priceBumpProb: 0.2, synergyBonus: 1.2 },
+  commanders: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 3, priceBumpProb: 0.25, synergyBonus: 1.2 },
+  raiders: { deflateWeight: 1.8, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.1, reserveCoins: 3, priceBumpProb: 0.35, synergyBonus: 1.3 },
+  chargers: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 0.9, reserveCoins: 3, priceBumpProb: 0.45, synergyBonus: 1.2 },
+  packers: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.1, reserveCoins: 0, priceBumpProb: 0.2, synergyBonus: 1.4 },
+  vikings: { deflateWeight: 1.8, coinWeight: 1.3, recurringMult: 1.0, aggression: 1.0, reserveCoins: 3, priceBumpProb: 0.2, synergyBonus: 1.3 },
+  saints: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 3, priceBumpProb: 0.2, synergyBonus: 1.4 },
+  rams: { deflateWeight: 2.0, coinWeight: 0.8, recurringMult: 1.1, aggression: 1.1, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.3 },
+  seahawks: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.3, aggression: 1.0, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.3 }
+};
+
+export const ACTIVE_TEAM_GENOMES = {
+  ...BASELINE_TEAM_GENOMES,
+  ...EVOLVED_TEAM_GENOMES
+};
+
+export const GENOME_BOUNDS = {
+  deflateWeight: { min: 0.5, max: 5.0, step: 0.05 },
+  coinWeight: { min: 0.0, max: 3.0, step: 0.05 },
+  recurringMult: { min: 0.4, max: 3.0, step: 0.05 },
+  aggression: { min: 0.5, max: 2.0, step: 0.05 },
+  reserveCoins: { min: 0, max: 10, step: 1 },
+  priceBumpProb: { min: 0.0, max: 0.8, step: 0.02 },
+  synergyBonus: { min: 0.8, max: 3.0, step: 0.05 }
+};
+
+export function clampGenome(genome, teamId) {
+  const g = { ...genome };
+  for (const key of Object.keys(GENOME_BOUNDS)) {
+    const { min, max, step } = GENOME_BOUNDS[key];
+    let val = typeof g[key] === 'number' ? g[key] : (DEFAULT_GENOME[key] || 1.0);
+    val = Math.max(min, Math.min(max, val));
+    if (step === 1) {
+      val = Math.round(val);
+    } else {
+      val = Math.round(val * 100) / 100;
+    }
+    g[key] = val;
+  }
+  // Hard constraint: Browns cannot gain coins under any circumstance
+  if (teamId === 'browns') {
+    g.coinWeight = 0.0;
+  }
+  return g;
+}
+
+export function mutateGenome(parent, teamId, mutationRate = 0.25, mutationMagnitude = 0.15) {
+  const mutated = { ...parent };
+  for (const key of Object.keys(GENOME_BOUNDS)) {
+    if (Math.random() < mutationRate) {
+      const { min, max, step } = GENOME_BOUNDS[key];
+      const range = max - min;
+      const delta = (Math.random() * 2 - 1) * range * mutationMagnitude;
+      mutated[key] += delta;
+    }
+  }
+  return clampGenome(mutated, teamId);
+}
+
+export function crossoverGenomes(parentA, parentB, teamId) {
+  const child = {};
+  for (const key of Object.keys(GENOME_BOUNDS)) {
+    // Blended crossover with random bias
+    const weight = Math.random();
+    child[key] = parentA[key] * weight + parentB[key] * (1 - weight);
+  }
+  return clampGenome(child, teamId);
+}
