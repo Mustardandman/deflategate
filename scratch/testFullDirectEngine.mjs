@@ -216,11 +216,11 @@ export function simulateGameDirect({ numPlayers = 4, forcedTeams = {}, teamGenom
         DeflategateGame.phases.refreshPhase.moves.confirmRefreshSummary({ G, events: {} });
       }
 
-      // Check win condition (PSI <= 25 threshold or 0)
-      const lowestPsi = Math.min(...Object.values(G.players).map(p => p.psi));
-      if (lowestPsi <= 25) {
-        const potentialWinners = Object.keys(G.players).filter(id => G.players[id].psi === lowestPsi);
-        winnerId = potentialWinners[0];
+      // Check win condition (PSI <= 0 or round > 10) matching Game.js
+      const winners = Object.keys(G.players).filter(id => G.players[id].psi <= 0);
+      if (winners.length > 0) {
+        winners.sort((a, b) => G.players[a].psi - G.players[b].psi);
+        winnerId = winners[0];
         break;
       }
     }

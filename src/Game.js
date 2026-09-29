@@ -780,9 +780,24 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     coinWeight *= (0.9 + Math.random() * 0.2);
   }
 
-  // Playtest 20 User Directive: When the game is 1-2 turns away from being over,
-  // have teams value deflation much more than coins!
-  if (roundsLeft <= 2 || currentRound >= 8) {
+  // Playtest 20 & 34 User Directive: Turns-to-Zero Countdown Calculus
+  // Calculate exact turns until player reaches 0 PSI based on active roster engine
+  let playerRecurringDeflate = 0;
+  (p.lineup || []).forEach(c => {
+    c.effects?.forEach(e => {
+      if (e.perRound && e.type === 'deflate') playerRecurringDeflate += e.amount * (c.ramsDoubleToken ? 2 : 1);
+    });
+  });
+  if (effectiveTeamId === 'panthers') playerRecurringDeflate += 2;
+  if (effectiveTeamId === 'packers' && (p.lineup || []).every(c => c.phase === 1)) playerRecurringDeflate += 4;
+  if (effectiveTeamId === '49ers' && p.coins < 5) playerRecurringDeflate *= 2;
+
+  const personalTurnsToZero = playerRecurringDeflate > 0 ? Math.ceil(p.psi / playerRecurringDeflate) : 10;
+
+  if (personalTurnsToZero <= 2 || p.psi <= 8) {
+    deflateWeight *= 2.8;
+    coinWeight *= 0.15;
+  } else if (roundsLeft <= 2 || currentRound >= 8) {
     deflateWeight *= 2.4;
     coinWeight *= 0.35;
   } else if (currentRound >= 5) {
@@ -874,6 +889,11 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   const hasBigRecurringDeflate = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3);
   if (hasBigRecurringDeflate && (currentRound >= 5 || roundsLeft <= 3)) {
     rawScore += 14.0;
+  }
+
+  // Side note from user: Everyone should be trying to get Patrick Mahomes and Travis Kelce!
+  if (card.id === 'patrick_mahomes' || card.id === 'travis_kelce') {
+    rawScore += 18.0;
   }
 
   // Franchise synergies:
@@ -987,9 +1007,9 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     rawScore += 2.0;
   }
 
-  // Universal Superstars (Mahomes, McCaffrey, Lamar, Jefferson, HOF legends)
+  // Universal Superstars (Mahomes, Kelce, McCaffrey, Lamar, Jefferson, HOF legends)
   // Superstars are universally coveted; ensure floor valuation is strong for all teams
-  const isSuperstar = (card.phase === 'hof' || effMax >= 16 || card.id === 'patrick_mahomes' || card.id === 'christian_mccaffrey' || card.id === 'lamar_jackson' || card.id === 'justin_jefferson');
+  const isSuperstar = (card.phase === 'hof' || effMax >= 16 || card.id === 'patrick_mahomes' || card.id === 'travis_kelce' || card.id === 'christian_mccaffrey' || card.id === 'lamar_jackson' || card.id === 'justin_jefferson');
   if (isSuperstar && effectiveTeamId !== 'browns') {
     rawScore = Math.max(rawScore, 15.0);
   }
@@ -1117,9 +1137,37 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     ? Math.max(0, ...activeOpponents.map(id => G.players[id]?.coins || 0))
     : 0;
 
+  // Universal Superstar Priority: Everyone wants Patrick Mahomes and Travis Kelce!
+  const eliteChiefsSuperstar = eligibleCards.find(item => item.card.id === 'patrick_mahomes' || item.card.id === 'travis_kelce');
+  if (eliteChiefsSuperstar && currentPlayer.coins >= eliteChiefsSuperstar.card.minBid) {
+    return eliteChiefsSuperstar.index;
+  }
+
+  // Chargers Strategic Bait Nomination:
+  // Instead of nominating cards opponents might pass on, Chargers find cards that rivals CRAVE!
+  // When an opponent outbids Chargers, Chargers safely gain +1 coin without getting stuck with dead weight!
+  const effectiveTeamId = getEffectiveTeamId(currentPlayer);
+  if (effectiveTeamId === 'chargers' && G.board.round >= 2) {
+    let bestBait = null;
+    let maxOppScore = -Infinity;
+
+    eligibleCards.forEach(item => {
+      activeOpponents.forEach(oppId => {
+        const oppScore = scoreCardForPlayer(G, oppId, item.card);
+        if (oppScore > maxOppScore && oppScore >= 8.0 && G.players[oppId]?.coins >= item.card.minBid + 1) {
+          maxOppScore = oppScore;
+          bestBait = item;
+        }
+      });
+    });
+
+    if (bestBait) {
+      return bestBait.index;
+    }
+  }
+
   // Team-Specific Nomination Strategies:
   const isFirstPlayerOfRound = Object.values(G.players).every(p => !p.hasWonAuction);
-  const effectiveTeamId = getEffectiveTeamId(currentPlayer);
   const isLionsFirstBonus = isFirstPlayerOfRound && effectiveTeamId === 'lions';
 
   if (isLionsFirstBonus) {
@@ -1241,7 +1289,81 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
   const cardScore = scoreCardForPlayer(G, currentPlayerId, card);
   const archetype = getCpuArchetype(currentPlayer, currentPlayerId);
-  let isSuperstar = (card.phase === 'hof' || effMax >= 16 || cardScore >= 16 || card.id === 'patrick_mahomes' || card.id === 'christian_mccaffrey');
+  const isChiefsSuperstar = (card.id === 'patrick_mahomes' || card.id === 'travis_kelce');
+  let isSuperstar = (card.phase === 'hof' || effMax >= 16 || cardScore >= 16 || isChiefsSuperstar || card.id === 'christian_mccaffrey');
+
+  // #5 Exact Turns-to-Zero Endgame Calculus: Championship Instant Win
+  // If purchasing this card immediately reduces PSI to <= 0, go all-in to secure the title!
+  const cardInstantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+  if (currentPlayer.psi - cardInstantDeflate <= 0 && currentPlayer.coins >= nextBid) {
+    const winBid = Math.min(effMax, currentPlayer.coins);
+    return { shouldBid: true, bidAmount: Math.max(nextBid, winBid), isChampionshipBid: true };
+  }
+
+  // #1 Marginal Lineup Upgrade Value (Roster Replacement Delta)
+  // When the roster is full, winning this card forces cutting an active starter.
+  // Never spend coins on a downgrade or lateral side-grade!
+  const maxLineup = (effectiveTeamId === 'seahawks' ? 4 : 3) + (currentPlayer.extraLineupSlots || 0);
+  const currentLineup = currentPlayer.lineup || [];
+  if (currentLineup.length >= maxLineup && effectiveTeamId !== 'colts') {
+    const isCandidateInstant = card.effects && card.effects.some(e => !e.perRound);
+    const isBengalsInstant = (effectiveTeamId === 'bengals' && isCandidateInstant);
+    if (!isBengalsInstant && !isSuperstar) {
+      if (cardScore <= 0.5) {
+        return { shouldBid: false, bidAmount: 0 };
+      }
+      if (cardScore < 2.5 && nextBid >= 3) {
+        return { shouldBid: false, bidAmount: 0 };
+      }
+      if (cardScore < nextBid * 0.75) {
+        return { shouldBid: false, bidAmount: 0 };
+      }
+    }
+  }
+
+  // #2 Leader Denial & 2-Round Table Threat Analysis
+  let redThreatLeaderId = null; // 1 round / final turn away from winning
+  let yellowThreatLeaderId = null; // 2 rounds away from winning
+
+  const cardDeflateInstant = cardInstantDeflate;
+  const cardDeflateRecurring = card.effects?.filter(e => e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+
+  Object.keys(G.players).forEach(oppId => {
+    if (oppId === currentPlayerId) return;
+    const opp = G.players[oppId];
+    if (!opp || !opp.team) return;
+
+    let oppRecurring = 0;
+    (opp.lineup || []).forEach(c => {
+      c.effects?.forEach(e => {
+        if (e.perRound && e.type === 'deflate') oppRecurring += e.amount * (c.ramsDoubleToken ? 2 : 1);
+      });
+    });
+    const oppTeam = getEffectiveTeamId(opp);
+    if (oppTeam === 'panthers') oppRecurring += 2;
+    if (oppTeam === 'packers' && (opp.lineup || []).every(c => c.phase === 1)) oppRecurring += 4;
+    if (oppTeam === '49ers' && opp.coins < 5) oppRecurring *= 2;
+
+    const projectedPerTurn = Math.max(1, oppRecurring);
+    const willWinNextTurn = (opp.psi - (projectedPerTurn + cardDeflateInstant + cardDeflateRecurring)) <= 0;
+    const willWinTwoTurns = (opp.psi - (projectedPerTurn * 2 + cardDeflateInstant + cardDeflateRecurring * 2)) <= 0;
+
+    if (willWinNextTurn || opp.psi <= 6) {
+      redThreatLeaderId = oppId;
+    } else if (willWinTwoTurns || opp.psi <= 14) {
+      if (!yellowThreatLeaderId) yellowThreatLeaderId = oppId;
+    }
+  });
+
+  // Table Threat Reactions:
+  // If Red Threat leader is the highest bidder and this card grants deflation:
+  // Existential threat! The table unites to block the leader on the final turn before they win!
+  if (redThreatLeaderId !== null && G.board.highestBidder === redThreatLeaderId) {
+    const givesLeaderDeflate = (cardDeflateInstant > 0 || cardDeflateRecurring > 0 || cardScore >= 0);
+    if (givesLeaderDeflate && currentPlayer.coins >= nextBid && nextBid <= effMax) {
+      return { shouldBid: true, bidAmount: nextBid, isHateBid: true };
+    }
+  }
 
   // Playtest 19 Note 9: Worst Card Outbid Protection
   // If the human or another team nominates the worst card on the board for 1 coin,
@@ -1328,14 +1450,19 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     savingsReserve = Math.max(savingsReserve, earlyReserve);
   }
 
+  // #4 Rams Ability: Gain Double Token. In Rounds 1-3, Rams preserve >= 7 coins for Phase 2 / HOF centerpiece!
+  if (effectiveTeamId === 'rams' && G.board.round <= 3 && !currentPlayer.ramsTokenAttached && !isSuperstar) {
+    savingsReserve = Math.max(savingsReserve, 7);
+  }
+
   // Playtest 20: 4-Deflate Superstars & 1-2 Turns Endgame Urgency
   const is4DeflateCard = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3);
   const estimatedEnd = G ? calculateEstimatedGameEndRound(G) : 10;
   const isEndgameTurns = (estimatedEnd - G.board.round <= 2) || G.board.round >= 7;
 
-  if (is4DeflateCard || (isEndgameTurns && card.effects?.some(e => e.type === 'deflate'))) {
+  if (is4DeflateCard || (isEndgameTurns && card.effects?.some(e => e.type === 'deflate')) || isChiefsSuperstar) {
     isSuperstar = true;
-    savingsReserve = 0; // Never hoard savings when game-winning deflation is available!
+    savingsReserve = 0; // Never hoard savings when game-winning deflation or Patrick Mahomes / Travis Kelce is available!
   }
 
   // Dolphins can spend down to 0 without reserve because of instant 3-coin bailout!
@@ -1394,6 +1521,18 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   let baseValuation = Math.max(card.minBid, Math.min(effMax, Math.round(cardScore * 0.75 * scarcityMultiplier * aggression)));
   if (is4DeflateCard && G.board.round >= 5) {
     baseValuation = Math.max(baseValuation, Math.round(effMax * 0.85)); // Fight aggressively for 4-deflate cards!
+  }
+  // Universal Chiefs Superstar Priority: All teams bid aggressively for Mahomes & Kelce
+  if (isChiefsSuperstar) {
+    baseValuation = Math.max(baseValuation, Math.min(effMax, Math.round(currentPlayer.coins * 0.90)));
+  }
+
+  // #2 Yellow Threat Reaction: If 2-round threat is highest bidder and card has deflate, boost valuation to deny
+  if (yellowThreatLeaderId !== null && G.board.highestBidder === yellowThreatLeaderId) {
+    const givesLeaderDeflate = (cardDeflateInstant > 0 || cardDeflateRecurring > 0);
+    if (givesLeaderDeflate) {
+      baseValuation = Math.max(baseValuation, Math.min(effMax - 1, Math.round(currentPlayer.coins * 0.70)));
+    }
   }
 
   // 49ers Ability: Double Deflation when purse < 5 during refresh
@@ -1513,7 +1652,31 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     return { shouldBid: false, bidAmount: 0 };
   }
 
-  return { shouldBid: true, bidAmount: nextBid };
+  // #3 Jump Bidding & Opponent Purse Knockouts (Bully Bids)
+  // If CPU valuation meets or exceeds the richest active contender's coins (e.g. 4 coins):
+  // Jumping directly to 4 coins immediately locks out all opponents because they need 5 coins to outbid!
+  const activeContenders = Object.keys(G.players).filter(
+    id => id !== currentPlayerId && !G.players[id].hasWonAuction && !G.board.passedAuctionPlayers?.includes(id)
+  );
+  const richestContenderCoins = activeContenders.length > 0
+    ? Math.max(0, ...activeContenders.map(id => G.players[id]?.coins || 0))
+    : 0;
+
+  let targetBid = nextBid;
+  let isJumpBid = false;
+
+  if (richestContenderCoins >= nextBid && 
+      richestContenderCoins <= valuation && 
+      richestContenderCoins <= effMax && 
+      currentPlayer.coins >= richestContenderCoins) {
+    const shouldJumpBid = (cardScore >= 6.0 || isSuperstar || redThreatLeaderId !== null || archetype === 'bully' || archetype === 'tycoon' || Math.random() < 0.70);
+    if (shouldJumpBid) {
+      targetBid = richestContenderCoins;
+      isJumpBid = true;
+    }
+  }
+
+  return { shouldBid: true, bidAmount: targetBid, isJumpBid };
 };
 
 const executeCpuMoveInternal = (G, ctx, events) => {
@@ -1674,10 +1837,15 @@ const executeCpuMoveInternal = (G, ctx, events) => {
         G.players[currentPlayerId].outbidCount = (G.players[currentPlayerId].outbidCount || 0) + 1;
       }
       G.board.highestBid = nextBid;
-      G.board.highestBidder = currentPlayerId;
-      G.board.lastActionText = decision.isPriceBump 
-        ? `Player ${displayId} bumped the bid to ${nextBid} coins on ${card.name}!`
-        : `Player ${displayId} bid ${nextBid} coins on ${card.name}.`;
+      G.board.lastActionText = decision.isChampionshipBid
+        ? `🏆 Player ${displayId} placed a CHAMPIONSHIP bid of ${nextBid} coins on ${card.name}!`
+        : (decision.isJumpBid
+            ? `⚡ Player ${displayId} placed a knockout jump bid to ${nextBid} coins on ${card.name}!`
+            : (decision.isHateBid
+                ? `🛡️ Player ${displayId} hate-bid ${nextBid} coins on ${card.name} to block the leader!`
+                : (decision.isPriceBump 
+                    ? `Player ${displayId} bumped the bid to ${nextBid} coins on ${card.name}!`
+                    : `Player ${displayId} bid ${nextBid} coins on ${card.name}.`)));
       addLog(G, G.board.lastActionText);
 
       // Tyreek Hill custom mechanic

@@ -773,4 +773,84 @@ Deep Evolutionary Algorithm Optimization (Round 2) & Definitive 31-Franchise Tie
    - Full dataset saved in `scratch/optimization_round2_results.json`.
    - Production bundle verified with `npm run build` passing cleanly in 5.04s.
 
+---
+
+## Playtest 34: CPU Intelligence Grand Overhaul (#1–#5, 2-Round Table Threats, Bully Jump Bidding, Mahomes/Kelce Covenant, & Round 4 Root Cause Discovery)
+
+### 1. Root Cause Analysis: The Round 4 Game-End Mystery Solved
+- **Investigation**: During headless automated batch testing in Playtest 32/33, games appeared to terminate around Round 4. In contrast, the user observed that real human/CPU gameplay never ends on Round 4.
+- **Root Cause Discovered**: In `scripts/optimize_team_ai.mjs` line 224 and `scratch/testFullDirectEngine.mjs` line 221, an artificial testing threshold had been set:
+  ```javascript
+  // Check win condition (PSI <= 25 threshold or 0)
+  const lowestPsi = Math.min(...Object.values(G.players).map(p => p.psi));
+  if (lowestPsi <= 25) break;
+  ```
+  This shortcut had been introduced to accelerate test suite runtimes, terminating the simulation at 25 PSI rather than the real game win condition.
+- **Resolution**:
+  - In `src/Game.js`, the authoritative game rules strictly require `p.psi <= 0` or Round > 10.
+  - Fixed both `scripts/optimize_team_ai.mjs` and `scratch/testFullDirectEngine.mjs` to check for `p.psi <= 0`.
+  - Re-running 10 full headless games verified that matches naturally conclude in **Rounds 6 to 10** (averaging Round 8.4), completely aligning headless testing with real gameplay.
+
+---
+
+### 2. Feature Implementation Details
+
+#### #1 Marginal Lineup Upgrade Value (Roster Replacement Delta)
+- **Concept**: CPUs previously bid on cards solely based on raw power, occasionally paying 3+ coins for a card that forced them to cut an existing starter of equal or greater power.
+- **Engine Logic**:
+  - In `src/Game.js` (`evaluateCpuAuctionBid`), when a team's lineup is at capacity ($\ge 3$ slots, or 4 for Seahawks, excluding Colts):
+  - Card valuation computes `marginalUpgradeDelta = cardScore - lowestOpportunityCost`.
+  - If `cardScore <= 0.5` (a lateral move or downgrade) or `cardScore < nextBid * 0.75` (poor ROI), the CPU immediately passes (`shouldBid: false, bidAmount: 0`).
+  - Eliminates "churn cuts" and lateral starter swaps.
+
+#### #2 Leader Denial & 2-Round Table Threat (Red & Yellow Threats)
+- **2-Round Threat (Yellow)**:
+  - Tracks every opponent's recurring deflation plus team passives (Panthers +2, Packers +4, 49ers x2, Rams Double Token).
+  - If an opponent is projected to reach $\le 0$ PSI within 2 rounds (or PSI $\le 14$):
+  - When that leader is the highest bidder on a deflation card, all CPUs elevate their valuation up to 70% of their purse to price-hike or deny the card.
+- **Final Turn Red Threat (1 Round Away)**:
+  - If an opponent is 1 turn away from 0 PSI (or PSI $\le 6$) and currently holds the high bid:
+  - **Existential Table Crisis**: All eligible CPUs execute emergency Hate-Bids (`isHateBid: true`), bidding up to their entire purse or card max to prevent the leader from winning the championship on the next turn.
+
+#### #3 Jump Bidding & Opponent Purse Knockouts (Bully Bids)
+- **Mathematical Lockout**:
+  - If the richest active contender possesses 4 coins:
+  - A CPU that bids **4 coins** cannot be outbid, because any legal raise requires at least 4 + 1 = 5 coins (or 6 coins vs Bears). Since the rival has only 4 coins, they are mathematically locked out!
+- **Engine Logic**:
+  - If `richestContenderCoins >= nextBid && richestContenderCoins <= valuation`:
+  - The CPU bypasses incremental +1 raises and jumps directly to `richestContenderCoins` (e.g. jumping to 4 coins).
+  - Logs action as: `⚡ Player X placed a knockout jump bid to 4 coins on Card!`
+
+#### Universal Patrick Mahomes & Travis Kelce Superstar Covenant
+- Per user directive ("Everyone should be trying to get Patrick Mahomes and Travis Kelce"):
+  - Added $+18.0$ score bonus in `scoreCardForPlayer`.
+  - Added highest nomination priority in `chooseCpuNominationCard`.
+  - Marked `isSuperstar = true`, setting savings reserve to 0 and bidding up to 90% of total purse in `evaluateCpuAuctionBid`.
+  - All 31 franchises compete aggressively whenever Mahomes or Kelce appears on the auction block.
+
+#### #4 Tier 3 Underperformer Fixes (Filtered per User Directive)
+- **Colts & Falcons**: Intentionally preserved without modifications per user directive ("Don't do the colts suggstion, or the falcons suggestion").
+- **Rams Early Bankroll Hoarding**:
+  - In Rounds 1–3, Rams maintain `savingsReserve = Math.max(savingsReserve, 7)` unless bidding on a true superstar.
+  - Ensures Rams enter Round 4 with $\ge 7$ coins to draft an elite Phase 2 or HOF centerpiece for their Double Token.
+- **Chargers Strategic Baiting**:
+  - In `chooseCpuNominationCard`, Chargers specifically nominate cards that active opponents score highest ($\ge 8.0$) and can afford, guaranteeing $+1$ coin outbid income without getting stuck with dead weight.
+
+#### #5 Exact Turns-to-Zero Endgame Calculus & Championship Instant Win
+- Dynamic turn countdown adjusts deflate weight up to $2.8\times$ when a player is within 2 turns of 0 PSI.
+- **Championship Instant Win**: If purchasing the current auction card provides enough instant deflation to reduce the CPU's PSI to $\le 0$, the CPU goes all-in (`isChampionshipBid: true`) to claim the victory immediately.
+
+---
+
+### 3. Verification & Test Results
+- Automated unit test suite (`scratch/testPlaytest34.mjs`) verified:
+  1. Full roster downgrade rejection: **PASS** (`shouldBid: false`)
+  2. Red Threat final turn hate-bidding: **PASS** (`isHateBid: true`)
+  3. Bully Jump Bidding to 4 coins: **PASS** (`isJumpBid: true, bidAmount: 4`)
+  4. Universal Mahomes & Kelce priority: **PASS** (Nominated #1, bid 12 coins)
+  5. Rams early 7-coin bankroll hoarding: **PASS** (Protected funds into Round 4)
+- Full direct headless simulation (`scratch/testFullDirectEngine.mjs`) confirmed real win condition behavior with games lasting 6–10 rounds.
+- Production build `npm run build` compiled cleanly in 4.72s.
+
+
 
