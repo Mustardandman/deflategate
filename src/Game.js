@@ -619,7 +619,7 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
   }
   if (teamId === 'jets') {
     const effMax = getEffectiveCardMaxBid(card, G?.board?.activeEvent);
-    return effMax <= Math.max(8, player?.coins || 0);
+    return effMax <= Math.max(8, player?.coins || 0) || card.effects?.some(e => e.type === 'deflate');
   }
   if (teamId === 'ravens') {
     const existingPositions = new Set((player?.lineup || []).map(c => c.position));
@@ -655,7 +655,57 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
     return card.effects?.some(e => e.type === 'deflate');
   }
   if (teamId === 'bills') {
-    return true; // BPA
+    return true; // BPA - Best Player Available
+  }
+  if (teamId === 'dolphins') {
+    return card.effects?.some(e => e.type === 'deflate') || card.minBid <= (player?.coins || 0);
+  }
+  if (teamId === 'bears') {
+    return card.effects?.some(e => e.type === 'deflate' || (e.type === 'coins' && e.amount >= 2));
+  }
+  if (teamId === 'lions') {
+    const isFirst = G && Object.values(G.players || {}).every(p => !p.hasWonAuction);
+    return isFirst || card.effects?.some(e => e.type === 'deflate' || e.type === 'coins');
+  }
+  if (teamId === 'chargers') {
+    return card.effects?.some(e => e.type === 'coins' || e.type === 'deflate');
+  }
+  if (teamId === 'cowboys') {
+    return card.effects?.some(e => e.type === 'deflate' && e.amount >= 2);
+  }
+  if (teamId === 'panthers') {
+    return card.effects?.some(e => (e.type === 'coins' && e.amount >= 2) || (e.type === 'deflate' && e.amount >= 2));
+  }
+  if (teamId === 'rams') {
+    return card.phase !== 1 && card.effects?.some(e => e.perRound);
+  }
+  if (teamId === 'chiefs') {
+    return card.effects?.some(e => e.type === 'deflate' && e.amount >= 2);
+  }
+  if (teamId === 'raiders') {
+    return card.effects?.some(e => e.type === 'deflate');
+  }
+  if (teamId === 'commanders') {
+    return card.effects?.some(e => e.type === 'deflate' || e.type === 'coins');
+  }
+  if (teamId === 'falcons') {
+    return card.effects?.some(e => e.type === 'deflate' || (e.type === 'coins' && e.amount >= 2));
+  }
+  if (teamId === 'cardinals') {
+    return card.effects?.some(e => e.type === 'deflate' || e.type === 'coins');
+  }
+  if (teamId === 'titans') {
+    return card.effects?.some(e => e.type === 'deflate' || e.type === 'coins');
+  }
+  if (teamId === 'jaguars') {
+    return card.effects?.some(e => e.type === 'deflate' || e.type === 'coins');
+  }
+  if (teamId === 'broncos') {
+    return card.effects?.some(e => !e.perRound) || card.phase === 2 || card.phase === 'hof';
+  }
+  if (teamId === 'buccaneers') {
+    const copiedTeam = player?.buccaneersCopiedTeamId || player?.team?.id;
+    return copiedTeam && copiedTeam !== 'buccaneers' ? doesCardFitTeamStrategy(copiedTeam, card, player, G) : true;
   }
   return false;
 };
@@ -830,8 +880,11 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   if (effectiveTeamId === 'texans' && card.position === 'QB') {
     rawScore += 10.0;
   }
-  if (effectiveTeamId === '49ers' && p.coins >= 5 && p.coins - card.minBid < 5) {
-    rawScore += 5.0;
+  if (effectiveTeamId === '49ers') {
+    const hasDeflateInLineup = (p.lineup || []).some(c => c.effects?.some(e => e.perRound && e.type === 'deflate')) || card.effects?.some(e => e.perRound && e.type === 'deflate');
+    if (hasDeflateInLineup && p.coins >= 5 && p.coins - card.minBid < 5) {
+      rawScore += 7.0; // Urgency to spend down below 5 coins to trigger double deflation
+    }
   }
   if (effectiveTeamId === 'saints') {
     const hasDrawback = card.effects?.some(e => (e.type === 'coins' && e.amount < 0) || e.type === 'inflate');
@@ -840,8 +893,11 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     }
   }
   if (effectiveTeamId === 'colts') {
+    const hasNegative = card.effects?.some(e => e.perRound && ((e.type === 'coins' && e.amount < 0) || e.type === 'inflate'));
     const hasCleanRecurring = card.effects?.some(e => e.perRound && ((e.type === 'coins' && e.amount > 0) || (e.type === 'deflate' && e.amount > 0)));
-    if (hasCleanRecurring) {
+    if (hasNegative) {
+      rawScore -= 12.0; // Colts must avoid negative recurring effects on infinite board
+    } else if (hasCleanRecurring) {
       rawScore += 6.0; // Infinite lineup permanent expansion
     }
   }
@@ -849,16 +905,57 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     if (card.phase === 1) {
       rawScore += 5.0;
     } else {
-      rawScore *= 0.35; // Avoid breaking all-Phase-1 bonus
+      rawScore *= 0.30; // Avoid breaking all-Phase-1 bonus
     }
   }
   if (effectiveTeamId === 'jets') {
-    const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
-    if (effMax <= 8 && p.coins >= effMax) {
-      rawScore += 6.0; // Easy Buy Max -4 PSI trigger
-    } else if (effMax <= 12 && p.coins >= effMax) {
+    const effMax = getEffectiveCardMaxBid(card, G.board?.activeEvent);
+    const instantDeflateWorth = 4.0 * (deflateWeight || 3.5);
+    // Efficiency: lower effMax costs give highest ROI for the 4 PSI deflation!
+    const efficiencyBonus = Math.max(0, (14 - effMax) * 0.85);
+    if (p.coins >= effMax) {
+      rawScore += (instantDeflateWorth * 0.6) + efficiencyBonus;
+    } else if (p.coins >= card.minBid && effMax <= 8) {
       rawScore += 3.5;
     }
+  }
+  if (effectiveTeamId === 'lions') {
+    const isFirstPlayerOfRound = G && Object.values(G.players || {}).every(pl => !pl.hasWonAuction);
+    if (isFirstPlayerOfRound) {
+      const numP = Object.keys(G.players || {}).length;
+      rawScore += numP * (coinWeight || 1.0);
+    }
+  }
+  if (effectiveTeamId === 'rams' && !p.ramsTokenAttached) {
+    if (card.phase !== 1) {
+      const recurringDeflate = card.effects?.filter(e => e.perRound && e.type === 'deflate').reduce((sum, e) => sum + e.amount, 0) || 0;
+      const recurringCoins = card.effects?.filter(e => e.perRound && e.type === 'coins').reduce((sum, e) => sum + e.amount, 0) || 0;
+      if (recurringDeflate >= 2 || recurringCoins >= 2) {
+        rawScore += (recurringDeflate * 3.5) + (recurringCoins * 1.5) + 3.0;
+      }
+    }
+  }
+  if (effectiveTeamId === 'steelers') {
+    const cardCoins = card.effects?.filter(e => e.type === 'coins').reduce((sum, e) => sum + e.amount, 0) || 0;
+    if (cardCoins > 0) rawScore += cardCoins * 1.6;
+  }
+  if (effectiveTeamId === 'patriots') {
+    const hasDeflate = card.effects?.some(e => e.type === 'deflate');
+    if (hasDeflate) rawScore += 4.5;
+  }
+  if (effectiveTeamId === 'vikings') {
+    if ((p.psi || 44) >= 27 && card.effects?.some(e => e.type === 'deflate')) rawScore += 5.5;
+    else if ((p.psi || 44) < 27 && card.effects?.some(e => e.type === 'coins')) rawScore += 5.0;
+  }
+  if (effectiveTeamId === 'eagles') {
+    const cardCoins = card.effects?.filter(e => e.type === 'coins').reduce((sum, e) => sum + e.amount, 0) || 0;
+    if (cardCoins >= 2) rawScore += cardCoins * 1.8;
+  }
+  if (effectiveTeamId === 'cowboys') {
+    if (card.effects?.some(e => e.type === 'deflate' && e.amount >= 2)) rawScore += 3.5;
+  }
+  if (effectiveTeamId === 'panthers') {
+    if (card.effects?.some(e => (e.type === 'coins' && e.amount >= 2) || (e.type === 'deflate' && e.amount >= 2))) rawScore += 3.5;
   }
   if (effectiveTeamId === 'ravens') {
     const existingPositions = new Set((p.lineup || []).map(c => c.position));
@@ -868,7 +965,7 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   }
   if (effectiveTeamId === 'seahawks') {
     // 4 spots: aggressively build 3 persistent engines early
-    if (G.board.round <= 4 && card.effects?.some(e => e.perRound)) {
+    if ((G?.board?.round || 1) <= 4 && card.effects?.some(e => e.perRound)) {
       rawScore += 4.5;
     }
   }
@@ -876,11 +973,11 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     const hasInstant = card.effects && card.effects.some(e => !e.perRound);
     const hasRecurring = card.effects && card.effects.some(e => e.perRound);
     if (hasInstant) {
-      rawScore += 3.5;
+      rawScore += 4.5;
       if (card.minBid <= 3) rawScore += 2.0; // Fine grabbing cheap instants early
     }
     if (hasInstant && hasRecurring) {
-      rawScore += 6.0; // Dual threat filling two roles
+      rawScore += 6.5; // Dual threat filling two roles
     }
   }
 
@@ -1020,7 +1117,7 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     ? Math.max(0, ...activeOpponents.map(id => G.players[id]?.coins || 0))
     : 0;
 
-  // Lions 1st Player of Round Strategy:
+  // Team-Specific Nomination Strategies:
   const isFirstPlayerOfRound = Object.values(G.players).every(p => !p.hasWonAuction);
   const effectiveTeamId = getEffectiveTeamId(currentPlayer);
   const isLionsFirstBonus = isFirstPlayerOfRound && effectiveTeamId === 'lions';
@@ -1036,6 +1133,43 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     if (currentPlayer.coins > richestOpponentCoins) {
       return eligibleCards[0].index;
     }
+    const cheapWin = eligibleCards.find(item => item.card.minBid <= currentPlayer.coins && item.score >= 0);
+    if (cheapWin) return cheapWin.index;
+  }
+
+  // Jets: Prioritize nominating cards they can buy out at max price immediately
+  if (effectiveTeamId === 'jets') {
+    const affordableMaxJets = eligibleCards.filter(item => {
+      const effMax = getEffectiveCardMaxBid(item.card, G.board.activeEvent);
+      return currentPlayer.coins >= effMax && item.score >= 5.0;
+    });
+    if (affordableMaxJets.length > 0) {
+      return affordableMaxJets[0].index;
+    }
+  }
+
+  // Texans: Prioritize nominating QBs for their +2 coins / +2 deflate refresh ability
+  if (effectiveTeamId === 'texans') {
+    const qbCard = eligibleCards.find(item => item.card.position === 'QB');
+    if (qbCard) return qbCard.index;
+  }
+
+  // Packers: Prioritize nominating Phase 1 players to maintain Phase 1 purity
+  if (effectiveTeamId === 'packers') {
+    const phase1Card = eligibleCards.find(item => item.card.phase === 1 && item.score >= 3.0);
+    if (phase1Card) return phase1Card.index;
+  }
+
+  // Steelers: If coin leader, nominate coin cards to expand bankroll dominance
+  if (effectiveTeamId === 'steelers' && currentPlayer.coins >= richestOpponentCoins) {
+    const coinCard = eligibleCards.find(item => item.card.effects?.some(e => e.type === 'coins') && item.score >= 3.0);
+    if (coinCard) return coinCard.index;
+  }
+
+  // 49ers: Nominate cards that bring purse below 5 coins to trigger double deflation
+  if (effectiveTeamId === '49ers' && currentPlayer.coins >= 5) {
+    const sub5Target = eligibleCards.find(item => currentPlayer.coins - item.card.minBid < 5 && item.score >= 3.0);
+    if (sub5Target) return sub5Target.index;
   }
 
   // Playtest 19 Note 8: Tactical Middle-Player Targeting
@@ -1218,10 +1352,58 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
   const isCoinLeader = currentPlayer.coins > richestOpponentCoins;
 
-  const aggression = teamGenome.aggression || 1.0;
+  // Steelers Ability: If richest player at start of round, give all opponents +1 PSI!
+  // Maintain savings reserve to protect the coin lead unless card is a true superstar
+  if (effectiveTeamId === 'steelers' && !isSuperstar) {
+    if (isCoinLeader || (richestOpponentCoins - currentPlayer.coins <= 1)) {
+      savingsReserve = Math.max(savingsReserve, Math.min(currentPlayer.coins, richestOpponentCoins));
+    }
+  }
+
+  // Jets Ability: Pay Maximum -> Deflate 4 PSI instantly
+  // If Jets is willing to pay max price for this player, immediately jump to max price!
+  if (effectiveTeamId === 'jets' && currentPlayer.coins >= effMax) {
+    const deflateWeight = teamGenome.deflateWeight || 3.5;
+    const instantDeflateWorth = 4.0 * deflateWeight;
+    const maxBidWorthScore = cardScore + (instantDeflateWorth * 0.75);
+    const isWillingToPayMax = maxBidWorthScore >= effMax && (cardScore >= 5.0 || effMax <= 10 || isSuperstar);
+    if (isWillingToPayMax) {
+      return { shouldBid: true, bidAmount: effMax, isMaxBid: true };
+    }
+  }
+
+  // Lions Dynamic Aggression:
+  // Eager for the first claim of the round (+numPlayers coins bonus).
+  // After the first claim is gone, behave slightly less aggressive than normal to preserve funds!
+  const isFirstPlayerOfRound = Object.values(G.players).every(p => !p.hasWonAuction);
+  let aggression = teamGenome.aggression || 1.0;
+  if (effectiveTeamId === 'lions') {
+    if (isFirstPlayerOfRound) {
+      aggression = teamGenome.firstClaimAggression !== undefined ? teamGenome.firstClaimAggression : 1.50;
+    } else {
+      aggression = teamGenome.postClaimAggression !== undefined ? teamGenome.postClaimAggression : 0.85;
+    }
+  }
+
   let baseValuation = Math.max(card.minBid, Math.min(effMax, Math.round(cardScore * 0.75 * scarcityMultiplier * aggression)));
   if (is4DeflateCard && G.board.round >= 5) {
     baseValuation = Math.max(baseValuation, Math.round(effMax * 0.85)); // Fight aggressively for 4-deflate cards!
+  }
+
+  // 49ers Ability: Double Deflation when purse < 5 during refresh
+  if (effectiveTeamId === '49ers') {
+    const hasDeflateInLineup = (currentPlayer.lineup || []).some(c => c.effects?.some(e => e.perRound && e.type === 'deflate')) || card.effects?.some(e => e.perRound && e.type === 'deflate');
+    if (hasDeflateInLineup && currentPlayer.coins >= 5) {
+      const dropCost = currentPlayer.coins - 4;
+      if (nextBid >= dropCost && currentPlayer.coins >= nextBid) {
+        baseValuation = Math.max(baseValuation, Math.min(effMax, dropCost + 2));
+      }
+    }
+  }
+
+  // Dolphins Ability: Spend down to 0 coins fearlessly to trigger +3 coins bailout
+  if (effectiveTeamId === 'dolphins' && currentPlayer.coins <= 2 && nextBid <= currentPlayer.coins && cardScore >= 2.0) {
+    baseValuation = Math.max(baseValuation, currentPlayer.coins);
   }
 
   // Playtest 20 Tuning: Board Parity Principle (e.g. TJ Hockenson when all board cards are good)
@@ -1242,7 +1424,6 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   // Lions 1st-Player Aggression
-  const isFirstPlayerOfRound = Object.values(G.players).every(p => !p.hasWonAuction);
   const isLionsFirstBonus = isFirstPlayerOfRound && effectiveTeamId === 'lions';
   if (isLionsFirstBonus) {
     const numP = Object.keys(G.players).length;
@@ -1312,7 +1493,11 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
 
     const isBullyOrOpportunist = (archetype === 'bully' || archetype === 'opportunist');
-    const bumpChance = teamGenome.priceBumpProb !== undefined ? teamGenome.priceBumpProb : (isBullyOrOpportunist ? 0.35 : 0.15);
+    let bumpChance = teamGenome.priceBumpProb !== undefined ? teamGenome.priceBumpProb : (isBullyOrOpportunist ? 0.35 : 0.15);
+    if (effectiveTeamId === 'bears') {
+      const numPlayers = Object.keys(G.players).length;
+      bumpChance = numPlayers >= 8 ? 0.50 : (numPlayers >= 6 ? 0.35 : 0.20);
+    }
     const isBargainPrice = G.board.highestBid < Math.round(effMax * 0.45);
 
     if (opponentCanAffordRaise && isBargainPrice && safeRiskForMe && currentPlayer.coins >= nextBid && Math.random() < bumpChance) {
@@ -2543,6 +2728,7 @@ export const DeflategateGame = {
       }
 
       targetCard.ramsDoubleToken = true;
+      targetCard.ramsMultiplier = true;
       p.ramsTokenAttached = true;
       const displayId = parseInt(targetPlayerId) + 1;
       addLog(G, `🐏 Rams Ability: Player ${displayId} attached 2x Token to ${targetCard.name}!`);
@@ -3648,10 +3834,23 @@ export const DeflategateGame = {
           const chiefsPlayer = G.players[chiefsId];
           if (!chiefsPlayer.hasUsedChiefsAbility) {
             if (chiefsPlayer.isCpu) {
-              if (G.board.round >= 4) {
-                const affordableIdx = G.board.auctionPlayers.findIndex(c => c && c.minBid <= chiefsPlayer.coins && c.effects?.some(e => e.type === 'deflate' && e.amount >= 3));
-                if (affordableIdx !== -1) {
-                  const card = G.board.auctionPlayers[affordableIdx];
+              const affordableCards = (G.board.auctionPlayers || [])
+                .map((c, idx) => ({ card: c, index: idx }))
+                .filter(item => item.card && item.card.minBid <= chiefsPlayer.coins);
+
+              if (affordableCards.length > 0) {
+                affordableCards.forEach(item => {
+                  item.score = scoreCardForPlayer(G, chiefsId, item.card);
+                });
+                affordableCards.sort((a, b) => b.score - a.score);
+                const best = affordableCards[0];
+                const card = best.card;
+
+                const isSuperstarCard = best.score >= 15 || card.effects?.some(e => e.type === 'deflate' && e.amount >= 3);
+                const isRound4Target = G.board.round >= 4 && (best.score >= 11 || card.effects?.some(e => e.type === 'deflate' && e.amount >= 2));
+                const isRound5Target = G.board.round >= 5 && best.score >= 7;
+
+                if (isSuperstarCard || isRound4Target || isRound5Target) {
                   chiefsPlayer.coins -= card.minBid;
                   chiefsPlayer.hasUsedChiefsAbility = true;
                   resolveAuctionWin(G, chiefsId, card);
@@ -4171,6 +4370,7 @@ export const DeflategateGame = {
           }
 
           targetCard.ramsDoubleToken = true;
+          targetCard.ramsMultiplier = true;
           p.ramsTokenAttached = true;
           const displayId = parseInt(targetPlayerId) + 1;
           triggerAbilityNotification(G, targetPlayerId, 'rams', 'Rams 2x Multiplier', `Attached 2x token to ${targetCard.name}!`);
@@ -4236,7 +4436,7 @@ export const DeflategateGame = {
                   const bestScore = scoreCardForPlayer(bestDiscard, billsPlayer, G);
                   // Playtest 20 User Directive: Don't always grab the first Phase 1 player that enters discard!
                   // Save once-per-game power for Phase 2 / HOF unless an elite centerpiece appears in early rounds.
-                  const minThreshold = G.board.round <= 3 ? 26 : (G.board.round <= 6 ? 20 : 14);
+                  const minThreshold = G.board.round <= 3 ? 14 : (G.board.round <= 5 ? 10 : 6);
                   if (bestScore >= minThreshold) {
                     const dIdx = G.decks.discard.indexOf(bestDiscard);
                     G.decks.discard.splice(dIdx, 1);
@@ -4308,6 +4508,40 @@ export const DeflategateGame = {
         if (G.board.pendingEaglesQueue && G.board.pendingEaglesQueue.length > 0) {
           G.board.pendingEagles = G.board.pendingEaglesQueue.shift();
         }
+
+        // 3. Check Rams Ability (CPU Automation)
+        const ramsTeams = Object.keys(G.players).filter(id => getEffectiveTeamId(G.players[id]) === 'rams');
+        ramsTeams.forEach(ramsId => {
+          const ramsPlayer = G.players[ramsId];
+          if (ramsPlayer && ramsPlayer.isCpu && !ramsPlayer.ramsTokenAttached) {
+            const eligibleCards = (ramsPlayer.lineup || []).filter(c => c && c.phase !== 1 && !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+            if (eligibleCards.length > 0) {
+              eligibleCards.sort((a, b) => {
+                const getCardTokenValue = (c) => {
+                  let val = 0;
+                  c.effects?.forEach(e => {
+                    if (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') {
+                      if (e.type === 'deflate') val += e.amount * 4;
+                      if (e.type === 'coins' && e.amount > 0) val += e.amount * 2;
+                    }
+                  });
+                  return val;
+                };
+                return getCardTokenValue(b) - getCardTokenValue(a);
+              });
+              const bestCard = eligibleCards[0];
+              const hasRecurring = bestCard.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && (e.type === 'deflate' || e.type === 'coins'));
+              if (hasRecurring || G.board.round >= 5) {
+                bestCard.ramsDoubleToken = true;
+                bestCard.ramsMultiplier = true;
+                ramsPlayer.ramsTokenAttached = true;
+                const displayId = parseInt(ramsId) + 1;
+                triggerAbilityNotification(G, ramsId, 'rams', 'Rams 2x Multiplier', `Attached 2x token to ${bestCard.name}!`);
+                addLog(G, `🐏 Rams Ability: CPU Player ${displayId} attached 2x Token to ${bestCard.name}!`);
+              }
+            }
+          }
+        });
 
         if (!G.board.pendingBills && !G.board.pendingEagles) {
           G.board.postAuctionComplete = true;

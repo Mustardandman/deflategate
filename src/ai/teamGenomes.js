@@ -23,7 +23,7 @@ export const BASELINE_TEAM_GENOMES = {
   texans: { deflateWeight: 1.6, coinWeight: 1.2, recurringMult: 1.2, aggression: 1.1, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.8 },
   patriots: { deflateWeight: 2.4, coinWeight: 0.6, recurringMult: 1.0, aggression: 1.2, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.4 },
   steelers: { deflateWeight: 1.4, coinWeight: 1.6, recurringMult: 1.0, aggression: 0.9, reserveCoins: 4, priceBumpProb: 0.2, synergyBonus: 1.3 },
-  lions: { deflateWeight: 1.7, coinWeight: 0.9, recurringMult: 1.0, aggression: 1.3, reserveCoins: 1, priceBumpProb: 0.2, synergyBonus: 1.3 },
+  lions: { deflateWeight: 1.7, coinWeight: 0.9, recurringMult: 1.0, aggression: 1.15, reserveCoins: 1, priceBumpProb: 0.2, synergyBonus: 1.3, firstClaimAggression: 1.5, postClaimAggression: 0.85 },
   bengals: { deflateWeight: 1.8, coinWeight: 1.2, recurringMult: 0.8, aggression: 1.1, reserveCoins: 2, priceBumpProb: 0.25, synergyBonus: 1.5 },
   ravens: { deflateWeight: 1.6, coinWeight: 1.1, recurringMult: 1.0, aggression: 1.0, reserveCoins: 3, priceBumpProb: 0.2, synergyBonus: 1.3 },
   bills: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 4, priceBumpProb: 0.2, synergyBonus: 1.2 },

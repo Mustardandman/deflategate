@@ -79,10 +79,12 @@ export const EVOLVED_TEAM_GENOMES = {
     "deflateWeight": 1.7,
     "coinWeight": 0.96,
     "recurringMult": 0.61,
-    "aggression": 1.3,
+    "aggression": 1.15,
     "reserveCoins": 1,
     "priceBumpProb": 0.2,
-    "synergyBonus": 1.73
+    "synergyBonus": 1.73,
+    "firstClaimAggression": 1.5,
+    "postClaimAggression": 0.85
   },
   "bengals": {
     "deflateWeight": 2.29,

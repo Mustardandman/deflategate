@@ -1482,10 +1482,27 @@ export const DesktopDeflategateBoardArena = ({
                       </div>
 
                       <div className="pt-1 border-t border-slate-800 flex justify-between items-center text-[9px] text-slate-400">
-                        <span>{renderPhaseBadge(card.phase)}</span>
-                        {isPendingReplacementForMe && (
+                        <div className="flex items-center gap-1">
+                          <span>{renderPhaseBadge(card.phase)}</span>
+                          {(card.ramsDoubleToken || card.ramsMultiplier) && (
+                            <span className="text-[8px] font-black bg-amber-400 text-black px-1 py-0.2 rounded shadow">✨ 2x</span>
+                          )}
+                        </div>
+                        {isPendingReplacementForMe ? (
                           <span className="text-red-400 font-bold uppercase">Replace</span>
-                        )}
+                        ) : (getEffectiveTeamId(myPlayer) === 'rams' && !myPlayer.ramsTokenAttached && card.phase !== 1 && !card.isPracticeSquad && !card.uniqueId?.startsWith('ps_')) ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moves.ramsApplyDoubleToken(card.uniqueId);
+                            }}
+                            className="text-[9px] font-black bg-amber-500 hover:bg-amber-400 text-black px-1.5 py-0.5 rounded uppercase tracking-wider cursor-pointer shadow"
+                            title="Attach Rams 2x Token to this player"
+                          >
+                            +2x Token
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   );

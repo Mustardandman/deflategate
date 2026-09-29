@@ -624,5 +624,45 @@ Full League Deep Evolutionary Optimization (23 Remaining Teams in 4P, 7P, and 10
 4. Implementation:
    - All 31 franchises now have custom evolved genomes stored in `src/ai/team_weights.json` and `src/ai/evolvedWeights.js`.
    - All weights are active in live gameplay across solo and multiplayer modes.
+Playtest #32:
+Franchise Abilities Code Audit & Dynamic Behavioral Weights Optimization:
+
+1. Comprehensive Abilities Code Audit:
+   - **League Scope**: All 31 teams in the game audited (Note: The 32nd NFL team, NY Giants, does not exist in `src/GameData.js`).
+   - **Critical Bug Fixes & Omissions Found**:
+     - **Los Angeles Rams (Once per game, attach 2x token to a non-Phase 1 player)**:
+       - *Audit Finding*: The 2x token mechanic existed in the engine (`ramsApplyDoubleToken`), but **zero CPU automation logic existed**! CPU Rams never attached their token in any game, leading directly to their 0% tournament win rate.
+       - *Fix*: Added CPU automation in `postAuctionPhase` (and `preAuctionPhase`) that detects non-Phase 1 players in Round 4+, evaluates recurring deflation and income, and attaches the 2x token to their most lucrative engine. Synchronized `ramsDoubleToken` and `ramsMultiplier` flags and added a direct `+2x Token` UI button for human players.
+     - **Buffalo Bills (Pay Minimum cost for a player in discard pile once per game)**:
+       - *Audit Finding*: Discard pickup threshold was set to `minThreshold = 26` (Rounds 1-3), `20` (Rounds 4-6), `14` (Rounds 7+). Because genuine card scores typically range from 8-16, CPU Bills almost never triggered their ability before games concluded in 4-6 rounds.
+       - *Fix*: Calibrated thresholds to `14` (Rounds 1-3), `10` (Rounds 4-5), `6` (Rounds 6+), ensuring Bills actively rescues discarded gems.
+     - **Kansas City Chiefs (Pay Minimum cost without bidding once per game)**:
+       - *Audit Finding*: Strictly required `round >= 4` AND a card with `deflate >= 3`. In fast 7P/10P games, games often concluded before any such card appeared, leaving Chiefs with an unused ability.
+       - *Fix*: Replaced rigid checks with adaptive scoring: scores all affordable board cards, claiming if score $\ge 15$ in Round 3, $\ge 11$ (or $\ge 2$ deflate) in Round 4, or $\ge 7$ in Round 5+.
+     - **Denver Broncos (Ignore every turn abilities on the first refresh after purchase)**:
+       - *Audit Confirmation*: Confirmed as 100% intentional and as designed by user directive (suppresses both positive and negative recurring effects for exactly 1 turn after acquisition).
+
+2. Dynamic Franchise Behavioral Weights & Rules:
+   - **New York Jets (-4 PSI Deflation on Paying Maximum Cost)**:
+     - *Immediate Max-Bid Jumping*: If Jets' total valuation of a card + the -4 PSI deflation exceeds `effMax` and Jets can afford `effMax`, Jets now **immediately jumps straight to max price** (`bidAmount = effMax`), locking in the player and triggering the -4 PSI deflation instantly rather than risking incremental $+1$ bidding wars.
+     - *Max-Price Efficiency Scoring*: Evaluates player ability value relative to max price cost (e.g. low max-cost cards with 4-8 max bids give unmatched -4 deflation ROI).
+   - **Detroit Lions (First Player to Claim Gains Coins Equal to Player Count)**:
+     - *Dynamic Aggression*: Added `firstClaimAggression = 1.50` when `isFirstPlayerOfRound` is true to secure the massive player-count coin bounty. Once any team claims a player in the round, aggression drops to `postClaimAggression = 0.85` (slightly less aggressive than normal) to conserve purse funds for the next round's first claim.
+   - **San Francisco 49ers (Double Deflation when Coins < 5 in Refresh)**:
+     - *Sub-5 Coin Urgency*: When holding $\ge 5$ coins with recurring deflation in lineup, valuation is dynamically boosted to spend down below 5 coins during auctions, actively triggering double deflation during refresh.
+   - **Pittsburgh Steelers (Give All Opponents +1 PSI if Richest at Round Start)**:
+     - *Adaptive Purse Lead Buffer*: Maintains a savings reserve buffer equal to the richest opponent's purse only when holding or within 1 coin of the richest lead; avoids unproductive hoarding when trailing behind.
+   - **Chicago Bears (Opponents Must Outbid by 2 Coins Instead of 1)**:
+     - *Table-Scaled Price Bumping*: Scaled `priceBumpProb` with table size (0.20 at 4P, 0.35 at 7P, 0.50 at 8P+) to exploit the devastating 2-coin penalty against large fields.
+   - **Miami Dolphins (Gain 3 Coins Whenever Reaching 0 Coins)**:
+     - *Zero-Reserve Aggression*: Bids down to 0 coins fearlessly when at 1-2 coins, taking advantage of the instant +3 bailout.
+   - **All 31 Franchises**:
+     - Expanded `doesCardFitTeamStrategy` and `scoreCardForPlayer` to cover every team in the game (Texans QB synergy, Packers Phase 1 purity, Saints drawback immunity, Bengals instant synergy, Ravens 3-position diversity, Colts unlimited volume, Vikings <27 PSI deflation pivot, etc.).
+
+3. Multi-Format Simulation Results (4P, 7P, and 10P Tables):
+   - **4-Player Tables**: 49ers (50%), Jets (20%), Lions (20%), Rams (10%). (Rams won their first games after CPU token attachment fix; Jets secured 20% with max-bid jumping).
+   - **7-Player Tables**: 49ers (45%), Chiefs (25%), Jets (20%), Lions (5%), Steelers (5%). (Chiefs and Jets surged with adaptive claims and max-bid triggers).
+   - **10-Player Tables**: 49ers (35%), Chiefs (20%), Browns (20%), Jets (5%), Lions (5%), Steelers (5%), Bills (5%), Patriots (5%). (Bills secured wins with calibrated discard threshold).
 ------------
+
 

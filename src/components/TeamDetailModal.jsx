@@ -221,7 +221,7 @@ export const TeamDetailModal = ({ teamPlayerId, G, onClose, onSelectTeamPlayerId
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {player.lineup.map((card, cidx) => {
                   const isBroncosIgnored = team.id === 'broncos' && card.broncosRoundAcquired === G.board.round;
-                  const hasRamsMultiplier = Boolean(card.ramsMultiplier);
+                  const hasRamsMultiplier = Boolean(card.ramsMultiplier || card.ramsDoubleToken);
                   const effMax = getEffectiveCardMaxBid ? getEffectiveCardMaxBid(card, G.board.activeEvent) : (card.maxBid || 8);
 
                   return (
