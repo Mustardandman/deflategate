@@ -178,6 +178,9 @@ export const applyPenaltyCoinLoss = (G, playerID, amount) => {
   }
   const deducted = Math.min(p.coins, amount);
   p.coins -= deducted;
+  if (p.coins === 0) {
+    checkDolphinsEmergencyCoins(G, playerID);
+  }
   return deducted;
 };
 
@@ -423,12 +426,7 @@ export const resolveAuctionWin = (G, playerID, card) => {
         if (!hasPerRound) {
           score = -100;
         } else {
-          c.effects.forEach(e => {
-            if (e.perRound) {
-              if (e.type === 'coins' && effectiveTeamId !== 'browns') score += e.amount;
-              if (e.type === 'deflate') score += e.amount * 2;
-            }
-          });
+          score = scoreCardForPlayer(G, playerID, c);
         }
         if (score < worstScore) {
           worstScore = score;
@@ -890,15 +888,18 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   // They are a high priority for ALL teams regardless of franchise strategy, and naturally contested by the richest players!
   const hasBigRecurringDeflate = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3);
   const hasBigRecurringCoins = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount >= 3);
+  const hasRecurringInflation = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
   const isTier1Elite = (
-    card.phase === 'hof' || 
-    card.id === 'patrick_mahomes' || 
-    card.id === 'travis_kelce' || 
-    card.id === 'christian_mccaffrey' || 
-    card.id === 'lamar_jackson' || 
-    card.id === 'justin_jefferson' || 
-    hasBigRecurringDeflate || 
-    (hasBigRecurringCoins && effectiveTeamId !== 'browns')
+    !hasRecurringInflation && (
+      card.phase === 'hof' || 
+      card.id === 'patrick_mahomes' || 
+      card.id === 'travis_kelce' || 
+      card.id === 'christian_mccaffrey' || 
+      card.id === 'lamar_jackson' || 
+      card.id === 'justin_jefferson' || 
+      hasBigRecurringDeflate || 
+      (hasBigRecurringCoins && effectiveTeamId !== 'browns')
+    )
   );
 
   const superstarMult = teamGenome?.superstarPriorityMult || 1.0;
@@ -951,6 +952,44 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       rawScore += (instantDeflateWorth * 0.6) + efficiencyBonus;
     } else if (p.coins >= card.minBid && effMax <= 8) {
       rawScore += 3.5;
+    }
+  }
+  if (effectiveTeamId === 'dolphins') {
+    const hasRecurringInflation = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
+    if (hasRecurringInflation) {
+      return -50;
+    }
+
+    // 1. Instant Coin Rockets (Malik Nabers, Deebo Samuel, Chris Olave, Keenan Allen, George Pickens, Marvin Harrison Jr.):
+    // Only cards where instant coin payout substantially exceeds cost to create a massive single-round cash spike:
+    const instantCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+    const effMax = getEffectiveCardMaxBid(card, G.board?.activeEvent);
+    const instantMultiplier = teamGenome?.dolphinsInstantCoinMult !== undefined ? teamGenome.dolphinsInstantCoinMult : 3.0;
+    const instantBaseBonus = teamGenome?.dolphinsInstantCoinBase !== undefined ? teamGenome.dolphinsInstantCoinBase : 12.0;
+    if (instantCoins >= 4 && instantCoins > effMax) {
+      rawScore += (instantCoins * instantMultiplier) + instantBaseBonus;
+    }
+
+    // 2. Heavy Recurring Deflation Priority (45 starting PSI burden):
+    // Dolphins has base income covered by the 3-coin bailout floor, so roster slots must be heavy deflation engines.
+    const recurringDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const recurringDeflateBonus = teamGenome?.dolphinsRecurringDeflateBonus !== undefined ? teamGenome.dolphinsRecurringDeflateBonus : 5.0;
+    if (recurringDeflate >= 2) {
+      rawScore += recurringDeflate * recurringDeflateBonus * roundsLeft;
+    }
+
+    // 3. Heavy Instant Deflation Nukes (Aaron Jones, Kenneth Walker, etc.):
+    const instantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const instantDeflateBonus = teamGenome?.dolphinsInstantDeflateBonus !== undefined ? teamGenome.dolphinsInstantDeflateBonus : 4.0;
+    if (instantDeflate >= 4) {
+      rawScore += instantDeflate * instantDeflateBonus;
+    }
+
+    // 4. De-prioritize pure recurring coin cards (avoid clogging 3-slot lineup with weak income):
+    const pureRecurringCoins = card.effects?.every(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins');
+    const pureRecurringMult = teamGenome?.dolphinsPureCoinMult !== undefined ? teamGenome.dolphinsPureCoinMult : 0.40;
+    if (pureRecurringCoins) {
+      rawScore *= pureRecurringMult;
     }
   }
   if (effectiveTeamId === 'lions') {
@@ -1210,6 +1249,31 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     }
   }
 
+  // Dolphins: Prioritize instant coins (Malik, Deebo, etc.) to trigger bailout recharge + coin spike,
+  // or cards whose minBid matches exactly 1 coin if Dolphins has 1 coin, or premier deflation targets!
+  if (effectiveTeamId === 'dolphins') {
+    if (currentPlayer.coins === 1) {
+      const min1Card = eligibleCards.find(item => item.card.minBid === 1);
+      if (min1Card) return min1Card.index;
+    }
+    // When cash-poor (<= 5 coins), hunt instant coin launchpads (Malik, Deebo, etc.)
+    if (currentPlayer.coins <= 5) {
+      const instantCoinTarget = eligibleCards.find(item => item.card.effects?.some(e => !e.perRound && e.type === 'coins' && e.amount >= 3));
+      if (instantCoinTarget) {
+        return instantCoinTarget.index;
+      }
+    }
+    // When well-funded (or no launchpad available), nominate premier deflation engines!
+    const premierDeflate = eligibleCards.find(item => item.card.effects?.some(e => e.type === 'deflate' && (e.amount >= 3 || (e.perRound && e.amount >= 2))));
+    if (premierDeflate) {
+      return premierDeflate.index;
+    }
+    const fallbackCoinTarget = eligibleCards.find(item => item.card.effects?.some(e => !e.perRound && e.type === 'coins' && e.amount >= 3));
+    if (fallbackCoinTarget) {
+      return fallbackCoinTarget.index;
+    }
+  }
+
   // Texans: Prioritize nominating QBs for their +2 coins / +2 deflate refresh ability
   if (effectiveTeamId === 'texans') {
     const qbCard = eligibleCards.find(item => item.card.position === 'QB');
@@ -1273,6 +1337,198 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
   return eligibleCards[0].index;
 };
 
+export const evaluateBillsDiscardClaim = (G, billsId) => {
+  const billsPlayer = G.players[billsId];
+  if (!billsPlayer || billsPlayer.hasUsedBillsAbility) return null;
+  if (!G.decks.discard || G.decks.discard.length === 0) return null;
+
+  const billsEffTeam = getEffectiveTeamId(billsPlayer);
+  const maxLineup = (billsEffTeam === 'seahawks' ? 4 : 3) + (billsPlayer.extraLineupSlots || 0);
+  const currentLineup = billsPlayer.lineup || [];
+  const currentRound = G.board?.round || 1;
+  const estimatedEnd = calculateEstimatedGameEndRound(G);
+  const roundsLeft = Math.max(1, estimatedEnd - currentRound);
+
+  const teamGenome = billsPlayer.genome || G.teamGenomes?.bills || ACTIVE_TEAM_GENOMES.bills || DEFAULT_GENOME;
+  const deflateWeight = teamGenome.deflateWeight || 1.6;
+  const coinWeight = teamGenome.coinWeight || 1.0;
+  const patienceWeight = teamGenome.discardPatienceWeight !== undefined ? teamGenome.discardPatienceWeight : 1.0;
+  const cashBoostMaxCoins = teamGenome.discardCashBoostMaxCoins !== undefined ? teamGenome.discardCashBoostMaxCoins : 5;
+  const minDeflateEarly = teamGenome.discardMinInstantDeflateEarly !== undefined ? teamGenome.discardMinInstantDeflateEarly : 6;
+  const minDeflatePhase2 = teamGenome.discardMinInstantDeflatePhase2 !== undefined ? teamGenome.discardMinInstantDeflatePhase2 : 5;
+  const toxicCleanseBonus = teamGenome.discardToxicCleanseBonus !== undefined ? teamGenome.discardToxicCleanseBonus : 3.5;
+  const goldenThreshold = teamGenome.discardGoldenEngineThreshold !== undefined ? teamGenome.discardGoldenEngineThreshold : 10.0;
+  const pipelineAwareness = teamGenome.discardPipelineAwareness !== undefined ? teamGenome.discardPipelineAwareness : 1.0;
+
+  const affordableCards = G.decks.discard.filter(c => isGenuinePlayerCard(c) && c.minBid <= billsPlayer.coins);
+  if (affordableCards.length === 0) return null;
+
+  // Pipeline Analysis: Scan opponents' active rosters for instant players waiting to be cut
+  let maxPipelineInstantDeflate = 0;
+  let maxPipelineInstantCoins = 0;
+
+  if (pipelineAwareness > 0 && G.players) {
+    Object.keys(G.players).forEach(oppId => {
+      if (String(oppId) === String(billsId)) return;
+      const opp = G.players[oppId];
+      if (!opp || !opp.lineup) return;
+      const oppMax = (getEffectiveTeamId(opp) === 'seahawks' ? 4 : 3) + (opp.extraLineupSlots || 0);
+      const isOppRosterFull = opp.lineup.length >= oppMax && getEffectiveTeamId(opp) !== 'colts';
+
+      opp.lineup.forEach(c => {
+        const isInstantPlayer = c.effects && c.effects.length > 0 && c.effects.every(e => !e.perRound);
+        if (isInstantPlayer) {
+          const cDeflate = c.effects.filter(e => e.type === 'deflate').reduce((sum, e) => sum + e.amount, 0);
+          const cCoins = c.effects.filter(e => e.type === 'coins').reduce((sum, e) => sum + e.amount, 0);
+
+          if (cDeflate > maxPipelineInstantDeflate) {
+            maxPipelineInstantDeflate = cDeflate;
+          }
+          if (cCoins > maxPipelineInstantCoins) {
+            maxPipelineInstantCoins = cCoins;
+          }
+        }
+      });
+    });
+  }
+
+  let weakestStarterIdx = -1;
+  let minStarterLostValue = Infinity;
+  let weakestStarterDeflateLoss = 0;
+  let weakestStarterCoinLoss = 0;
+  let hasToxicStarter = false;
+
+  const wonThisRound = (billsPlayer.cardsWonThisRound || 0) > 0;
+  const lastAcquiredCard = wonThisRound && currentLineup.length > 0 ? currentLineup[currentLineup.length - 1] : null;
+
+  if (currentLineup.length >= maxLineup && billsEffTeam !== 'colts') {
+    currentLineup.forEach((starter, idx) => {
+      if (starter.isPracticeSquad || starter.uniqueId?.startsWith('ps_')) {
+        weakestStarterIdx = idx;
+        minStarterLostValue = 0;
+        weakestStarterDeflateLoss = 0;
+        weakestStarterCoinLoss = 0;
+        return;
+      }
+      const sRecurringDeflate = starter.effects?.filter(e => e.perRound && e.type === 'deflate').reduce((sum, e) => sum + e.amount, 0) || 0;
+      const sRecurringCoins = starter.effects?.filter(e => e.perRound && e.type === 'coins' && e.amount > 0).reduce((sum, e) => sum + e.amount, 0) || 0;
+      const sRecurringInflate = starter.effects?.filter(e => e.perRound && e.type === 'inflate').reduce((sum, e) => sum + e.amount, 0) || 0;
+      const sRecurringNegCoins = starter.effects?.filter(e => e.perRound && e.type === 'coins' && e.amount < 0).reduce((sum, e) => sum + Math.abs(e.amount), 0) || 0;
+
+      const isToxic = sRecurringInflate > 0 || sRecurringNegCoins > 0;
+      if (isToxic) hasToxicStarter = true;
+
+      // Net recurring loss if this card is removed
+      const sNetDeflate = (sRecurringDeflate - sRecurringInflate) * roundsLeft;
+      const sNetCoins = (sRecurringCoins - sRecurringNegCoins) * roundsLeft;
+      const sLostScore = (sNetDeflate * deflateWeight) + (sNetCoins * coinWeight);
+
+      if (sLostScore < minStarterLostValue) {
+        minStarterLostValue = sLostScore;
+        weakestStarterIdx = idx;
+        weakestStarterDeflateLoss = sNetDeflate;
+        weakestStarterCoinLoss = sNetCoins;
+      }
+    });
+  }
+
+  let bestCandidateScore = -Infinity;
+  let bestCandidateAction = null;
+
+  for (const card of affordableCards) {
+    const hasRecurringNegative = card.effects?.some(e => e.perRound && ((e.type === 'coins' && e.amount < 0) || e.type === 'inflate'));
+    if (hasRecurringNegative) continue;
+
+    const instantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((sum, e) => sum + e.amount, 0) || 0;
+    const instantCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((sum, e) => sum + e.amount, 0) || 0;
+    const netInstantCoins = instantCoins - card.minBid;
+
+    const recurringDeflate = card.effects?.filter(e => e.perRound && e.type === 'deflate').reduce((sum, e) => sum + e.amount, 0) || 0;
+    const recurringCoins = card.effects?.filter(e => e.perRound && e.type === 'coins').reduce((sum, e) => sum + e.amount, 0) || 0;
+
+    const totalCardDeflate = instantDeflate + (recurringDeflate * roundsLeft);
+    const totalCardCoins = netInstantCoins + (recurringCoins * roundsLeft);
+
+    const netDeflateGain = totalCardDeflate - (weakestStarterIdx !== -1 ? weakestStarterDeflateLoss : 0);
+    const netCoinGain = totalCardCoins - (weakestStarterIdx !== -1 ? weakestStarterCoinLoss : 0);
+    let netGainScore = (netDeflateGain * deflateWeight) + (netCoinGain * coinWeight);
+
+    // Extra incentive if cleansing a toxic starter or fresh drawback/instant starter from auction
+    if (hasToxicStarter && minStarterLostValue <= 0) {
+      netGainScore += toxicCleanseBonus;
+    }
+
+    // Championship Instant Win
+    if (billsPlayer.psi - instantDeflate <= 0) {
+      return { card, replaceIdx: weakestStarterIdx, reason: 'Championship Instant Win', netGainScore: 999 };
+    }
+
+    const isEveryRounder = (recurringDeflate > 0 || recurringCoins > 0);
+    const isHeavyInstantDeflate = instantDeflate >= 4;
+    const isInstantCoinBoost = netInstantCoins >= 4;
+
+    let shouldClaim = false;
+    let reason = '';
+
+    const isEndgame = currentRound >= 8 || Object.values(G.players).some(p => p.psi <= 8);
+    if (isEndgame) {
+      if (netGainScore >= 2.0 || netDeflateGain > 0) {
+        shouldClaim = true;
+        reason = 'Endgame Urgency';
+      }
+    } else if (isEveryRounder) {
+      const minRecurringThreshold = currentRound <= 3 ? (goldenThreshold * patienceWeight) : ((goldenThreshold - 3) * patienceWeight);
+      if (netGainScore >= minRecurringThreshold && (netDeflateGain > 0 || netCoinGain >= 6)) {
+        shouldClaim = true;
+        reason = 'Golden Every-Round Engine';
+      }
+    } else if (isHeavyInstantDeflate) {
+      // Pipeline Check: If an opponent holds an impending superior instant nuke (e.g. Aaron Jones 7 deflate),
+      // and this candidate card only has 4 or 5 deflate, wait for the pipeline rather than burning the ability now!
+      const hasSuperiorPipelineNuke = (pipelineAwareness > 0 && maxPipelineInstantDeflate >= 6 && maxPipelineInstantDeflate > instantDeflate);
+
+      if (hasSuperiorPipelineNuke && currentRound <= 7) {
+        shouldClaim = false;
+      } else if (currentRound <= 3) {
+        if (instantDeflate >= minDeflateEarly && netDeflateGain >= 4) {
+          shouldClaim = true;
+          reason = 'Massive Early Instant Deflate';
+        }
+      } else if (currentRound <= 6) {
+        if (instantDeflate >= minDeflatePhase2 && netDeflateGain >= 3) {
+          shouldClaim = true;
+          reason = 'Phase 2 Instant Deflate Nuke';
+        } else if (instantDeflate >= 4 && (currentLineup.length < maxLineup || minStarterLostValue <= 0)) {
+          shouldClaim = true;
+          reason = 'Free Roster Slot Instant Deflate';
+        }
+      } else {
+        if (instantDeflate >= 4 && netDeflateGain >= 2) {
+          shouldClaim = true;
+          reason = 'Late-Game Instant Deflate';
+        }
+      }
+    } else if (isInstantCoinBoost) {
+      const hasImpendingNuke = (pipelineAwareness > 0 && maxPipelineInstantDeflate >= 6);
+      const isCashPoor = billsPlayer.coins <= cashBoostMaxCoins;
+      const canSafelyCut = (currentLineup.length < maxLineup || minStarterLostValue <= 2.0);
+      const cashEmergency = hasImpendingNuke ? (billsPlayer.coins <= 2) : isCashPoor;
+
+      if (cashEmergency && canSafelyCut && currentRound <= 5) {
+        shouldClaim = true;
+        reason = `Instant Cash Injection (+${netInstantCoins} coins)`;
+      }
+    }
+
+    if (shouldClaim && netGainScore > bestCandidateScore) {
+      bestCandidateScore = netGainScore;
+      bestCandidateAction = { card, replaceIdx: weakestStarterIdx, reason, netGainScore };
+    }
+  }
+
+  return bestCandidateAction;
+};
+
 export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const currentPlayer = G.players[currentPlayerId];
   const cardIndex = G.board.activeAuctionCardIndex;
@@ -1304,7 +1560,18 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const cardScore = scoreCardForPlayer(G, currentPlayerId, card);
   const archetype = getCpuArchetype(currentPlayer, currentPlayerId);
   const isChiefsSuperstar = (card.id === 'patrick_mahomes' || card.id === 'travis_kelce');
-  let isSuperstar = (card.phase === 'hof' || effMax >= 16 || cardScore >= 16 || isChiefsSuperstar || card.id === 'christian_mccaffrey');
+  let isSuperstar = (
+    card.phase === 'hof' || 
+    effMax >= 17 || 
+    isChiefsSuperstar ||
+    card.id === 'patrick_mahomes' || 
+    card.id === 'travis_kelce' || 
+    card.id === 'christian_mccaffrey' || 
+    card.id === 'lamar_jackson' || 
+    card.id === 'justin_jefferson' || 
+    card.id === 'adrian_peterson' || 
+    card.id === 'derrick_henry'
+  );
 
   const otherAvailableCards = G.board.auctionPlayers.filter((c, idx) => c !== null && idx !== cardIndex);
   const scoredOtherCards = otherAvailableCards.map(c => ({
@@ -1321,7 +1588,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     otherAvailableCards.length > 0 && 
     floorScore < cardScore && 
     floorScore < 0 && 
-    (cardScore >= -0.5 || (cardScore - floorScore) >= 1.5) && 
+    (cardScore >= -0.5 || (cardScore - floorScore) >= 0.4) && 
     currentLineup.length >= maxLineup && 
     effectiveTeamId !== 'colts'
   );
@@ -1340,7 +1607,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // If your active lineup has all 2 coins/round players, and this card gives 2 coins/round (cardScore ~ 0),
   // but another card on the board gives 1 coin/round (floorScore < 0 downgrade),
   // bidding on the 2 coins/round player prevents losing a coin per round later in the round!
-  if (currentLineup.length >= maxLineup && effectiveTeamId !== 'colts') {
+  const hasDeadStarter = currentLineup.some(c => c.isPracticeSquad || (c.effects && !c.effects.some(e => e.perRound)));
+  if (currentLineup.length >= maxLineup && !hasDeadStarter && effectiveTeamId !== 'colts') {
     const isCandidateInstant = card.effects && card.effects.some(e => !e.perRound);
     const isBengalsInstant = (effectiveTeamId === 'bengals' && isCandidateInstant);
     if (!isBengalsInstant && !isSuperstar) {
@@ -1349,13 +1617,14 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
           return { shouldBid: false, bidAmount: 0 };
         }
       } else {
-        if (cardScore <= 0.5) {
+        const isDolphins1CoinMandate = (effectiveTeamId === 'dolphins' && currentPlayer.coins === 1 && nextBid === 1);
+        if (cardScore <= 0.5 && !isDolphins1CoinMandate) {
           return { shouldBid: false, bidAmount: 0 };
         }
         if (cardScore < 2.5 && nextBid >= 3) {
           return { shouldBid: false, bidAmount: 0 };
         }
-        if (cardScore < nextBid * 0.75) {
+        if (cardScore < nextBid * 0.75 && !isDolphins1CoinMandate) {
           return { shouldBid: false, bidAmount: 0 };
         }
       }
@@ -1521,6 +1790,14 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  // Bills Discard Coordination: If a viable discard claim exists, reserve its minBid so Bills does not get locked out
+  if (effectiveTeamId === 'bills' && !currentPlayer.hasUsedBillsAbility && G.decks.discard && G.decks.discard.length > 0) {
+    const discardTarget = evaluateBillsDiscardClaim(G, currentPlayerId);
+    if (discardTarget && discardTarget.card) {
+      savingsReserve = Math.max(savingsReserve, discardTarget.card.minBid);
+    }
+  }
+
   // Jets Ability: Pay Maximum -> Deflate 4 PSI instantly
   // If Jets is willing to pay max price for this player, immediately jump to max price!
   if (effectiveTeamId === 'jets' && currentPlayer.coins >= effMax) {
@@ -1589,8 +1866,26 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   // Dolphins Ability: Spend down to 0 coins fearlessly to trigger +3 coins bailout
-  if (effectiveTeamId === 'dolphins' && currentPlayer.coins <= 2 && nextBid <= currentPlayer.coins && cardScore >= 2.0) {
-    baseValuation = Math.max(baseValuation, currentPlayer.coins);
+  if (effectiveTeamId === 'dolphins') {
+    if (currentPlayer.coins === 1 && nextBid === 1) {
+      baseValuation = Math.max(baseValuation, 1);
+    } else {
+      const hasBigRecurringDeflate = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3);
+      const hasBigInstantDeflate = card.effects?.some(e => !e.perRound && e.type === 'deflate' && e.amount >= 5);
+      const hasBigInstantCoins = card.effects?.some(e => !e.perRound && e.type === 'coins' && e.amount >= 4 && (e.amount - card.maxBid >= 1));
+      const isSoloBestCard = otherScores.length >= 2 && cardScore >= 50.0 && otherScores.every(s => cardScore - s >= 20.0);
+      const isHighDemandTarget = (isSuperstar || hasBigRecurringDeflate || hasBigInstantDeflate || hasBigInstantCoins || isSoloBestCard);
+
+      const maxAllInPurse = teamGenome?.dolphinsMaxPurseAllIn !== undefined ? teamGenome.dolphinsMaxPurseAllIn : 14;
+      const zeroSeekingMinScore = teamGenome?.dolphinsZeroSeekingThreshold !== undefined ? teamGenome.dolphinsZeroSeekingThreshold : 0.0;
+
+      const isExactEffMaxMatch = (effMax === currentPlayer.coins && cardScore >= zeroSeekingMinScore);
+      if (currentPlayer.coins <= maxAllInPurse && (isHighDemandTarget || isExactEffMaxMatch)) {
+        baseValuation = Math.max(baseValuation, Math.min(effMax, currentPlayer.coins));
+      } else if (currentPlayer.coins <= 3 && nextBid <= currentPlayer.coins && cardScore >= zeroSeekingMinScore) {
+        baseValuation = Math.max(baseValuation, currentPlayer.coins);
+      }
+    }
   }
 
   // Playtest 20 Tuning: Board Parity Principle (e.g. TJ Hockenson when all board cards are good)
@@ -1608,6 +1903,16 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const isMidTierPhase1 = card.phase === 1 && (card.maxBid <= 8 || card.effects?.every(e => (e.type === 'coins' ? e.amount <= 2 : e.amount <= 1)));
   if (betterCardsCount >= 1 && isMidTierPhase1) {
     baseValuation = Math.min(baseValuation, 4);
+  }
+
+  // Bills Guaranteed Discard Target: If a major nuke or golden engine is already waiting in discard,
+  // do not get dragged into an overpriced auction bidding war for board cards.
+  if (effectiveTeamId === 'bills' && !currentPlayer.hasUsedBillsAbility && !isSuperstar && G.decks.discard && G.decks.discard.length > 0) {
+    const discardTarget = evaluateBillsDiscardClaim(G, currentPlayerId);
+    if (discardTarget && discardTarget.card && (discardTarget.reason?.includes('Nuke') || discardTarget.reason?.includes('Engine'))) {
+      const fallbackCap = Math.max(card.minBid, Math.min(Math.round(effMax * 0.70), Math.round(cardScore * 0.70)));
+      baseValuation = Math.min(baseValuation, fallbackCap);
+    }
   }
 
   // Lions 1st-Player Aggression
@@ -1692,7 +1997,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
 
     const isBargainForOpponent = G.board.highestBid < Math.round(effMax * 0.55);
-    if (oppLovesCard && opponentCanAffordRaise && isBargainForOpponent && safeRiskForMe && currentPlayer.coins >= nextBid) {
+    if (oppLovesCard && opponentCanAffordRaise && isBargainForOpponent && safeRiskForMe && spendableCoins >= nextBid) {
       if (Math.random() < 0.65) {
         return { shouldBid: true, bidAmount: nextBid, isPriceBump: true };
       }
@@ -1706,7 +2011,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
     const isBargainPrice = G.board.highestBid < Math.round(effMax * 0.45);
 
-    if (opponentCanAffordRaise && isBargainPrice && safeRiskForMe && currentPlayer.coins >= nextBid && Math.random() < bumpChance) {
+    if (opponentCanAffordRaise && isBargainPrice && safeRiskForMe && spendableCoins >= nextBid && Math.random() < bumpChance) {
       return { shouldBid: true, bidAmount: nextBid, isPriceBump: true };
     }
     return { shouldBid: false, bidAmount: 0 };
@@ -1733,6 +2038,57 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     if (shouldJumpBid) {
       targetBid = richestContenderCoins;
       isJumpBid = true;
+    }
+  }
+
+  // Dolphins Franchise Mechanics: Exact-Zero Calibration, 1-3 Coins Buffer All-In, & High Demand Knockout Bids
+  if (effectiveTeamId === 'dolphins') {
+    const isDoubleDraft = G.board.activeEvent?.category === 'double_draft';
+    const isFirstDoubleDraftClaim = isDoubleDraft && (currentPlayer.cardsWonThisRound || 0) === 0;
+    const hasBigRecurringDeflate = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3);
+    const hasBigInstantDeflate = card.effects?.some(e => !e.perRound && e.type === 'deflate' && e.amount >= 5);
+    const hasBigInstantCoins = card.effects?.some(e => !e.perRound && e.type === 'coins' && e.amount >= 4 && (e.amount - card.maxBid >= 1));
+    const isSoloBestCard = otherScores.length >= 2 && cardScore >= 50.0 && otherScores.every(s => cardScore - s >= 20.0);
+
+    const isHighDemandTarget = (
+      isSuperstar || 
+      hasBigRecurringDeflate || 
+      hasBigInstantDeflate || 
+      hasBigInstantCoins || 
+      isSoloBestCard || 
+      isFirstDoubleDraftClaim
+    );
+
+    const maxAllInPurse = teamGenome?.dolphinsMaxPurseAllIn !== undefined ? teamGenome.dolphinsMaxPurseAllIn : 14;
+    const bufferThreshold = teamGenome?.dolphinsBufferThreshold !== undefined ? teamGenome.dolphinsBufferThreshold : 3;
+    const zeroSeekingMinScore = teamGenome?.dolphinsZeroSeekingThreshold !== undefined ? teamGenome.dolphinsZeroSeekingThreshold : 0.0;
+
+    // 1. High Demand / Premier Card Fearless All-In Bidding (purse <= maxAllInPurse coins or exact effMax match)
+    // When good/great players come out whose max bid equals coin value, bid max immediately for guaranteed win + bailout!
+    // And for players whose max bid > coins, bid all coins with no fear (if purse <= maxAllInPurse coins).
+    const isExactEffMaxMatch = (effMax === currentPlayer.coins && cardScore >= zeroSeekingMinScore);
+    if ((isHighDemandTarget || isExactEffMaxMatch) && currentPlayer.coins <= maxAllInPurse && currentPlayer.coins >= nextBid) {
+      const allInBid = Math.min(effMax, currentPlayer.coins);
+      if (allInBid >= nextBid) {
+        targetBid = allInBid;
+        isJumpBid = true;
+      }
+    }
+
+    // 2. The 1, 2, or 3 Coins Buffer Rule:
+    // If targetBid would leave Dolphins with 1 to bufferThreshold coins, round up to all-in!
+    // No point saving 1-3 coins when spending all-in hits 0 coins and refills to 3 coins immediately,
+    // while presenting a stronger bid that dissuades rivals.
+    const leftover = currentPlayer.coins - targetBid;
+    if (leftover >= 1 && leftover <= bufferThreshold && currentPlayer.coins <= effMax && cardScore >= zeroSeekingMinScore) {
+      targetBid = currentPlayer.coins;
+      isJumpBid = true;
+    }
+
+    // 3. 1-Coin Spend Mandate on Last Available Player / Cheap Scrub:
+    // If Dolphins has exactly 1 coin and nextBid is 1, always bid to spend the coin and recharge to 3 coins!
+    if (currentPlayer.coins === 1 && nextBid === 1) {
+      targetBid = 1;
     }
   }
 
@@ -2013,6 +2369,7 @@ export const resolveBonusAuctionWin = (G, winnerId) => {
   const card = G.board.bonusAuction.card;
   const winner = G.players[winnerId];
   winner.coins -= G.board.bonusAuction.highestBid;
+  checkDolphinsEmergencyCoins(G, winnerId);
   const displayId = parseInt(winnerId) + 1;
   addLog(G, `Player Demands a Trade: Player ${displayId} (${winner.team ? winner.team.name : 'Team'}) won ${card.name} for ${G.board.bonusAuction.highestBid} coins!`);
 
@@ -2384,6 +2741,9 @@ export const calculateRefreshResults = (G) => {
           } else if (opp.coins > 0) {
             opp.coins -= 1;
             stolenCoins += 1;
+            if (opp.coins === 0) {
+              checkDolphinsEmergencyCoins(G, oppId);
+            }
           }
         }
       });
@@ -2628,6 +2988,7 @@ export const executeActiveEvent = (G) => {
           });
           const discarded = p.lineup[worstIdx];
           p.coins -= cpuCard.maxBid;
+          checkDolphinsEmergencyCoins(G, id);
           if (p.lineup.length > 0 && worstIdx < p.lineup.length) {
             p.lineup[worstIdx] = cpuCard;
           } else {
@@ -3005,6 +3366,7 @@ export const DeflategateGame = {
       if (!p || p.coins < 10) return INVALID_MOVE;
 
       p.coins -= 10;
+      checkDolphinsEmergencyCoins(G, targetPlayerId);
       p.extraLineupSlots = (p.extraLineupSlots || 0) + 1;
       p.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_cap_${targetPlayerId}_${Date.now()}` });
       const displayId = parseInt(targetPlayerId) + 1;
@@ -3153,6 +3515,7 @@ export const DeflategateGame = {
       if (p.coins < effMax) return INVALID_MOVE;
 
       p.coins -= effMax;
+      checkDolphinsEmergencyCoins(G, targetPlayerId);
       const displayId = parseInt(targetPlayerId) + 1;
       const isColts = getEffectiveTeamId(p) === 'colts';
       if (!isColts && replaceIndex >= 0 && replaceIndex < p.lineup.length) {
@@ -4663,45 +5026,50 @@ export const DeflategateGame = {
             const billsPlayer = G.players[billsId];
             if (!billsPlayer.hasUsedBillsAbility) {
               if (billsPlayer.isCpu) {
-                const affordableCards = G.decks.discard.filter(c => isGenuinePlayerCard(c) && c.minBid <= billsPlayer.coins);
-                if (affordableCards.length > 0) {
-                  // Best Player Available (BPA): score all affordable genuine discard cards
-                  affordableCards.sort((a, b) => scoreCardForPlayer(b, billsPlayer, G) - scoreCardForPlayer(a, billsPlayer, G));
-                  const bestDiscard = affordableCards[0];
-                  const bestScore = scoreCardForPlayer(bestDiscard, billsPlayer, G);
-                  // Playtest 20 User Directive: Don't always grab the first Phase 1 player that enters discard!
-                  // Save once-per-game power for Phase 2 / HOF unless an elite centerpiece appears in early rounds.
-                  const minThreshold = G.board.round <= 3 ? 14 : (G.board.round <= 5 ? 10 : 6);
-                  if (bestScore >= minThreshold) {
-                    const dIdx = G.decks.discard.indexOf(bestDiscard);
-                    G.decks.discard.splice(dIdx, 1);
-                    billsPlayer.coins -= bestDiscard.minBid;
-                    billsPlayer.hasUsedBillsAbility = true;
+                const claim = evaluateBillsDiscardClaim(G, billsId);
+                if (claim && claim.card) {
+                  const { card, replaceIdx, reason } = claim;
+                  const dIdx = G.decks.discard.indexOf(card);
+                  if (dIdx !== -1) G.decks.discard.splice(dIdx, 1);
+                  billsPlayer.coins -= card.minBid;
+                  billsPlayer.hasUsedBillsAbility = true;
+
+                  // Apply instant card effects (coins, deflate, inflate)
+                  if (card.effects) {
                     const billsEffTeam = getEffectiveTeamId(billsPlayer);
-                    const maxLineup = (billsEffTeam === 'seahawks' ? 4 : 3) + (billsPlayer.extraLineupSlots || 0);
-                    if (billsEffTeam === 'colts' || billsPlayer.lineup.length < maxLineup) {
-                      billsPlayer.lineup.push(bestDiscard);
-                    } else {
-                      let worstIdx = -1;
-                      let worstScore = bestScore;
-                      billsPlayer.lineup.forEach((c, idx) => {
-                        const s = scoreCardForPlayer(c, billsPlayer, G);
-                        if (s < worstScore) {
-                          worstScore = s;
-                          worstIdx = idx;
-                        }
-                      });
-                      if (worstIdx !== -1) {
-                        const replaced = billsPlayer.lineup[worstIdx];
-                        billsPlayer.lineup[worstIdx] = bestDiscard;
-                        G.decks.discard.push(replaced);
-                      } else {
-                        billsPlayer.lineup.push(bestDiscard);
+                    card.effects.forEach(eff => {
+                      if (!eff.perRound) {
+                        let effAmount = eff.amount;
+                        if (billsEffTeam === 'bengals') effAmount += 2;
+                        if (eff.type === 'coins' && billsEffTeam !== 'browns') applyCoinsGained(G, billsId, effAmount);
+                        if (eff.type === 'deflate') applyPsiDeflated(G, billsId, effAmount);
+                        if (eff.type === 'inflate') applyPsiInflated(G, billsId, effAmount);
                       }
-                    }
-                    triggerAbilityNotification(G, billsId, 'bills', 'Bills Discard Claim', `Claimed ${bestDiscard.name} from discard for ${bestDiscard.minBid} coins!`);
-                    addLog(G, `Bills Ability: CPU Player ${parseInt(billsId) + 1} bought ${bestDiscard.name} from discard for ${bestDiscard.minBid} coins.`);
+                    });
                   }
+
+                  const billsEffTeam = getEffectiveTeamId(billsPlayer);
+                  const maxLineup = (billsEffTeam === 'seahawks' ? 4 : 3) + (billsPlayer.extraLineupSlots || 0);
+                  if (billsEffTeam === 'colts' || billsPlayer.lineup.length < maxLineup) {
+                    billsPlayer.lineup.push(card);
+                  } else if (replaceIdx !== -1 && replaceIdx < billsPlayer.lineup.length) {
+                    const replaced = billsPlayer.lineup[replaceIdx];
+                    billsPlayer.lineup[replaceIdx] = card;
+                    G.decks.discard.push(replaced);
+                  } else {
+                    let worstIdx = 0;
+                    let minScore = Infinity;
+                    billsPlayer.lineup.forEach((c, idx) => {
+                      const s = scoreCardForPlayer(c, billsPlayer, G);
+                      if (s < minScore) { minScore = s; worstIdx = idx; }
+                    });
+                    const replaced = billsPlayer.lineup[worstIdx];
+                    billsPlayer.lineup[worstIdx] = card;
+                    G.decks.discard.push(replaced);
+                  }
+
+                  triggerAbilityNotification(G, billsId, 'bills', 'Bills Discard Claim', `Claimed ${card.name} (${reason}) from discard for ${card.minBid} coins!`);
+                  addLog(G, `Bills Ability: CPU Player ${parseInt(billsId) + 1} bought ${card.name} (${reason}) from discard for ${card.minBid} coins.`);
                 }
               } else {
                 if (!G.board.pendingBillsQueue) G.board.pendingBillsQueue = [];
@@ -4798,6 +5166,20 @@ export const DeflategateGame = {
           G.decks.discard.splice(discardIndex, 1);
           billsPlayer.coins -= card.minBid;
           billsPlayer.hasUsedBillsAbility = true;
+
+          // Apply instant card effects (coins, deflate, inflate)
+          if (card.effects) {
+            const billsEffTeam = getEffectiveTeamId(billsPlayer);
+            card.effects.forEach(eff => {
+              if (!eff.perRound) {
+                let effAmount = eff.amount;
+                if (billsEffTeam === 'bengals') effAmount += 2;
+                if (eff.type === 'coins' && billsEffTeam !== 'browns') applyCoinsGained(G, billsId, effAmount);
+                if (eff.type === 'deflate') applyPsiDeflated(G, billsId, effAmount);
+                if (eff.type === 'inflate') applyPsiInflated(G, billsId, effAmount);
+              }
+            });
+          }
 
           const displayId = parseInt(billsId) + 1;
           triggerAbilityNotification(G, billsId, 'bills', 'Bills Discard Claim', `Claimed ${card.name} from discard for ${card.minBid} coins!`);

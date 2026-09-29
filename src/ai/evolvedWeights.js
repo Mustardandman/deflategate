@@ -55,21 +55,24 @@ export const EVOLVED_TEAM_GENOMES = {
     "superstarPriorityMult": 1.24
   },
   "dolphins": {
-    "deflateWeight": 2.11,
-    "coinWeight": 0.8,
-    "recurringMult": 0.88,
-    "aggression": 1.16,
+    "deflateWeight": 2.8,
+    "coinWeight": 0.6,
+    "recurringMult": 1.25,
+    "aggression": 1.15,
     "reserveCoins": 0,
     "priceBumpProb": 0.28,
-    "synergyBonus": 1.2,
+    "synergyBonus": 1.3,
     "firstClaimAggression": 1.15,
     "postClaimAggression": 1.01,
     "sub5UrgencyBonus": 2.39,
     "richestBuffer": 1,
-    "instantMaxBidAggression": 0.89,
+    "instantMaxBidAggression": 1.0,
     "boardStrengthWeight": 1.1,
-    "threatDefenseWeight": 0.92,
-    "superstarPriorityMult": 1.2
+    "threatDefenseWeight": 1.0,
+    "superstarPriorityMult": 1.35,
+    "dolphinsMaxPurseAllIn": 14,
+    "dolphinsBufferThreshold": 3,
+    "dolphinsZeroSeekingThreshold": 0.0
   },
   "bears": {
     "deflateWeight": 1.6,
@@ -205,7 +208,14 @@ export const EVOLVED_TEAM_GENOMES = {
     "instantMaxBidAggression": 0.78,
     "boardStrengthWeight": 0.65,
     "threatDefenseWeight": 1.2,
-    "superstarPriorityMult": 1.25
+    "superstarPriorityMult": 1.25,
+    "discardCashBoostMaxCoins": 5,
+    "discardMinInstantDeflateEarly": 6,
+    "discardMinInstantDeflatePhase2": 5,
+    "discardPatienceWeight": 1,
+    "discardToxicCleanseBonus": 3.5,
+    "discardGoldenEngineThreshold": 10,
+    "discardPipelineAwareness": 1
   },
   "cardinals": {
     "deflateWeight": 1.6,
