@@ -1355,24 +1355,26 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // Steelers Ability: If richest player at start of round, give all opponents +1 PSI!
   // Maintain savings reserve to protect the coin lead unless card is a true superstar
   if (effectiveTeamId === 'steelers' && !isSuperstar) {
-    if (isCoinLeader || (richestOpponentCoins - currentPlayer.coins <= 1)) {
-      savingsReserve = Math.max(savingsReserve, Math.min(currentPlayer.coins, richestOpponentCoins));
+    const buffer = teamGenome.richestBuffer !== undefined ? teamGenome.richestBuffer : 1;
+    if (isCoinLeader || (richestOpponentCoins - currentPlayer.coins <= buffer)) {
+      savingsReserve = Math.max(savingsReserve, Math.min(currentPlayer.coins, richestOpponentCoins + buffer));
     }
   }
 
   // Jets Ability: Pay Maximum -> Deflate 4 PSI instantly
   // If Jets is willing to pay max price for this player, immediately jump to max price!
   if (effectiveTeamId === 'jets' && currentPlayer.coins >= effMax) {
-    const deflateWeight = teamGenome.deflateWeight || 3.5;
+    const maxAgg = teamGenome.instantMaxBidAggression !== undefined ? teamGenome.instantMaxBidAggression : 1.0;
+    const deflateWeight = (teamGenome.deflateWeight || 3.5) * maxAgg;
     const instantDeflateWorth = 4.0 * deflateWeight;
     const maxBidWorthScore = cardScore + (instantDeflateWorth * 0.75);
-    const isWillingToPayMax = maxBidWorthScore >= effMax && (cardScore >= 5.0 || effMax <= 10 || isSuperstar);
+    const isWillingToPayMax = maxBidWorthScore >= effMax && (cardScore >= 4.0 || effMax <= 10 || isSuperstar);
     if (isWillingToPayMax) {
       return { shouldBid: true, bidAmount: effMax, isMaxBid: true };
     }
   }
 
-  // Lions Dynamic Aggression:
+  // Lions Dynamic Aggression & First Claim Eagerness:
   // Eager for the first claim of the round (+numPlayers coins bonus).
   // After the first claim is gone, behave slightly less aggressive than normal to preserve funds!
   const isFirstPlayerOfRound = Object.values(G.players).every(p => !p.hasWonAuction);
@@ -1383,6 +1385,10 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     } else {
       aggression = teamGenome.postClaimAggression !== undefined ? teamGenome.postClaimAggression : 0.85;
     }
+  } else if (teamGenome.firstClaimAggression !== undefined && isFirstPlayerOfRound) {
+    aggression = teamGenome.firstClaimAggression;
+  } else if (teamGenome.postClaimAggression !== undefined && !isFirstPlayerOfRound) {
+    aggression = teamGenome.postClaimAggression;
   }
 
   let baseValuation = Math.max(card.minBid, Math.min(effMax, Math.round(cardScore * 0.75 * scarcityMultiplier * aggression)));
@@ -1392,11 +1398,12 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
   // 49ers Ability: Double Deflation when purse < 5 during refresh
   if (effectiveTeamId === '49ers') {
+    const urgency = teamGenome.sub5UrgencyBonus !== undefined ? teamGenome.sub5UrgencyBonus : 2.0;
     const hasDeflateInLineup = (currentPlayer.lineup || []).some(c => c.effects?.some(e => e.perRound && e.type === 'deflate')) || card.effects?.some(e => e.perRound && e.type === 'deflate');
     if (hasDeflateInLineup && currentPlayer.coins >= 5) {
       const dropCost = currentPlayer.coins - 4;
       if (nextBid >= dropCost && currentPlayer.coins >= nextBid) {
-        baseValuation = Math.max(baseValuation, Math.min(effMax, dropCost + 2));
+        baseValuation = Math.max(baseValuation, Math.min(effMax, dropCost + urgency));
       }
     }
   }
