@@ -371,7 +371,7 @@ export const EVOLVED_TEAM_GENOMES = {
     "superstarPriorityMult": 1.33
   },
   "jets": {
-    "deflateWeight": 1.56,
+    "deflateWeight": 2.4,
     "coinWeight": 1,
     "recurringMult": 1,
     "aggression": 1.2,
@@ -385,7 +385,8 @@ export const EVOLVED_TEAM_GENOMES = {
     "instantMaxBidAggression": 1.42,
     "boardStrengthWeight": 1.1,
     "threatDefenseWeight": 1.16,
-    "superstarPriorityMult": 1.3
+    "superstarPriorityMult": 1.3,
+    "jetsMaxBidGap": 3
   },
   "jaguars": {
     "deflateWeight": 1.86,

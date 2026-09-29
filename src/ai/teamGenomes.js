@@ -44,7 +44,7 @@ export const BASELINE_TEAM_GENOMES = {
   saints: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 3, priceBumpProb: 0.2, synergyBonus: 1.4, firstClaimAggression: 1.1, postClaimAggression: 0.9, sub5UrgencyBonus: 2.0, richestBuffer: 1, instantMaxBidAggression: 1.0, boardStrengthWeight: 1.0, threatDefenseWeight: 1.0, superstarPriorityMult: 1.2 },
   rams: { deflateWeight: 2.0, coinWeight: 0.8, recurringMult: 1.1, aggression: 1.1, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.3, firstClaimAggression: 1.2, postClaimAggression: 0.9, sub5UrgencyBonus: 2.0, richestBuffer: 1, instantMaxBidAggression: 1.0, boardStrengthWeight: 1.0, threatDefenseWeight: 1.1, superstarPriorityMult: 1.4 },
   seahawks: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.3, aggression: 1.0, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.3, firstClaimAggression: 1.1, postClaimAggression: 0.9, sub5UrgencyBonus: 2.0, richestBuffer: 1, instantMaxBidAggression: 1.0, boardStrengthWeight: 1.1, threatDefenseWeight: 1.0, superstarPriorityMult: 1.2 },
-  jets: { deflateWeight: 1.8, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.2, reserveCoins: 1, priceBumpProb: 0.2, synergyBonus: 1.4, firstClaimAggression: 1.3, postClaimAggression: 1.0, sub5UrgencyBonus: 2.0, richestBuffer: 1, instantMaxBidAggression: 1.4, boardStrengthWeight: 1.1, threatDefenseWeight: 1.1, superstarPriorityMult: 1.3 },
+  jets: { deflateWeight: 2.4, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.2, reserveCoins: 1, priceBumpProb: 0.2, synergyBonus: 1.4, firstClaimAggression: 1.3, postClaimAggression: 1.0, sub5UrgencyBonus: 2.0, richestBuffer: 1, instantMaxBidAggression: 1.4, boardStrengthWeight: 1.1, threatDefenseWeight: 1.1, superstarPriorityMult: 1.3, jetsMaxBidGap: 3 },
   jaguars: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 3, priceBumpProb: 0.2, synergyBonus: 1.2, firstClaimAggression: 1.1, postClaimAggression: 0.9, sub5UrgencyBonus: 2.0, richestBuffer: 1, instantMaxBidAggression: 1.0, boardStrengthWeight: 1.0, threatDefenseWeight: 1.1, superstarPriorityMult: 1.2 },
   titans: { deflateWeight: 1.7, coinWeight: 1.0, recurringMult: 1.1, aggression: 1.1, reserveCoins: 2, priceBumpProb: 0.2, synergyBonus: 1.3, firstClaimAggression: 1.1, postClaimAggression: 0.9, sub5UrgencyBonus: 2.0, richestBuffer: 1, instantMaxBidAggression: 1.0, boardStrengthWeight: 1.1, threatDefenseWeight: 1.0, superstarPriorityMult: 1.2 },
   broncos: { deflateWeight: 1.6, coinWeight: 1.0, recurringMult: 1.0, aggression: 1.0, reserveCoins: 4, priceBumpProb: 0.2, synergyBonus: 1.2, firstClaimAggression: 1.1, postClaimAggression: 0.9, sub5UrgencyBonus: 2.0, richestBuffer: 1, instantMaxBidAggression: 1.0, boardStrengthWeight: 1.0, threatDefenseWeight: 1.1, superstarPriorityMult: 1.2 },
@@ -76,7 +76,8 @@ export const GENOME_BOUNDS = {
   instantMaxBidAggression: { min: 0.5, max: 2.5, step: 0.05 },
   boardStrengthWeight: { min: 0.5, max: 2.5, step: 0.05 },
   threatDefenseWeight: { min: 0.5, max: 2.5, step: 0.05 },
-  superstarPriorityMult: { min: 0.8, max: 2.2, step: 0.05 }
+  superstarPriorityMult: { min: 0.8, max: 2.2, step: 0.05 },
+  jetsMaxBidGap: { min: 1, max: 6, step: 1 }
 };
 
 export function clampGenome(genome, teamId) {

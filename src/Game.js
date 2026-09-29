@@ -984,12 +984,37 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   if (effectiveTeamId === 'jets') {
     const effMax = getEffectiveCardMaxBid(card, G.board?.activeEvent);
     const instantDeflateWorth = 4.0 * (deflateWeight || 3.5);
-    // Efficiency: lower effMax costs give highest ROI for the 4 PSI deflation!
-    const efficiencyBonus = Math.max(0, (14 - effMax) * 0.85);
-    if (p.coins >= effMax) {
-      rawScore += (instantDeflateWorth * 0.6) + efficiencyBonus;
-    } else if (p.coins >= card.minBid && effMax <= 8) {
+    
+    // User Directive 1: Small Max-Bid Players Focus
+    // E.g. Malik Nabers, Rome Odunze: max 3 for 5 instant coins (net +2 coins AND deflates 4 PSI)
+    const instantCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+    if (effMax <= 3 && instantCoins >= 4) {
+      rawScore += 16.0; // Premier instant gem: pays <=3, nets +2 profit and 4 deflation
+    } else if (effMax <= 3) {
+      rawScore += 10.0;
+    } else if (effMax <= 5) {
+      rawScore += 6.5;
+    } else if (effMax <= 8) {
       rawScore += 3.5;
+    }
+
+    // Efficiency bonus for low buyout costs
+    const efficiencyBonus = Math.max(0, (14 - effMax) * 0.75);
+    if (p.coins >= effMax) {
+      rawScore += (instantDeflateWorth * 0.5) + efficiencyBonus;
+    }
+
+    // User Directive 2: Early Round Practice Squad vs Economic Engine Awareness
+    // While buying instant cards in round 1/2 delays replacing a practice squad player,
+    // for Jets it is less bad because of the -4 PSI bonus.
+    // However, if cash-poor (<= 6 coins) in early rounds (1-3), boost recurring coin generators
+    // so Jets builds a sustainable cash engine and avoids spending 30% of rounds broke!
+    const round = G.board?.round || 1;
+    if (round <= 3 && p.coins <= 6) {
+      const recurringCoins = card.effects?.filter(e => e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+      if (recurringCoins >= 2) {
+        rawScore += 5.5; // Secure early recurring economy
+      }
     }
   }
   if (effectiveTeamId === 'dolphins') {
@@ -1355,12 +1380,47 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     if (cheapWin) return cheapWin.index;
   }
 
-  // Jets: Prioritize nominating cards they can buy out at max price immediately
+  // Jets Nomination Strategy:
+  // 1. Prioritize small max-bid cards (effMax <= 5), sorted by lowest effMax (cheapest 4 PSI ROI) and highest score.
+  // 2. If cash-poor (<= 5 coins) and no small max cards affordable, nominate recurring cash engines (2+ coins/round) to rebuild bankroll.
+  // 3. Otherwise, nominate affordable cards where paying max is an attractive buyout.
   if (effectiveTeamId === 'jets') {
-    const affordableMaxJets = eligibleCards.filter(item => {
-      const effMax = getEffectiveCardMaxBid(item.card, G.board.activeEvent);
-      return currentPlayer.coins >= effMax && item.score >= 5.0;
-    });
+    // 1. Small max gems & bargains (effMax <= 5)
+    const smallMaxAffordable = eligibleCards
+      .filter(item => {
+        const effMax = getEffectiveCardMaxBid(item.card, G.board.activeEvent);
+        return currentPlayer.coins >= effMax && effMax <= 5 && item.score >= 0;
+      })
+      .sort((a, b) => {
+        const effMaxA = getEffectiveCardMaxBid(a.card, G.board.activeEvent);
+        const effMaxB = getEffectiveCardMaxBid(b.card, G.board.activeEvent);
+        if (effMaxA !== effMaxB) return effMaxA - effMaxB; // Cheapest max buyout first
+        return b.score - a.score;
+      });
+    if (smallMaxAffordable.length > 0) {
+      return smallMaxAffordable[0].index;
+    }
+
+    // 2. If cash-poor (<= 5 coins), nominate recurring coin engines to restore purse
+    if (currentPlayer.coins <= 5) {
+      const coinEngine = eligibleCards.find(item =>
+        item.card.minBid <= currentPlayer.coins &&
+        item.card.effects?.some(e => e.perRound && e.type === 'coins' && e.amount >= 2)
+      );
+      if (coinEngine) return coinEngine.index;
+    }
+
+    // 3. General affordable max bid cards with high score
+    const affordableMaxJets = eligibleCards
+      .filter(item => {
+        const effMax = getEffectiveCardMaxBid(item.card, G.board.activeEvent);
+        return currentPlayer.coins >= effMax && item.score >= 6.0;
+      })
+      .sort((a, b) => {
+        const effMaxA = getEffectiveCardMaxBid(a.card, G.board.activeEvent);
+        const effMaxB = getEffectiveCardMaxBid(b.card, G.board.activeEvent);
+        return effMaxA - effMaxB; // Prefer lower max bid cost
+      });
     if (affordableMaxJets.length > 0) {
       return affordableMaxJets[0].index;
     }
@@ -1995,7 +2055,9 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // Dolphins can spend down to 0 without reserve because of instant 3-coin bailout!
   // Patriots can spend all coins in Round 1 on premier centerpieces!
   // Ravens can spend freely on Round 1 anchor stars & completing 3-position engine!
-  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
+  // Jets can spend full purse on affordable max bid buyouts without hoarding restriction!
+  const isJetsMaxTarget = (effectiveTeamId === 'jets' && (effMax <= 5 || currentPlayer.coins >= effMax));
+  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
@@ -2025,18 +2087,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
-  // Jets Ability: Pay Maximum -> Deflate 4 PSI instantly
-  // If Jets is willing to pay max price for this player, immediately jump to max price!
-  if (effectiveTeamId === 'jets' && currentPlayer.coins >= effMax) {
-    const maxAgg = teamGenome.instantMaxBidAggression !== undefined ? teamGenome.instantMaxBidAggression : 1.0;
-    const deflateWeight = (teamGenome.deflateWeight || 3.5) * maxAgg;
-    const instantDeflateWorth = 4.0 * deflateWeight;
-    const maxBidWorthScore = cardScore + (instantDeflateWorth * 0.75);
-    const isWillingToPayMax = maxBidWorthScore >= effMax && (cardScore >= 4.0 || effMax <= 10 || isSuperstar);
-    if (isWillingToPayMax) {
-      return { shouldBid: true, bidAmount: effMax, isMaxBid: true };
-    }
-  }
+
 
   // Lions Dynamic Aggression & First Claim Eagerness:
   // Eager for the first claim of the round (+numPlayers coins bonus).
@@ -2251,6 +2302,40 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
   if (isRavensR1Star) {
     valuation = Math.min(effMax, Math.min(9, currentPlayer.coins));
+  }
+
+  // Jets Ability: Pay Maximum -> Deflate 4 PSI instantly
+  // User Strategy: "When thinking should I max this player at 15 coins just to get my ability,
+  // I would think first, what is the most I would pay for this player (valuation based on other board options)?
+  // If the most I would pay is only a few coins away (2-4 coins away) from the max of the player,
+  // I would pay max to get the bonus."
+  if (effectiveTeamId === 'jets' && currentPlayer.coins >= effMax) {
+    const maxBidGap = teamGenome.jetsMaxBidGap !== undefined ? teamGenome.jetsMaxBidGap : 3;
+    const gap = effMax - valuation;
+    
+    // Immediate win / championship buyout: if deflating 4 (plus card instant deflate) reaches 0 PSI, BUY OUT NOW!
+    const instantCardDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const isChampionshipBuyout = (currentPlayer.psi - (4 + instantCardDeflate) <= 0);
+
+    // Small max gems (effMax <= 3, e.g. Nabers, Odunze): Net positive cash or trivial cost for 4 deflation
+    const isSmallMaxGem = (effMax <= 3 && cardScore >= -1.0);
+
+    // Cheap max cards (effMax <= 5): great value if within gap + 1
+    const isCheapMaxCard = (effMax <= 5 && gap <= (maxBidGap + 1) && cardScore >= 0.5);
+
+    // Endgame urgency (PSI <= 12): slightly expand gap tolerance to close out game
+    const isEndgame = (currentPlayer.psi <= 12);
+    const allowedGap = isEndgame ? (maxBidGap + 1) : maxBidGap;
+
+    const shouldPayMax = isChampionshipBuyout ||
+                         isSmallMaxGem ||
+                         isCheapMaxCard ||
+                         (gap <= 0 && cardScore >= 0) ||
+                         (gap <= allowedGap && (cardScore >= 2.0 || isSuperstar));
+
+    if (shouldPayMax) {
+      return { shouldBid: true, bidAmount: effMax, isMaxBid: true };
+    }
   }
 
   // Non-Lions Counter-Play

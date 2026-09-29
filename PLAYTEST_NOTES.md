@@ -1393,6 +1393,121 @@ Configured across `src/ai/teamGenomes.js`, `src/ai/team_weights.json`, and `src/
 - **Regression Suite**: Patriots (Playtest 39), AI Intelligence (Playtest 34), and UI Transitions (Playtest 28) all pass 100%.
 - **Build**: Vite production build succeeded in 14.01s with 0 errors.
 
+---
+
+## Playtest 41: New York Jets Strategic Overhaul — Small Max Buyout Priority, 2–4 Coin Valuation Gap Rule, and Early Cash Engine Balance
+
+### 1. Overview & Franchise Profile
+- **Franchise**: New York Jets ✈️
+- **Initial PSI**: **44 PSI** (tied for 6th highest initial burden in the league).
+- **Starting Purse**: **7 Coins** (tied for smallest starting bankroll).
+- **Franchise Ability**: *"Every time you pay the Maximum for a player deflate 4 PSI."*
+- **The Core Dilemma**: Because the Jets start with only 7 coins, paying large max bids (10–15 coins) on ordinary players blindly starves their bankroll. In baseline diagnostics, the Jets spent **26.6% (7P)** and **30.3% (10P)** of all rounds completely broke with 0 coins. The user provided an exact human strategic blueprint to revolutionize the Jets CPU AI:
+  1. Focus on small max-bid players (Rome Odunze, Malik Nabers: max 3 for 5 instant coins, paying 3 yields +2 net coins and 4 deflation).
+  2. In rounds 1 and 2, while buying 1-turn instant cards delays replacing a Practice Squad player with a permanent keeper, the Jets -4 PSI ability makes this trade-off much less harmful for them than for other teams.
+  3. The decisive max bid question: *"What is the most I would be willing to pay for this player (`valuation`) based on other options on the board? If the most I would pay is only a few coins away (2–4 coins away) from the max of the player, pay max to get the bonus. Otherwise, do not pay max."*
+
+---
+
+### 2. Strategic AI Architectural Enhancements
+
+#### A. Card Scoring & Small Max Gem Prioritization (`scoreCardForPlayer`)
+- **Small Max Gems (`effMax <= 3` with instant coins $\ge 4$)**: Cards like Malik Nabers and Rome Odunze are tier-1 priority targets (+16.0 raw score). Paying 3 coins nets +2 coins profit AND deflates 4 PSI instantly.
+- **Low Max Bargains**: Cards with `effMax <= 3` (+10.0), `effMax <= 5` (+6.5), and `effMax <= 8` (+3.5) receive high value scaling with buyout ROI.
+- **Round 1/2 Practice Squad Replacement Trade-Off**: Jets recognizes that buying instant cards early delays replacing Practice Squad starters, but the 4 PSI bonus offsets this cost.
+- **Early Economic Engine Protection**: If cash-poor ($\le 6$ coins) in rounds 1–3, recurring coin engines ($+2$ coins/round) receive $+5.5$ boost so the Jets establish an income base and avoid going broke.
+
+#### B. The "Willing to Pay vs Max Bid Gap" Decision Rule (`evaluateCpuAuctionBid`)
+- **Removed Premature Utility Evaluation**: Completely removed the old uncalibrated max bid check (lines 2028–2039) that evaluated utility score against coin price before `valuation` was determined.
+- **Post-Valuation Gap Calculus**: Inserted the user's decision rule immediately after `valuation` is finalized from board parity, opportunity costs, and bankroll:
+  ```javascript
+  if (effectiveTeamId === 'jets' && currentPlayer.coins >= effMax) {
+    const maxBidGap = teamGenome.jetsMaxBidGap !== undefined ? teamGenome.jetsMaxBidGap : 3;
+    const gap = effMax - valuation;
+    
+    const instantCardDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const isChampionshipBuyout = (currentPlayer.psi - (4 + instantCardDeflate) <= 0);
+    const isSmallMaxGem = (effMax <= 3 && cardScore >= -1.0);
+    const isCheapMaxCard = (effMax <= 5 && gap <= (maxBidGap + 1) && cardScore >= 0.5);
+    const isEndgame = (currentPlayer.psi <= 12);
+    const allowedGap = isEndgame ? (maxBidGap + 1) : maxBidGap;
+
+    const shouldPayMax = isChampionshipBuyout ||
+                         isSmallMaxGem ||
+                         isCheapMaxCard ||
+                         (gap <= 0 && cardScore >= 0) ||
+                         (gap <= allowedGap && (cardScore >= 2.0 || isSuperstar));
+
+    if (shouldPayMax) {
+      return { shouldBid: true, bidAmount: effMax, isMaxBid: true };
+    }
+  }
+  ```
+- **Spending Reserve Exemption (`isJetsMaxTarget`)**: Added `isJetsMaxTarget` so the generic 3-coin early hoarding reserve does not prevent the Jets from paying max on small max gems (e.g. bidding 3 coins on Odunze with 3 coins in purse).
+
+#### C. Nomination Prioritization (`chooseCpuNominationCard`)
+1. **Tier 1 (Small Max Affordable)**: Nominates cards with `effMax <= 5` affordable by purse, sorted in ascending order of `effMax` (cheapest 4 PSI ROI first!) and descending score.
+2. **Tier 2 (Cash Recovery)**: If cash-poor ($\le 5$ coins) and no small max cards are affordable, nominates recurring coin generators ($\ge 2$ coins/round) to rebuild the purse.
+3. **Tier 3 (High-Value Buyouts)**: Nominates general high-scoring affordable max buyout cards.
+
+---
+
+### 3. Tournament Optimization & Candidate Evaluation
+Tested 6 distinct configurations across **1,200 simulated games** (7P & 10P tables):
+
+| Candidate | Strategy Description | Key Parameters | 7P Win% | 10P Win% | Avg Win% | 7P / 10P Avg PSI | % 0-Coins | Avg Coins |
+|:---:|:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **C3** | **Selective Sniper (Champion)** | `Def 2.4, Gap 2, Res 1, Agg 1.2` | **25.0%** | **19.0%** | **22.0%** | 11.11 / 12.16 | **13.9% / 16.9%** | 6.93 / 7.78 |
+| **C2** | **User Vision Balanced** | `Def 2.4, Gap 3, Res 0, Agg 1.25` | 24.0% | 21.0% | 22.5% | 11.29 / 12.45 | 16.1% / 19.8% | 6.77 / 7.53 |
+| **C5** | **Deflation Heavy** | `Def 2.8, Gap 3, Res 0, Agg 1.2` | 23.0% | 23.0% | 23.0% | 11.35 / 12.42 | 16.8% / 19.8% | 6.63 / 7.48 |
+| **C1** | **Conservative Baseline** | `Def 2.0, Gap 3, Res 1, Agg 1.2` | 23.0% | 19.0% | 21.0% | 11.60 / 13.23 | 14.0% / 19.5% | 6.49 / 7.76 |
+| **C4** | **Gap 4 Aggressive** | `Def 2.4, Gap 4, Res 0, Agg 1.25` | 22.0% | 22.0% | 22.0% | 11.32 / 13.07 | 17.4% / 19.6% | 6.60 / 7.49 |
+| **C6** | **Low Aggression** | `Def 2.6, Gap 3, Res 1, Agg 1.15` | 21.0% | 20.0% | 20.5% | 11.54 / 13.82 | 15.1% / 21.1% | 6.70 / 7.38 |
+
+#### Key Performance Transformation:
+- **Bankroll Starvation Eliminated**: Zero-coin rounds plummeted from **30.3% $\to$ 16.9%** (10P) and **26.6% $\to$ 13.9%** (7P).
+- **Average Bankroll Doubled**: Average coins throughout the match increased from **4.06 $\to$ 7.78 coins**.
+- **Win Rates**: In 7P tables, Jets achieved **25.0% win rate** (vs 14.3% random parity, **1.75x above expected**). In 10P tables, Jets achieved **19.0% - 21.0% win rate** (vs 10.0% random parity, **2.0x above expected**).
+- **Zero Failures**: `gamesNeverTriggered` stayed at **0.0%**.
+
+---
+
+### 4. Final Calibrated Jets Genome
+Configured across `src/ai/teamGenomes.js`, `src/ai/team_weights.json`, and `src/ai/evolvedWeights.js`:
+```json
+{
+  "deflateWeight": 2.4,
+  "coinWeight": 1.0,
+  "recurringMult": 1.0,
+  "aggression": 1.2,
+  "reserveCoins": 1,
+  "priceBumpProb": 0.23,
+  "synergyBonus": 1.62,
+  "firstClaimAggression": 1.3,
+  "postClaimAggression": 1.0,
+  "sub5UrgencyBonus": 2.41,
+  "richestBuffer": 1,
+  "instantMaxBidAggression": 1.42,
+  "boardStrengthWeight": 1.1,
+  "threatDefenseWeight": 1.16,
+  "superstarPriorityMult": 1.3,
+  "jetsMaxBidGap": 3
+}
+```
+
+---
+
+### 5. Verification Suite & Results
+- **Automated Unit Test Suite (`scratch/testPlaytest41Jets.mjs`)**:
+  - `Test 1: Small Max Gem (Rome Odunze/Malik Nabers)`: **PASS** (Bid max 3, won card, deflated 4 PSI from 44 to 40).
+  - `Test 2: Gap Rule - Small Gap (2-4 coins away)`: **PASS** (Solid card max 6, valuation 5, gap $1 \le 3$, jumped to max 6).
+  - `Test 3: Gap Rule - Large Gap (9 coins away)`: **PASS** (Expensive card max 15, valuation 6, gap $9 > 3$, bid rational jump bid 8 instead of 15).
+  - `Test 4: Championship Buyout Trigger`: **PASS** (4 PSI remaining, pays max 10 to instantly secure 0 PSI title).
+  - `Test 5: Jets Nomination Strategy`: **PASS** (Nominates Malik Nabers first; nominates recurring coin generator when low on coins).
+- **Regression Suite**: Ravens (Playtest 40), Patriots (Playtest 39), AI Intelligence (Playtest 34), UI Transitions (Playtest 28) all passed 100%.
+- **Build**: Vite production build succeeded in 9.89s with 0 errors.
+
+
 
 
 

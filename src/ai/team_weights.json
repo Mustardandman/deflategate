@@ -62,13 +62,13 @@
     "postClaimAggression": 1.01,
     "sub5UrgencyBonus": 2.39,
     "richestBuffer": 1,
-    "instantMaxBidAggression": 1.0,
+    "instantMaxBidAggression": 1,
     "boardStrengthWeight": 1.1,
-    "threatDefenseWeight": 1.0,
+    "threatDefenseWeight": 1,
     "superstarPriorityMult": 1.35,
     "dolphinsMaxPurseAllIn": 14,
     "dolphinsBufferThreshold": 3,
-    "dolphinsZeroSeekingThreshold": 0.0
+    "dolphinsZeroSeekingThreshold": 0
   },
   "bears": {
     "deflateWeight": 1.6,
@@ -105,21 +105,21 @@
     "superstarPriorityMult": 1.2
   },
   "patriots": {
-    "deflateWeight": 2.83,
-    "coinWeight": 0.72,
-    "recurringMult": 0.69,
-    "aggression": 1.33,
-    "reserveCoins": 2,
-    "priceBumpProb": 0.28,
-    "synergyBonus": 1.48,
+    "deflateWeight": 2.4,
+    "coinWeight": 1.05,
+    "recurringMult": 1.1,
+    "aggression": 1.08,
+    "reserveCoins": 3,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.4,
     "firstClaimAggression": 1.2,
-    "postClaimAggression": 1.08,
-    "sub5UrgencyBonus": 1.91,
+    "postClaimAggression": 0.9,
+    "sub5UrgencyBonus": 2,
     "richestBuffer": 1,
     "instantMaxBidAggression": 1,
-    "boardStrengthWeight": 1,
-    "threatDefenseWeight": 1.05,
-    "superstarPriorityMult": 1.34
+    "boardStrengthWeight": 1.1,
+    "threatDefenseWeight": 1.15,
+    "superstarPriorityMult": 1.35
   },
   "steelers": {
     "deflateWeight": 1.4,
@@ -173,21 +173,21 @@
     "superstarPriorityMult": 1.2
   },
   "ravens": {
-    "deflateWeight": 1.6,
-    "coinWeight": 1.1,
-    "recurringMult": 1,
-    "aggression": 1,
-    "reserveCoins": 3,
-    "priceBumpProb": 0.21,
-    "synergyBonus": 0.93,
-    "firstClaimAggression": 1.02,
-    "postClaimAggression": 1.08,
-    "sub5UrgencyBonus": 2.09,
+    "deflateWeight": 2.1,
+    "coinWeight": 1,
+    "recurringMult": 1.1,
+    "aggression": 1.1,
+    "reserveCoins": 2,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.5,
+    "firstClaimAggression": 1.2,
+    "postClaimAggression": 0.9,
+    "sub5UrgencyBonus": 2.2,
     "richestBuffer": 1,
-    "instantMaxBidAggression": 1,
+    "instantMaxBidAggression": 1.05,
     "boardStrengthWeight": 1.2,
-    "threatDefenseWeight": 1,
-    "superstarPriorityMult": 1.09
+    "threatDefenseWeight": 1.1,
+    "superstarPriorityMult": 1.3
   },
   "bills": {
     "deflateWeight": 1.6,
@@ -367,7 +367,7 @@
     "superstarPriorityMult": 1.33
   },
   "jets": {
-    "deflateWeight": 1.56,
+    "deflateWeight": 2.4,
     "coinWeight": 1,
     "recurringMult": 1,
     "aggression": 1.2,
@@ -381,7 +381,8 @@
     "instantMaxBidAggression": 1.42,
     "boardStrengthWeight": 1.1,
     "threatDefenseWeight": 1.16,
-    "superstarPriorityMult": 1.3
+    "superstarPriorityMult": 1.3,
+    "jetsMaxBidGap": 3
   },
   "jaguars": {
     "deflateWeight": 1.86,
@@ -535,39 +536,5 @@
     "boardStrengthWeight": 1.09,
     "threatDefenseWeight": 1,
     "superstarPriorityMult": 1.2
-  },
-  "patriots": {
-    "deflateWeight": 2.4,
-    "coinWeight": 1.05,
-    "recurringMult": 1.1,
-    "aggression": 1.08,
-    "reserveCoins": 3,
-    "priceBumpProb": 0.2,
-    "synergyBonus": 1.4,
-    "firstClaimAggression": 1.2,
-    "postClaimAggression": 0.9,
-    "sub5UrgencyBonus": 2.0,
-    "richestBuffer": 1,
-    "instantMaxBidAggression": 1.0,
-    "boardStrengthWeight": 1.1,
-    "threatDefenseWeight": 1.15,
-    "superstarPriorityMult": 1.35
-  },
-  "ravens": {
-    "deflateWeight": 2.1,
-    "coinWeight": 1.0,
-    "recurringMult": 1.1,
-    "aggression": 1.1,
-    "reserveCoins": 2,
-    "priceBumpProb": 0.2,
-    "synergyBonus": 1.5,
-    "firstClaimAggression": 1.2,
-    "postClaimAggression": 0.9,
-    "sub5UrgencyBonus": 2.2,
-    "richestBuffer": 1,
-    "instantMaxBidAggression": 1.05,
-    "boardStrengthWeight": 1.2,
-    "threatDefenseWeight": 1.1,
-    "superstarPriorityMult": 1.3
   }
 }
