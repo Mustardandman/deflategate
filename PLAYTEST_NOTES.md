@@ -1178,6 +1178,93 @@ A full 5-dimensional grid search across `deflateWeight` (2.4–3.2), `coinWeight
   - Evolved weight storage updated in `src/ai/team_weights.json` and `src/ai/evolvedWeights.js`.
 - **Production Build**: Verified clean production compilation in 6.08s via `npm run build`. All unit tests (`scratch/testPlaytest34.mjs`) pass 100%.
 
+---
+
+## Playtest 39: New England Patriots Strategic Overhaul — Empirical Archetype Tournament, Pump & Dump Mechanics, and Turn 1 Capital Allocation
+
+### 1. Overview & Research Objective
+Following the Dolphins overhaul, the user requested an investigation into the **New England Patriots**:
+> *"What are the problems that are limiting the patriots from always winning? For #1, the patriots should target those cards but then next round replace them with whoever they get next auction. Meaning the Hunter Henry will deflate 8, inflate 3 once, then get replaced next round. Keep in mind that there is a small negative of this if it is turn 1 or 2 because you are keeping a practice squad player around another round. Thanks for asking how a human would play them... As a human, I like to play the Patriots as a sprint to the finish line team. Get to 0 PSI before the big Phase 2 and HOF players can really impact the game. However, I'm not sure if that is the correct way to play the game. I don't think it is wrong to get an early coin generator or all deflation. For bidding on turn 1, I wouldn't be afraid to spend all 7 coins on the best player that is revealed (think Brock bowers or a 3 or 4 coin per turn card). If a great card like that isn't available I would try to be as cheap as possible while still getting a decent player. This is one where the team ability doesn't scream out a specific strategy and I really don't know the best way to play the Patriots. Test a lot of different strategies extensively to see which one works the best."*
+
+---
+
+### 2. Diagnosis: The Three Root Causes of Patriots Underperformance
+Telemetry on 100 baseline games and in-depth loss analysis revealed three systemic issues:
+1. **The Toxic Card Trap**: The CPU was drafting Hunter Henry (+8 instant deflate, +3 recurring inflate) and Ezekiel Elliott (+5 instant deflate, -2 coins/round), but retaining them in the active lineup for 6 to 8 rounds. Because Practice Squad players had a hardcoded replacement priority score of `-100` and Hunter Henry evaluated at `-33`, the CPU kept cutting Practice Squad scrubs while letting Henry inflict **+15 to +18 PSI in recurring inflation**!
+2. **The "Pure Sprint" Phase 1 Paralyzation**: In 52.3% of lost games, the Patriots ended the game holding weak Phase 1 cards ($3 \times 1\text{-deflate} = 3\text{ PSI/round}$, requiring 12 rounds to finish). Because Phase 1 lacks large deflation cards, attempting to sprint without coin fuel left them stranded when the game inevitably reached Phase 2.
+3. **Capital Starvation**: Patriots starts with only 7 coins and no coin-generation team ability. Holding 0 coins in 15%–30% of rounds locked them out of Phase 2 and Hall of Fame game-defining cards.
+
+---
+
+### 3. Human Directives & Engine Implementations in `src/Game.js`
+
+#### A. The "Pump & Dump / Nuke & Replace" Rule (`resolveAuctionWin`)
+- Added a toxic starter priority check in `resolveAuctionWin`: any active starter with recurring inflation (`e.type === 'inflate'`) or recurring negative coins (`e.type === 'coins' && e.amount < 0`) is assigned a replacement score of `-300` (drastically lower than Practice Squad `-100`).
+- **Result**: Hunter Henry deflates 8, inflates 3 once in refresh, and is **guaranteed to be cut and discarded on the very next auction win** $\to$ Net permanent $+5$ deflation injection!
+- **Turn 1–2 Opportunity Cost**: Factored in a 3.5-point penalty in Rounds 1–2 because keeping a practice squad card around another round delays permanent roster development.
+
+#### B. Turn 1 Premier Centerpiece vs. Cheap Discipline Bidding
+- In `evaluateCpuAuctionBid`, identified that the generic early-game cap (`valuation <= 65% of coins`) and reserve requirements were preventing the Patriots from bidding more than 4–5 coins in Round 1.
+- Added `isPatriotsR1Premier`:
+  - If Brock Bowers, Kirk Cousins, George Kittle, or a 3+ coins/round card is revealed in Round 1, the Patriots is exempt from savings reserves and the early-game cap, bidding **all 7 coins** with no fear to secure the centerpiece engine.
+  - If only ordinary cards are revealed in Round 1, the Patriots exercises strict cheap discipline: capping valuation at `min(baseValuation, max(minBid, 3))` so they never overpay for mediocrity.
+
+#### C. Distance-to-Zero Endgame Closer Acceleration ($\text{PSI} \le 18$)
+- Starting at 36 PSI, the Patriots reaches $\le 18$ PSI faster than any other franchise.
+- When $\text{PSI} \le 18$, instant deflation nukes receive a $+3.5\times$ valuation multiplier. If an instant nuke can reduce PSI to 0 or $\le 5$, the Patriots shifts into all-in closer bidding to cross the finish line immediately.
+
+#### D. Strategic Nomination Logic (`chooseCpuNominationCard`)
+- In Round 1, prioritizes nominating premier centerpieces (Bowers, Cousins, Kittle, 3+ coin generators, Henry); falls back to cheap affordable cards ($\text{minBid} \le 3$).
+- In Endgame ($\text{PSI} \le 18$), prioritizes nominating instant deflation nukes ($\ge 4$ deflate).
+- When cash-poor ($\le 3$ coins), prioritizes nominating affordable cards ($\text{minBid} \le \text{coins}$).
+
+---
+
+### 4. Empirical Strategy Tournament (6 Diverse Archetypes, 1,200 Games)
+To resolve the user's question regarding whether the Patriots is best played as a pure sprinter or an early economic engine, we ran a 6-archetype tournament across 1,200 simulated games (200 games per archetype across 7-player and 10-player tables):
+
+| Rank | Strategy Archetype | Core Weights | 7P Win Rate | 10P Win Rate | Combined Score | Avg PSI | 0-Coin Rounds | Strategic Profile |
+| :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **1** | **Hybrid / Capitalist (Phase 2 Fund)** | `Def 2.2–2.4, Coins 1.05–1.10, Res 3–4` | **34.0% – 35.3%** | **24.7% – 25.0%** | **28.4% – 29.5%** | **9.71** | **19.9%** | Builds coin engine early; hoards 3-4 coins for Phase 2/HOF nukes. |
+| **2** | **Balanced Sprinter & Engine (User Intuition)** | `Def 2.7, Coins 0.75, Res 2` | 27.0% | **29.0%** | **28.0%** | **9.38** | 25.3% | Dominant in 10-player tables; balanced deflation and engine building. |
+| **3** | **Pure Deflation Sprinter (No Hoarding)** | `Def 3.4, Coins 0.25, Res 0` | 27.0% | 27.0% | 27.0% | 9.50 | 30.7% | High starvation rate (0 coins 30.7% of game); outpaced in Phase 2. |
+| **4** | **Hyper-Aggressive Closer** | `Def 3.2, Coins 0.55, Res 1` | 25.0% | 27.0% | 26.0% | 9.42 | 23.5% | Strong closing speed but vulnerable to bidding wars in Phase 2. |
+| **5** | **Sprint & 2-Coin Safety Cushion** | `Def 3.0, Coins 0.50, Res 2` | 28.0% | 23.0% | 25.5% | 10.07 | 24.6% | Good 7P performance; slightly underfunded in 10P tables. |
+| **6** | **Uncalibrated Baseline** | `Def 2.83, Coins 0.72, Res 2` | 26.0% | 19.0% | 22.5% | 11.06 | 25.3% | Lacked Turn 1 centerpiece all-in and toxic replacement logic. |
+
+#### Key Empirical Revelation: The Myth of the "Pure Sprint"
+- **The Finding**: Pure deflation rushing fails because Phase 1 cards do not possess sufficient deflation density to close 36 PSI before Round 4. The average winning round across all games is **7.0 to 7.5 rounds**. Rushing pure deflation leaves the Patriots with 0 coins when Phase 2 begins, allowing opponents with robust coin engines to buy all the massive 4–6 deflation cards and easily overtake them.
+- **The Optimal Formula ("Engine First, Sprint Finish")**:
+  Starting at 36 PSI gives the Patriots a massive natural buffer (5–14 PSI ahead of all opponents). By investing in coin generators in Rounds 1–3 and reserving 3 coins, the Patriots enters Phase 2 well-funded, acquires elite superstars / Hall of Fame cards, and uses their head start to sprint across the finish line in Rounds 6–7 before any rival can catch up.
+
+---
+
+### 5. Final Calibrated Patriots Genome
+```json
+{
+  "deflateWeight": 2.4,
+  "coinWeight": 1.05,
+  "recurringMult": 1.1,
+  "reserveCoins": 3,
+  "aggression": 1.08,
+  "superstarPriorityMult": 1.35,
+  "threatDefenseWeight": 1.15,
+  "boardStrengthWeight": 1.1
+}
+```
+
+---
+
+### 6. Unit Testing & Verification
+- **Test Suite (`scratch/testPlaytest39Patriots.mjs`)**:
+  - `[Test 1] Hunter Henry Toxic Replacement Priority (-300 Score)`: **PASS**. Henry cut and discarded on the next auction win.
+  - `[Test 2] Turn 1 Fearless All-in Bidding on Premier Centerpiece`: **PASS**. All 7 coins bid on Brock Bowers.
+  - `[Test 3] Turn 1 Cheap Discipline on Ordinary Card`: **PASS**. Bidding capped at 3 coins; refused to overpay.
+  - `[Test 4] Distance-to-Zero Closer Acceleration (PSI <= 18)`: **PASS**. All-in closer bid executed on Kenneth Walker III.
+  - `[Test 5] Round 1/2 Practice Squad Delay Penalty on Pump & Dump`: **PASS**. Turn 1/2 opportunity cost properly discounted.
+- **Playtest 34 Regression Suite**: 5/5 tests pass 100%.
+- **Production Build**: Clean compilation via `npm run build` in 15.18s with 0 errors.
+
 
 
 

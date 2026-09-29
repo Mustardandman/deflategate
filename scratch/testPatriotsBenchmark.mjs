@@ -227,9 +227,11 @@ export function runPatriotsBenchmark(numGames = 100, numPlayers = 7, baseSeed = 
   };
 }
 
-console.log("=== Running Patriots Baseline Benchmark (100 Games 7P & 10P) ===");
-const r7 = runPatriotsBenchmark(100, 7, 3000);
-console.log("\n7-Player Table Results:", JSON.stringify(r7, null, 2));
+if (process.argv[1] && process.argv[1].endsWith('testPatriotsBenchmark.mjs')) {
+  console.log("=== Running Patriots Baseline Benchmark (100 Games 7P & 10P) ===");
+  const r7 = runPatriotsBenchmark(100, 7, 3000);
+  console.log("\n7-Player Table Results:", JSON.stringify(r7, null, 2));
 
-const r10 = runPatriotsBenchmark(100, 10, 3000);
-console.log("\n10-Player Table Results:", JSON.stringify(r10, null, 2));
+  const r10 = runPatriotsBenchmark(100, 10, 3000);
+  console.log("\n10-Player Table Results:", JSON.stringify(r10, null, 2));
+}

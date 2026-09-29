@@ -422,11 +422,17 @@ export const resolveAuctionWin = (G, playerID, card) => {
 
       p.lineup.forEach((c, idx) => {
         let score = 0;
-        const hasPerRound = c.effects ? c.effects.some(e => e.perRound) : false;
-        if (!hasPerRound) {
-          score = -100;
+        const hasRecurringInflation = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
+        const hasRecurringNegativeCoins = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0);
+        if (hasRecurringInflation || hasRecurringNegativeCoins) {
+          score = -300; // Toxic recurring damage card: replace immediately!
         } else {
-          score = scoreCardForPlayer(G, playerID, c);
+          const hasPerRound = c.effects ? c.effects.some(e => e.perRound) : false;
+          if (!hasPerRound) {
+            score = -100;
+          } else {
+            score = scoreCardForPlayer(G, playerID, c);
+          }
         }
         if (score < worstScore) {
           worstScore = score;
@@ -1013,8 +1019,42 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     if (cardCoins > 0) rawScore += cardCoins * 1.6;
   }
   if (effectiveTeamId === 'patriots') {
-    const hasDeflate = card.effects?.some(e => e.type === 'deflate');
-    if (hasDeflate) rawScore += 4.5;
+    // 1. Pump & Dump Valuation:
+    // Hunter Henry deflates 8, inflates 3 once, then is cut next auction -> Net +5 deflation!
+    // Ezekiel Elliott deflates 5, loses 2 coins once, then is cut next auction -> Net +5 deflation / -2 coins.
+    // In Turn 1 or 2, keeping a practice squad player around another round delays permanent lineup development.
+    const r12Penalty = (currentRound <= 2) ? 3.5 : 0;
+    if (card.id === 'hunter_henry') {
+      rawScore = (5.0 * deflateWeight) + 4.5 - r12Penalty;
+    } else if (card.id === 'ezekiel_elliott') {
+      rawScore = (5.0 * deflateWeight) - (2.0 * coinWeight) + 4.5 - r12Penalty;
+    } else {
+      const hasDeflate = card.effects?.some(e => e.type === 'deflate');
+      if (hasDeflate) rawScore += 4.5;
+    }
+
+    // 2. Round 1 Premier Centerpiece Evaluation:
+    // Fearlessly pursue game-defining engines (Bowers, Cousins, Kittle, 3+ coins/round)
+    if (currentRound === 1) {
+      const isPremierR1Centerpiece = (
+        card.id === 'brock_bowers' || 
+        card.id === 'kirk_cousins' || 
+        card.id === 'george_kittle' || 
+        card.effects?.some(e => e.perRound && e.type === 'coins' && e.amount >= 3)
+      );
+      if (isPremierR1Centerpiece) {
+        rawScore += 12.0;
+      }
+    }
+
+    // 3. Distance-to-Zero Endgame Closer Acceleration:
+    // Starting at 36 PSI, when Patriots reaches <= 18 PSI, instant deflation nukes are game closers!
+    if ((p.psi || 36) <= 18) {
+      const instantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      if (instantDeflate >= 3) {
+        rawScore += instantDeflate * 3.5;
+      }
+    }
   }
   if (effectiveTeamId === 'vikings') {
     if ((p.psi || 44) >= 27 && card.effects?.some(e => e.type === 'deflate')) rawScore += 5.5;
@@ -1271,6 +1311,41 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     const fallbackCoinTarget = eligibleCards.find(item => item.card.effects?.some(e => !e.perRound && e.type === 'coins' && e.amount >= 3));
     if (fallbackCoinTarget) {
       return fallbackCoinTarget.index;
+    }
+  }
+
+  // Patriots Nomination Strategy:
+  // - In Round 1, aggressively nominate premier centerpieces (Bowers, Cousins, Kittle, 3+ coins/rnd, or Hunter Henry).
+  //   If no premier card is available, nominate a cheap, decent card (minBid <= 3, score >= 0) to avoid early overspend.
+  // - In Endgame (PSI <= 18), nominate instant deflation nukes (deflate >= 4) that can close the game immediately.
+  // - If cash-poor (coins <= 3), nominate affordable cards (minBid <= coins) to guarantee a legal bid.
+  if (effectiveTeamId === 'patriots') {
+    const currentRound = G.board.round || 1;
+    if (currentRound === 1) {
+      const premierCard = eligibleCards.find(item => 
+        item.card.id === 'brock_bowers' || 
+        item.card.id === 'kirk_cousins' || 
+        item.card.id === 'george_kittle' ||
+        item.card.id === 'hunter_henry' ||
+        item.card.effects?.some(e => e.perRound && e.type === 'coins' && e.amount >= 3)
+      );
+      if (premierCard) return premierCard.index;
+
+      const cheapAffordable = eligibleCards.find(item => item.card.minBid <= 3 && item.score >= 0);
+      if (cheapAffordable) return cheapAffordable.index;
+    } else {
+      if ((currentPlayer.psi || 36) <= 18) {
+        const closerNuke = eligibleCards.find(item => 
+          item.card.minBid <= currentPlayer.coins &&
+          item.card.effects?.some(e => !e.perRound && e.type === 'deflate' && e.amount >= 4)
+        );
+        if (closerNuke) return closerNuke.index;
+      }
+
+      if (currentPlayer.coins <= 3) {
+        const affordable = eligibleCards.find(item => item.card.minBid <= currentPlayer.coins && item.score >= 0);
+        if (affordable) return affordable.index;
+      }
     }
   }
 
@@ -1573,6 +1648,17 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     card.id === 'derrick_henry'
   );
 
+  const isPatriotsR1Premier = (
+    effectiveTeamId === 'patriots' && 
+    (G.board.round || 1) === 1 && 
+    (
+      card.id === 'brock_bowers' || 
+      card.id === 'kirk_cousins' || 
+      card.id === 'george_kittle' || 
+      card.effects?.some(e => e.perRound && e.type === 'coins' && e.amount >= 3)
+    )
+  );
+
   const otherAvailableCards = G.board.auctionPlayers.filter((c, idx) => c !== null && idx !== cardIndex);
   const scoredOtherCards = otherAvailableCards.map(c => ({
     card: c,
@@ -1768,7 +1854,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   // Dolphins can spend down to 0 without reserve because of instant 3-coin bailout!
-  const spendableCoins = (isSuperstar || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
+  // Patriots can spend all coins in Round 1 on premier centerpieces!
+  const spendableCoins = (isSuperstar || isPatriotsR1Premier || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
@@ -1888,6 +1975,33 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  // Patriots Valuation Strategy:
+  // - Round 1: Willing to spend up to all 7 coins on premier centerpieces (Bowers, Cousins, Kittle, 3+ coins/round).
+  //   If not a premier card in Round 1, play cheap: cap baseValuation at min(baseValuation, Math.max(card.minBid, 3)).
+  // - Endgame Closer (PSI <= 18): Value instant deflation nukes aggressively to cross 0 PSI.
+  if (effectiveTeamId === 'patriots') {
+    const currentRound = G.board.round || 1;
+    if (currentRound === 1) {
+      const isPremierR1Centerpiece = (
+        card.id === 'brock_bowers' || 
+        card.id === 'kirk_cousins' || 
+        card.id === 'george_kittle' || 
+        card.effects?.some(e => e.perRound && e.type === 'coins' && e.amount >= 3)
+      );
+      if (isPremierR1Centerpiece) {
+        baseValuation = Math.max(baseValuation, Math.min(effMax, currentPlayer.coins));
+      } else {
+        baseValuation = Math.min(baseValuation, Math.max(card.minBid, 3));
+      }
+    } else if ((currentPlayer.psi || 36) <= 18) {
+      const instantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      if (instantDeflate >= 3) {
+        const closerBonus = (instantDeflate >= (currentPlayer.psi || 36)) ? currentPlayer.coins : (instantDeflate * 2);
+        baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(currentPlayer.coins, card.minBid + closerBonus)));
+      }
+    }
+  }
+
   // Playtest 20 Tuning: Board Parity Principle (e.g. TJ Hockenson when all board cards are good)
   // When multiple cards remain on board and all are roughly equal high-tier strength,
   // the marginal value of winning THIS specific card over whoever is left is tiny (1-2 coins).
@@ -1946,11 +2060,11 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   valuation = Math.min(valuation, spendableCoins);
-  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets') {
+  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets') {
     valuation = Math.min(valuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
   }
 
-  if (isLionsFirstBonus) {
+  if (isLionsFirstBonus || isPatriotsR1Premier) {
     valuation = Math.min(effMax, currentPlayer.coins);
   }
 
@@ -2089,6 +2203,31 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     // If Dolphins has exactly 1 coin and nextBid is 1, always bid to spend the coin and recharge to 3 coins!
     if (currentPlayer.coins === 1 && nextBid === 1) {
       targetBid = 1;
+    }
+  }
+
+  // Patriots Target Bid Refinements:
+  if (effectiveTeamId === 'patriots') {
+    const currentRound = G.board.round || 1;
+    if (currentRound === 1) {
+      const isPremierR1Centerpiece = (
+        card.id === 'brock_bowers' || 
+        card.id === 'kirk_cousins' || 
+        card.id === 'george_kittle' || 
+        card.effects?.some(e => e.perRound && e.type === 'coins' && e.amount >= 3)
+      );
+      if (isPremierR1Centerpiece && currentPlayer.coins >= nextBid) {
+        // Human player rule: Don't be afraid to spend all 7 coins on the best player revealed
+        targetBid = Math.min(effMax, currentPlayer.coins);
+        isJumpBid = true;
+      }
+    } else if ((currentPlayer.psi || 36) <= 18) {
+      const instantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      if (instantDeflate >= (currentPlayer.psi || 36) && currentPlayer.coins >= nextBid) {
+        // Game-winning closer: Bid whatever is necessary up to effMax/purse to secure victory!
+        targetBid = Math.min(effMax, currentPlayer.coins);
+        isJumpBid = true;
+      }
     }
   }
 

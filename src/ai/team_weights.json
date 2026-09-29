@@ -535,5 +535,22 @@
     "boardStrengthWeight": 1.09,
     "threatDefenseWeight": 1,
     "superstarPriorityMult": 1.2
+  },
+  "patriots": {
+    "deflateWeight": 2.4,
+    "coinWeight": 1.05,
+    "recurringMult": 1.1,
+    "aggression": 1.08,
+    "reserveCoins": 3,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.4,
+    "firstClaimAggression": 1.2,
+    "postClaimAggression": 0.9,
+    "sub5UrgencyBonus": 2.0,
+    "richestBuffer": 1,
+    "instantMaxBidAggression": 1.0,
+    "boardStrengthWeight": 1.1,
+    "threatDefenseWeight": 1.15,
+    "superstarPriorityMult": 1.35
   }
 }
