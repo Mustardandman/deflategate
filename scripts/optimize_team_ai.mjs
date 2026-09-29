@@ -1,8 +1,19 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { TEAMS } from '../src/GameData.js';
-import { DeflategateGame, evaluateCpuAuctionBid, chooseCpuNominationCard, resolveAuctionWin, calculateRefreshResults } from '../src/Game.js';
+import { TEAMS, PRACTICE_SQUAD_CARD } from '../src/GameData.js';
+import { 
+  DeflategateGame, 
+  evaluateCpuAuctionBid, 
+  chooseCpuNominationCard, 
+  resolveAuctionWin, 
+  calculateRefreshResults,
+  selectCpuBucsTeamToCopy,
+  advanceTitansDraftQueue,
+  getEffectiveTeamId,
+  getEffectiveCardMaxBid,
+  executeActiveEvent
+} from '../src/Game.js';
 import { DEFAULT_GENOME, BASELINE_TEAM_GENOMES, ACTIVE_TEAM_GENOMES, mutateGenome, crossoverGenomes, clampGenome } from '../src/ai/teamGenomes.js';
 
 // Fast seeded PRNG (Mulberry32) for deterministic duplicate game evaluations
@@ -54,6 +65,33 @@ export function runSingleGame({ numPlayers = 4, forcedTeams = {}, teamGenomes = 
       p.coins = t.coins;
       p.isCpu = true;
       p.genome = teamGenomes[t.id] || ACTIVE_TEAM_GENOMES[t.id] || BASELINE_TEAM_GENOMES[t.id] || DEFAULT_GENOME;
+
+      // Rule: Every player starts with 3 Practice Squad cards (4 for Seahawks)
+      const psCount = t.id === 'seahawks' ? 4 : 3;
+      p.lineup = [];
+      for (let k = 0; k < psCount; k++) {
+        p.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${seat}_${k}` });
+      }
+    }
+
+    // Buccaneers Assimilation (copies an opponent's team ability at setup)
+    const bucsPlayer = Object.values(G.players).find(p => p.team?.id === 'buccaneers');
+    if (bucsPlayer) {
+      const otherDrafted = Object.values(G.players).filter(p => p.team?.id !== 'buccaneers').map(p => p.team);
+      const chosenTeam = selectCpuBucsTeamToCopy(otherDrafted);
+      bucsPlayer.copiedTeam = chosenTeam;
+      bucsPlayer.buccaneersCopiedTeamId = chosenTeam.id;
+      if (chosenTeam.id === 'seahawks' && bucsPlayer.lineup.length < 4) {
+        bucsPlayer.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${bucsPlayer.id || 'bucs'}_3` });
+      }
+    }
+
+    // Titans Opening Draft (draft 1 of top 3 cards for free)
+    const titansPlayer = Object.values(G.players).find(p => getEffectiveTeamId(p) === 'titans');
+    if (titansPlayer) {
+      const titansId = Object.keys(G.players).find(id => G.players[id] === titansPlayer);
+      G.board.titansDraftQueue = [titansId];
+      advanceTitansDraftQueue(G, {});
     }
 
     let winnerId = null;
@@ -79,6 +117,9 @@ export function runSingleGame({ numPlayers = 4, forcedTeams = {}, teamGenomes = 
           random: { Shuffle: (a) => fisherYates(a, rng) }
         });
       }
+
+      // Execute revealed event
+      executeActiveEvent(G);
 
       // Handle interactive event states for CPUs
       if (G.board.pendingRivalry) {
@@ -152,17 +193,6 @@ export function runSingleGame({ numPlayers = 4, forcedTeams = {}, teamGenomes = 
               if (wonCard) {
                 G.board.auctionPlayers[G.board.activeAuctionCardIndex] = null;
                 resolveAuctionWin(G, winId, wonCard);
-                // CPU Lineup Overflow Management
-                const pWin = G.players[winId];
-                const maxLineup = (pWin.team?.id === 'seahawks' ? 4 : 3) + (pWin.extraLineupSlots || 0);
-                if (pWin.team?.id !== 'colts' && pWin.lineup.length > maxLineup) {
-                  let worstIdx = 0, worstScore = Infinity;
-                  pWin.lineup.forEach((c, idx) => {
-                    let score = c.isPracticeSquad ? -10 : (c.effects ? c.effects.reduce((a, e) => a + (e.amount || 0), 0) : 0);
-                    if (score < worstScore) { worstScore = score; worstIdx = idx; }
-                  });
-                  pWin.lineup.splice(worstIdx, 1);
-                }
               }
               G.board.activeAuctionCardIndex = null;
               G.board.highestBid = 0;
@@ -180,20 +210,11 @@ export function runSingleGame({ numPlayers = 4, forcedTeams = {}, teamGenomes = 
             G.board.highestBid = bidDec.bidAmount;
             G.board.highestBidder = nextBidderId;
 
-            if (bidDec.isMaxBid) {
+            const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
+            if (bidDec.isMaxBid || bidDec.bidAmount >= effMax) {
               const wonCard = G.board.auctionPlayers[G.board.activeAuctionCardIndex];
               G.board.auctionPlayers[G.board.activeAuctionCardIndex] = null;
               resolveAuctionWin(G, nextBidderId, wonCard);
-              const pWin = G.players[nextBidderId];
-              const maxLineup = (pWin.team?.id === 'seahawks' ? 4 : 3) + (pWin.extraLineupSlots || 0);
-              if (pWin.team?.id !== 'colts' && pWin.lineup.length > maxLineup) {
-                let worstIdx = 0, worstScore = Infinity;
-                pWin.lineup.forEach((c, idx) => {
-                  let score = c.isPracticeSquad ? -10 : (c.effects ? c.effects.reduce((a, e) => a + (e.amount || 0), 0) : 0);
-                  if (score < worstScore) { worstScore = score; worstIdx = idx; }
-                });
-                pWin.lineup.splice(worstIdx, 1);
-              }
               G.board.activeAuctionCardIndex = null;
               G.board.highestBid = 0;
               G.board.highestBidder = null;

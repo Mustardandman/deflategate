@@ -852,5 +852,155 @@ Deep Evolutionary Algorithm Optimization (Round 2) & Definitive 31-Franchise Tie
 - Full direct headless simulation (`scratch/testFullDirectEngine.mjs`) confirmed real win condition behavior with games lasting 6–10 rounds.
 - Production build `npm run build` compiled cleanly in 4.72s.
 
+---
+
+## Playtest 35: Massive 31-Team Deep Evolutionary Optimization Under True 0 PSI Rules, New Genetic Weights, & Definitive Post-Optimization Tier List
+
+### 1. Overview & Architectural Directives
+This milestone executed a massive-scale **Deep Evolutionary Optimization Pipeline** across all 31 franchises in Deflategate under the true **$\le 0$ PSI** win condition (retiring the legacy 25 PSI testing threshold). Every franchise completed over **468 evolutionary games**, followed by a rigorous **1,500-game League Balance Tournament** (10,500 team participations across 4P, 7P, and 10P tables) to establish the definitive post-optimization balance hierarchy.
+
+#### Core Directives Implemented & Verified:
+1. **#1 Board Strength & Lateral Card Floor Protection**:
+   - When a roster is at capacity ($\ge 3$ active cards, or 4 for Seahawks), the CPU now inspects the remaining available auction cards (`otherAvailableCards` and `floorScore`).
+   - If the current card matches active lineup production (e.g. 2 coins/round) but the remaining auction alternative is an active downgrade (e.g. 1 coin/round, with `floorScore < 0`), the CPU actively bids 2–3 coins (`baseValuation = Math.max(baseValuation, Math.min(3, card.minBid + 1))`) to secure the lateral card, preserving lineup strength and preventing a forced downgrade later in the round.
+2. **#2 Scaled Threat-Level Price Bumping**:
+   - **Yellow Threat (2 Rounds Out / Rival PSI $\le 14$)**: Conservative price bumps capped at $\min(\text{effMax} - 2, 40\% \text{ effMax}, 4 \text{ coins})$ with a 45% probability to avoid depleting the purse prematurely.
+   - **Red Threat (1 Round Out / Rival PSI $\le 6$)**: Emergency table crisis defense. All eligible CPUs aggressively hate-bid up to the card maximum or their entire purse to prevent the leader from winning the championship on the next turn.
+3. **Universal Elite Powerhouses (Patrick Mahomes, Travis Kelce, HOF Legends, Christian McCaffrey)**:
+   - Superstars transcend franchise strategy. All 31 franchises treat these cards as universal priorities (`scoreCardForPlayer` floor of 20.0–24.0, 95% spendable coin ceiling). The richest player naturally wins these cards through economic dominance, matching real NFL economics.
+4. **100% Simulation Fidelity & Comprehensive Rule Auditing**:
+   - **Practice Squad Cards**: Every player starts with 3 Practice Squad cards in their lineup (4 for Seahawks).
+   - **Buccaneers Assimilation**: At game setup, CPU Buccaneers dynamically inspects and copies the strongest opponent ability (gaining a 4th Practice Squad card if Seahawks is copied).
+   - **Titans Opening Draft**: Titans executes its pre-game ability before Round 1, drafting 1 of the top 3 cards from the active players deck for free and shuffling the deck.
+   - **Era Shuffling**: Phase 2 players are shuffled into the player deck at Round 4; Hall of Fame legends are shuffled in at Round 7.
+   - **Event Execution**: Hot Air, Cold Air, 1st Overall Pick, Free Agency, Bonus Auctions, and Trade Rumors are executed with 100% mechanical fidelity.
+   - **Instant Win on Max Bids**: Any bid matching or exceeding the card's maximum cost (`bidAmount >= effMax`) instantly concludes the auction and awards the card.
+
+---
+
+### 2. New Genetic Weight Parameters
+Three new genetic weights were introduced into `src/ai/teamGenomes.js` and hooked into `src/Game.js`:
+- `boardStrengthWeight` (Range: 0.50 – 2.50, Default: 1.00): Governs the valuation multiplier when buying lateral cards to prevent taking worse floor cards.
+- `threatDefenseWeight` (Range: 0.50 – 2.50, Default: 1.00): Governs the aggressiveness of price bumps and hate bids against table leaders nearing 0 PSI.
+- `superstarPriorityMult` (Range: 0.80 – 2.20, Default: 1.00): Multiplier on card score and maximum purse allocation for universal superstar cards.
+
+---
+
+### 3. Evolutionary Optimization Results by Team (468 Games Per Franchise)
+Every franchise was trained across 3 generations of 4 candidate genomes each, using duplicate seeded matches across 4P, 7P, and 10P player counts:
+
+| Team | Initial Win% | Evolved Win% | Avg PSI | PSI Adv | Key Weight Deltas & Notes |
+|:-----|:------------:|:------------:|:-------:|:-------:|:--------------------------|
+| **Bills** | 44.4% | 33.3% | 9.3 | +1.7 | `threatDefense`: 1.10 $\to$ 1.20, `boardStrength`: 1.00 $\to$ 0.65, `reserveCoins`: 4 $\to$ 3. Calibrated discard buys. |
+| **Dolphins** | 27.8% | 33.3% | 13.4 | +1.7 | `deflateWeight`: 1.70 $\to$ 2.11, `sub5Urgency`: 2.00 $\to$ 2.39. Leans heavily into 0-coin bailout. |
+| **Patriots** | 33.3% | 44.4% | 3.9 | +1.1 | `deflateWeight`: 2.40 $\to$ 2.83, `superstarPriority`: 1.10 $\to$ 1.34. Pure deflation rush from 36 PSI. |
+| **Jets** | 44.4% | 38.9% | 8.9 | +3.4 | `instantMaxBidAgg`: 1.40 $\to$ 1.42, `threatDefense`: 1.10 $\to$ 1.16, `synergyBonus`: 1.40 $\to$ 1.62. |
+| **Ravens** | 38.9% | 38.9% | 7.4 | +2.7 | `postClaimAgg`: 0.90 $\to$ 1.08, `sub5Urgency`: 2.00 $\to$ 2.09. 3-position engine generates massive coin engine. |
+| **Bengals** | 22.2% | 50.0% | 7.4 | +5.7 | `recurringMult`: 0.80 $\to$ 0.63, `richestBuffer`: 1 $\to$ 2, `firstClaimAgg`: 1.20 $\to$ 1.23. Instant effect discard loop perfected. |
+| **Browns** | 72.2% | 55.6% | 8.2 | +2.7 | `deflateWeight`: 3.50 $\to$ 3.93, `priceBumpProb`: 0.10 $\to$ 0.14. Aggressive late-game deflation with 30 coins. |
+| **Steelers** | 22.2% | 38.9% | 8.6 | +2.0 | `postClaimAgg`: 0.85 $\to$ 0.90, `superstarPriority`: 1.30 $\to$ 1.35. Protects richest coin lead for recurring PSI transfers. |
+| **Texans** | 33.3% | 50.0% | 5.2 | -1.0 | `recurringMult`: 1.20 $\to$ 1.37, `aggression`: 1.10 $\to$ 1.17. High QB concentration delivers dual coin & deflation. |
+| **Colts** | 38.9% | 55.6% | 9.0 | +0.0 | `recurringMult`: 2.00 $\to$ 2.12, `synergyBonus`: 1.60 $\to$ 1.78. Infinite roster expansion preserves clean engines. |
+| **Jaguars** | 22.2% | 33.3% | 12.1 | +1.7 | `deflateWeight`: 1.60 $\to$ 1.86, `recurringMult`: 1.00 $\to$ 1.27, `superstarPriority`: 1.20 $\to$ 1.32. |
+| **Titans** | 55.6% | 27.8% | 17.8 | +0.4 | `deflateWeight`: 1.70 $\to$ 1.25, `reserveCoins`: 2 $\to$ 3, `superstarPriority`: 1.20 $\to$ 1.28. |
+| **Broncos** | 11.1% | 27.8% | 10.7 | +1.5 | `aggression`: 1.00 $\to$ 1.15, `boardStrength`: 1.00 $\to$ 0.79, `sub5Urgency`: 2.00 $\to$ 2.43. Overcomes round 1 suppression. |
+| **Chiefs** | 27.8% | 38.9% | 11.3 | +2.5 | `coinWeight`: 1.00 $\to$ 1.19, `boardStrength`: 1.00 $\to$ 0.76. Free claim ability captures elite engines. |
+| **Raiders** | 33.3% | 38.9% | 8.8 | -0.8 | `threatDefense`: 1.30 $\to$ 1.48, `aggression`: 1.10 $\to$ 1.19, `reserveCoins`: 3 $\to$ 2. High menace targeted harassment. |
+| **Chargers** | 5.6% | 22.2% | 21.5 | +2.7 | `coinWeight`: 1.00 $\to$ 0.43, `recurringMult`: 1.00 $\to$ 1.13. Outbid baiting calibrated. |
+| **Cowboys** | 38.9% | 55.6% | 5.9 | +0.0 | Passive +2 coins/round baseline remains exceptionally potent under 0 PSI. |
+| **Eagles** | 22.2% | 38.9% | 11.7 | +1.6 | `reserveCoins`: 6 $\to$ 7, `threatDefense`: 1.30 $\to$ 1.40, `postClaimAgg`: 0.90 $\to$ 0.71. Balanced Tush Push funding. |
+| **Commanders** | 22.2% | 44.4% | 9.2 | +2.1 | `deflateWeight`: 1.60 $\to$ 2.23, `coinWeight`: 1.00 $\to$ 1.64, `threatDefense`: 1.20 $\to$ 1.07. Blockade disruption. |
+| **Bears** | 27.8% | 44.4% | 7.5 | +1.4 | `firstClaimAgg`: 1.20 $\to$ 1.40, `threatDefense`: 1.30 $\to$ 1.15, `superstarPriority`: 1.10 $\to$ 1.26. Outbid bully leverage. |
+| **Lions** | 22.2% | 50.0% | 11.1 | +2.4 | `recurringMult`: 1.00 $\to$ 1.41, `firstClaimAgg`: 1.50 $\to$ 1.74, `priceBumpProb`: 0.20 $\to$ 0.37. Extreme 1st-claim bounty focus. |
+| **Packers** | 16.7% | 33.3% | 12.7 | +0.4 | `reserveCoins`: 0 $\to$ 1, `priceBumpProb`: 0.20 $\to$ 0.26, `postClaimAgg`: 0.90 $\to$ 0.85. |
+| **Vikings** | 22.2% | 44.4% | 8.8 | +3.7 | `aggression`: 1.00 $\to$ 1.08, `superstarPriority`: 1.20 $\to$ 1.36. Dominates coin economy once under 27 PSI. |
+| **Falcons** | 16.7% | 16.7% | 15.2 | +3.5 | `deflateWeight`: 1.60 $\to$ 2.05, `boardStrength`: 1.00 $\to$ 1.09, `synergyBonus`: 1.20 $\to$ 0.80. |
+| **Saints** | 44.4% | 66.7% | 4.4 | +0.4 | `recurringMult`: 1.00 $\to$ 1.28, `superstarPriority`: 1.20 $\to$ 1.07. Complete immunity to drawback cards creates unmatched value. |
+| **Panthers** | 33.3% | 50.0% | 6.9 | +1.5 | `aggression`: 1.10 $\to$ 1.20, `synergyBonus`: 1.20 $\to$ 1.31, `threatDefense`: 1.10 $\to$ 1.16. Passive -2 PSI/round engine. |
+| **Buccaneers** | 33.3% | 50.0% | 8.4 | +1.7 | `aggression`: 1.10 $\to$ 1.27, `boardStrength`: 1.00 $\to$ 1.18. Copies top tier passives. |
+| **Cardinals** | 22.2% | 66.7% | 3.4 | +3.3 | `coinWeight`: 1.00 $\to$ 1.26, `aggression`: 1.00 $\to$ 1.17, `threatDefense`: 1.10 $\to$ 1.12. Top-deck swap curates elite lineups. |
+| **Rams** | 33.3% | 44.4% | 13.0 | +0.8 | `recurringMult`: 1.10 $\to$ 1.51, `boardStrength`: 1.00 $\to$ 1.20. Doubles late-game HOF cards. |
+| **49ers** | 50.0% | 44.4% | 10.2 | +2.1 | `sub5Urgency`: 3.00 $\to$ 3.11, `threatDefense`: 1.10 $\to$ 1.33. Sub-5 coin double deflation dominates endgame. |
+| **Seahawks** | 55.6% | 55.6% | 6.9 | +2.3 | `deflateWeight`: 1.60 $\to$ 1.27, `reserveCoins`: 2 $\to$ 4, `superstarPriority`: 1.20 $\to$ 1.33. 4-man lineup engine power. |
+
+---
+
+### 4. Definitive Post-Optimization League Tournament & Tier List (1,500 Games)
+Conducted across 500 games each on 4-Player, 7-Player, and 10-Player tables:
+
+```
+Rank | Team         | Games | Wins | Win %  | Avg PSI | 4P Win% | 7P Win% | 10P Win%
+-----|--------------|-------|------|--------|---------|---------|---------|---------
+   1 | Saints       |   339 |   86 |  25.4% |     6.4 |     35% |     31% |      16%
+   2 | 49ers        |   309 |   70 |  22.7% |     9.7 |     32% |     20% |      20%
+   3 | Cowboys      |   357 |   72 |  20.2% |     9.3 |     38% |     17% |      17%
+   4 | Chiefs       |   335 |   64 |  19.1% |    10.4 |     19% |     22% |      17%
+   5 | Raiders      |   322 |   61 |  18.9% |    10.9 |     33% |     23% |      10%
+   6 | Ravens       |   349 |   65 |  18.6% |     9.5 |     30% |     21% |      14%
+   7 | Buccaneers   |   321 |   59 |  18.4% |    10.3 |     36% |     16% |      13%
+   8 | Panthers     |   332 |   60 |  18.1% |     9.5 |     34% |     16% |      14%
+   9 | Jaguars      |   337 |   57 |  16.9% |    11.1 |     31% |     18% |      10%
+  10 | Cardinals    |   374 |   63 |  16.8% |     9.1 |     25% |     19% |      13%
+  11 | Texans       |   341 |   57 |  16.7% |    12.8 |     31% |     15% |      11%
+  12 | Commanders   |   325 |   52 |  16.0% |    12.3 |     34% |     14% |       9%
+  13 | Patriots     |   344 |   53 |  15.4% |     9.3 |     33% |     16% |      10%
+  14 | Seahawks     |   365 |   56 |  15.3% |    11.6 |     20% |     17% |      12%
+  15 | Browns       |   324 |   45 |  13.9% |    10.4 |     27% |     10% |      11%
+  16 | Bills        |   332 |   46 |  13.9% |    12.4 |     26% |     15% |       9%
+  17 | Bears        |   333 |   46 |  13.8% |    11.6 |     25% |     14% |       9%
+  18 | Dolphins     |   371 |   49 |  13.2% |    12.7 |     18% |     15% |      10%
+  19 | Titans       |   363 |   47 |  12.9% |    13.6 |     21% |     14% |       9%
+  20 | Vikings      |   318 |   41 |  12.9% |    12.5 |     25% |     11% |      10%
+  21 | Colts        |   350 |   45 |  12.9% |    13.1 |     25% |     16% |       5%
+  22 | Lions        |   367 |   46 |  12.5% |    14.2 |     19% |     12% |      10%
+  23 | Steelers     |   336 |   41 |  12.2% |    15.2 |     19% |     13% |       8%
+  24 | Bengals      |   337 |   37 |  11.0% |    13.3 |     24% |     13% |       6%
+  25 | Falcons      |   347 |   35 |  10.1% |    13.8 |     27% |      7% |       5%
+  26 | Jets         |   333 |   33 |   9.9% |    13.4 |     16% |      7% |       9%
+  27 | Eagles       |   332 |   32 |   9.6% |    14.2 |     23% |      9% |       5%
+  28 | Packers      |   342 |   26 |   7.6% |    14.9 |     20% |      6% |       3%
+  29 | Rams         |   336 |   23 |   6.8% |    16.5 |     14% |      4% |       6%
+  30 | Broncos      |   299 |   20 |   6.7% |    17.5 |     12% |      7% |       4%
+  31 | Chargers     |   330 |   13 |   3.9% |    21.0 |      9% |      2% |       3%
+```
+
+#### 🥇 Tier 1: Best / Elite Contenders (Top 10 — Win Rates 16.8% to 25.4%)
+- **Saints (#1, 25.4% WR, 6.4 Avg PSI)**: The undisputed king of the 0 PSI meta. Complete immunity to negative coins and inflation allows the Saints to greedily vacuum up high-deflation drawback cards that opponents cannot touch.
+- **49ers (#2, 22.7% WR, 9.7 Avg PSI)**: Generating double deflation below 5 coins produces consistent -6 to -8 PSI refresh phases in late rounds, tearing through the final 20 PSI faster than any other franchise.
+- **Cowboys (#3, 20.2% WR, 9.3 Avg PSI)**: Gaining +2 coins passively every round yields 16–20 free coins across an 8–10 round game, allowing Dallas to outbid rivals on every Hall of Fame and Phase 2 centerpiece.
+- **Chiefs (#4, 19.1% WR, 10.4 Avg PSI)**: Free minimum-cost claim ensures securing an elite engine card without spending down their treasury.
+- **Raiders (#5, 18.9% WR, 10.9 Avg PSI)**: Giving 1 PSI away each round slows down whichever opponent is closest to 0 PSI, creating reliable late-game comebacks.
+- **Ravens (#6, 18.6% WR, 9.5 Avg PSI)**: Controlling 3 different positions grants +3 coins/round, creating a runaway financial engine.
+- **Buccaneers (#7, 18.4% WR, 10.3 Avg PSI)**: Assimilating elite franchise abilities creates immense draft flexibility.
+- **Panthers (#8, 18.1% WR, 9.5 Avg PSI)**: Passive -2 PSI every single round produces -16 to -20 PSI over a game, cutting the distance to 0 PSI nearly in half.
+- **Jaguars (#9, 16.9% WR, 11.1 Avg PSI)** & **Cardinals (#10, 16.8% WR, 9.1 Avg PSI)**: Top-deck manipulation guarantees superior card quality and denies key engines to rivals.
+
+#### 🥈 Tier 2: Middle / Competitive & Balanced (Middle 11 — Win Rates 12.9% to 16.7%)
+- **Texans (16.7%) & Commanders (16.0%)**: Texans' dual QB engine and Commanders' First Player blockade create strong tactical advantages.
+- **Patriots (15.4%, 9.3 Avg PSI)**: Low starting PSI (36) provides a head start, but requires disciplined deflation engine building to close the final 10 PSI.
+- **Seahawks (15.3%, 11.6 Avg PSI)**: Starting with 4 Practice Squad players and a 4-man active lineup provides higher ceiling capacity once fully staffed.
+- **Browns (13.9%, 10.4 Avg PSI)**: Massive +30 coin windfall after Round 5 allows Cleveland to monopolize Hall of Fame auctions in Rounds 7–10.
+- **Bills (13.9%), Bears (13.8%), Dolphins (13.2%)**: Reliable tactical abilities with balanced performance across all table sizes.
+- **Titans (12.9%), Vikings (12.9%), Colts (12.9%)**: Colts' infinite lineup expansion remains viable when avoiding negative recurring cards, achieving 25% win rates in 4P games.
+
+#### 🥉 Tier 3: Worst / Challenging (Bottom 10 — Win Rates 3.9% to 12.5%)
+- **Lions (12.5%, 14.2 Avg PSI)**: First-claim coin bounty is valuable in Rounds 1–3, but falls off in later rounds when table position shifts away.
+- **Steelers (12.2%, 15.2 Avg PSI)**: Richest player condition is difficult to maintain in 7P and 10P lobbies where multiple rich rivals compete.
+- **Bengals (11.0%) & Falcons (10.1%)**: High variance abilities that struggle to sustain consistent multi-turn deflation velocity.
+- **Jets (9.9%) & Eagles (9.6%)**: Paying max price for -4 PSI burns coins too quickly under a 0 PSI win condition; Eagles' coin-spending on Tush Push starves their own lineup of card acquisitions.
+- **Packers (7.6%, 14.9 Avg PSI)**: Restricting themselves to Phase 1 cards to get -4 deflation locks them out of powerful Phase 2 and HOF powerhouses in Rounds 4–10.
+- **Rams (6.8%, 16.5 Avg PSI)**: Stashing coins for Phase 2 causes early board deficit, and the 2x multiplier applies to only one player.
+- **Broncos (6.7%, 17.5 Avg PSI)**: Suppressing recurring effects on Round 1 delays engine payoff for every new acquisition, losing 3–4 full turns of production across a game.
+- **Chargers (3.9%, 21.0 Avg PSI)**: Starts at 50 PSI with only 6 coins. Gaining +1 coin per outbid requires surviving bidding wars that they lack starting capital to initiate.
+
+---
+
+### 5. File Artifacts & Deployment Verification
+- Production build `npm run build` compiled cleanly in 5.98s (`dist/assets/index-BOfkTv5V.js`).
+- Evolved weights saved to `src/ai/team_weights.json` and active in `src/ai/evolvedWeights.js`.
+- Full raw telemetry and tournament results stored in `scratch/optimization_round2_results.json`.
+- All 5 automated unit test suites (`scratch/testPlaytest34.mjs`) verified 100% passing.
+
+
 
 

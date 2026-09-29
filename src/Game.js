@@ -885,15 +885,29 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     rawScore += estCopyValue;
   }
 
-  // Playtest 20: 4-Deflate Superstars Centerpiece bonus in Rounds 5+
+  // Universal Elite Powerhouses (HOF Legends, Mahomes, Kelce, McCaffrey, Lamar Jackson, Jefferson, 3+ Recurring Engines)
+  // Per user directive: These cards are so strong that only a few cards can compare.
+  // They are a high priority for ALL teams regardless of franchise strategy, and naturally contested by the richest players!
   const hasBigRecurringDeflate = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3);
-  if (hasBigRecurringDeflate && (currentRound >= 5 || roundsLeft <= 3)) {
-    rawScore += 14.0;
-  }
+  const hasBigRecurringCoins = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount >= 3);
+  const isTier1Elite = (
+    card.phase === 'hof' || 
+    card.id === 'patrick_mahomes' || 
+    card.id === 'travis_kelce' || 
+    card.id === 'christian_mccaffrey' || 
+    card.id === 'lamar_jackson' || 
+    card.id === 'justin_jefferson' || 
+    hasBigRecurringDeflate || 
+    (hasBigRecurringCoins && effectiveTeamId !== 'browns')
+  );
 
-  // Side note from user: Everyone should be trying to get Patrick Mahomes and Travis Kelce!
-  if (card.id === 'patrick_mahomes' || card.id === 'travis_kelce') {
-    rawScore += 18.0;
+  const superstarMult = teamGenome?.superstarPriorityMult || 1.0;
+  if (card.phase === 'hof') {
+    rawScore = Math.max(rawScore, 24.0) * superstarMult;
+  } else if (card.id === 'patrick_mahomes' || card.id === 'travis_kelce' || card.id === 'christian_mccaffrey') {
+    rawScore = Math.max(rawScore, 20.0) * superstarMult;
+  } else if (isTier1Elite) {
+    rawScore = Math.max(rawScore, 18.0) * superstarMult;
   }
 
   // Franchise synergies:
@@ -1021,6 +1035,10 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   const isCandidatePerRound = card.effects && card.effects.some(e => e.perRound);
   const isCandidateInstantOnly = card.effects && card.effects.every(e => !e.perRound);
 
+  // Marginal Utility & Opportunity Cost:
+  const maxLineup = (effectiveTeamId === 'seahawks' ? 4 : 3) + (p.extraLineupSlots || 0);
+  const currentLineup = p.lineup || [];
+
   if (effectiveTeamId !== 'colts') {
     if (perRoundCount < 2) {
       if (isCandidatePerRound) {
@@ -1031,13 +1049,13 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       if (isCandidateInstantOnly) {
         rawScore += 5.0;
         if (effectiveTeamId === 'bengals') rawScore += 5.0;
-      } else if (isCandidatePerRound) {
+      } else if (isCandidatePerRound && currentLineup.length < maxLineup) {
         if (!isSuperstar && rawScore < 20) {
           rawScore *= 0.60;
         }
       }
     } else if (perRoundCount >= 3) {
-      if (isCandidatePerRound) {
+      if (isCandidatePerRound && currentLineup.length < maxLineup) {
         rawScore *= 0.60;
       } else if (isCandidateInstantOnly) {
         rawScore += 2.0;
@@ -1045,10 +1063,6 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       }
     }
   }
-
-  // Marginal Utility & Opportunity Cost:
-  const maxLineup = (effectiveTeamId === 'seahawks' ? 4 : 3) + (p.extraLineupSlots || 0);
-  const currentLineup = p.lineup || [];
 
   if (currentLineup.length >= maxLineup && effectiveTeamId !== 'colts') {
     const isCandidateInstant = card.effects && card.effects.some(e => !e.perRound);
@@ -1292,6 +1306,26 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const isChiefsSuperstar = (card.id === 'patrick_mahomes' || card.id === 'travis_kelce');
   let isSuperstar = (card.phase === 'hof' || effMax >= 16 || cardScore >= 16 || isChiefsSuperstar || card.id === 'christian_mccaffrey');
 
+  const otherAvailableCards = G.board.auctionPlayers.filter((c, idx) => c !== null && idx !== cardIndex);
+  const scoredOtherCards = otherAvailableCards.map(c => ({
+    card: c,
+    score: scoreCardForPlayer(G, currentPlayerId, c)
+  }));
+  const otherScores = scoredOtherCards.map(o => o.score).sort((a, b) => b - a);
+  const secondBestScore = otherScores.length > 0 ? otherScores[0] : 0;
+  const floorScore = otherScores.length > 0 ? otherScores[otherScores.length - 1] : 0;
+
+  const maxLineup = (effectiveTeamId === 'seahawks' ? 4 : 3) + (currentPlayer.extraLineupSlots || 0);
+  const currentLineup = currentPlayer.lineup || [];
+  const avoidsDowngrade = (
+    otherAvailableCards.length > 0 && 
+    floorScore < cardScore && 
+    floorScore < 0 && 
+    (cardScore >= -0.5 || (cardScore - floorScore) >= 1.5) && 
+    currentLineup.length >= maxLineup && 
+    effectiveTeamId !== 'colts'
+  );
+
   // #5 Exact Turns-to-Zero Endgame Calculus: Championship Instant Win
   // If purchasing this card immediately reduces PSI to <= 0, go all-in to secure the title!
   const cardInstantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
@@ -1300,23 +1334,30 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     return { shouldBid: true, bidAmount: Math.max(nextBid, winBid), isChampionshipBid: true };
   }
 
-  // #1 Marginal Lineup Upgrade Value (Roster Replacement Delta)
+  // #1 Marginal Lineup Upgrade Value (Roster Replacement Delta with Board Strength Protection)
   // When the roster is full, winning this card forces cutting an active starter.
-  // Never spend coins on a downgrade or lateral side-grade!
-  const maxLineup = (effectiveTeamId === 'seahawks' ? 4 : 3) + (currentPlayer.extraLineupSlots || 0);
-  const currentLineup = currentPlayer.lineup || [];
+  // Take into account board strength:
+  // If your active lineup has all 2 coins/round players, and this card gives 2 coins/round (cardScore ~ 0),
+  // but another card on the board gives 1 coin/round (floorScore < 0 downgrade),
+  // bidding on the 2 coins/round player prevents losing a coin per round later in the round!
   if (currentLineup.length >= maxLineup && effectiveTeamId !== 'colts') {
     const isCandidateInstant = card.effects && card.effects.some(e => !e.perRound);
     const isBengalsInstant = (effectiveTeamId === 'bengals' && isCandidateInstant);
     if (!isBengalsInstant && !isSuperstar) {
-      if (cardScore <= 0.5) {
-        return { shouldBid: false, bidAmount: 0 };
-      }
-      if (cardScore < 2.5 && nextBid >= 3) {
-        return { shouldBid: false, bidAmount: 0 };
-      }
-      if (cardScore < nextBid * 0.75) {
-        return { shouldBid: false, bidAmount: 0 };
+      if (avoidsDowngrade) {
+        if (nextBid > Math.max(card.minBid + 1, 3)) {
+          return { shouldBid: false, bidAmount: 0 };
+        }
+      } else {
+        if (cardScore <= 0.5) {
+          return { shouldBid: false, bidAmount: 0 };
+        }
+        if (cardScore < 2.5 && nextBid >= 3) {
+          return { shouldBid: false, bidAmount: 0 };
+        }
+        if (cardScore < nextBid * 0.75) {
+          return { shouldBid: false, bidAmount: 0 };
+        }
       }
     }
   }
@@ -1356,11 +1397,12 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   });
 
   // Table Threat Reactions:
-  // If Red Threat leader is the highest bidder and this card grants deflation:
-  // Existential threat! The table unites to block the leader on the final turn before they win!
+  // 1 Round Out (Red Threat): Final turn before rival wins!
+  // Aggressively price-bump and hate-bid up to maximum spending power to block immediate championship loss!
   if (redThreatLeaderId !== null && G.board.highestBidder === redThreatLeaderId) {
+    const defenseAgg = teamGenome.threatDefenseWeight || 1.0;
     const givesLeaderDeflate = (cardDeflateInstant > 0 || cardDeflateRecurring > 0 || cardScore >= 0);
-    if (givesLeaderDeflate && currentPlayer.coins >= nextBid && nextBid <= effMax) {
+    if (givesLeaderDeflate && currentPlayer.coins >= nextBid && nextBid <= Math.min(effMax, Math.round(effMax * defenseAgg))) {
       return { shouldBid: true, bidAmount: nextBid, isHateBid: true };
     }
   }
@@ -1368,15 +1410,6 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // Playtest 19 Note 9: Worst Card Outbid Protection
   // If the human or another team nominates the worst card on the board for 1 coin,
   // no CPU should outbid them for 2+ coins when better cards are available on the board!
-  const otherAvailableCards = G.board.auctionPlayers.filter((c, idx) => c !== null && idx !== cardIndex);
-  const scoredOtherCards = otherAvailableCards.map(c => ({
-    card: c,
-    score: scoreCardForPlayer(G, currentPlayerId, c)
-  }));
-  const otherScores = scoredOtherCards.map(o => o.score).sort((a, b) => b - a);
-  const secondBestScore = otherScores.length > 0 ? otherScores[0] : 0;
-  const floorScore = otherScores.length > 0 ? otherScores[otherScores.length - 1] : 0;
-
   if (otherAvailableCards.length > 0) {
     const betterAvailableCards = scoredOtherCards.filter(o => o.score > cardScore && o.card.minBid <= nextBid);
     const isLowestScoringOnBoard = scoredOtherCards.every(o => o.score >= cardScore);
@@ -1519,19 +1552,27 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   let baseValuation = Math.max(card.minBid, Math.min(effMax, Math.round(cardScore * 0.75 * scarcityMultiplier * aggression)));
+  if (avoidsDowngrade) {
+    const floorMult = teamGenome.boardStrengthWeight || 1.0;
+    const floorValuation = Math.max(card.minBid + 1, Math.round((card.minBid + 1) * floorMult));
+    baseValuation = Math.max(baseValuation, Math.min(Math.round(3 * floorMult), floorValuation));
+  }
   if (is4DeflateCard && G.board.round >= 5) {
     baseValuation = Math.max(baseValuation, Math.round(effMax * 0.85)); // Fight aggressively for 4-deflate cards!
   }
-  // Universal Chiefs Superstar Priority: All teams bid aggressively for Mahomes & Kelce
-  if (isChiefsSuperstar) {
-    baseValuation = Math.max(baseValuation, Math.min(effMax, Math.round(currentPlayer.coins * 0.90)));
+  // Universal Elite Powerhouses: All teams bid aggressively on elite powerhouse players; richest player naturally prevails!
+  if (isSuperstar) {
+    const superstarMult = teamGenome.superstarPriorityMult || 1.0;
+    baseValuation = Math.max(baseValuation, Math.min(effMax, Math.round(currentPlayer.coins * Math.min(0.95, 0.85 * superstarMult))));
   }
 
-  // #2 Yellow Threat Reaction: If 2-round threat is highest bidder and card has deflate, boost valuation to deny
+  // #2 Yellow Threat Reaction (2 Rounds Out): Lower, conservative price bump to avoid blowing purse early
   if (yellowThreatLeaderId !== null && G.board.highestBidder === yellowThreatLeaderId) {
     const givesLeaderDeflate = (cardDeflateInstant > 0 || cardDeflateRecurring > 0);
     if (givesLeaderDeflate) {
-      baseValuation = Math.max(baseValuation, Math.min(effMax - 1, Math.round(currentPlayer.coins * 0.70)));
+      const defenseAgg = teamGenome.threatDefenseWeight || 1.0;
+      const yellowCeiling = Math.min(effMax - 2, Math.round(effMax * 0.50 * defenseAgg), Math.round(currentPlayer.coins * 0.45 * defenseAgg));
+      baseValuation = Math.max(baseValuation, Math.min(yellowCeiling, baseValuation + 2));
     }
   }
 
@@ -1624,14 +1665,33 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
-  // Playtest 19 Note 15: Strategic Price Bumping on Opponent Preferences
+  // Playtest 19 Note 15 & Playtest 34: Strategic Price Bumping on Opponent Preferences & Threat Levels
   if (nextBid > valuation) {
     const oppTeamId = highestTeamId;
     const oppLovesCard = doesCardFitTeamStrategy(oppTeamId, card, highestBidderPlayer, G);
     const opponentCanAffordRaise = highestBidderPlayer && highestBidderPlayer.coins >= nextBid + bidStep;
-    const isBargainForOpponent = G.board.highestBid < Math.round(effMax * 0.55);
     const safeRiskForMe = cardScore >= 0; // Colts strictly avoid bumping negative cards!
 
+    // #2 Threat Level Price Bump Scaling:
+    // 1 Round Out (Red Threat): HIGHER price bump aggression (emergency table defense up to effMax)
+    if (redThreatLeaderId !== null && G.board.highestBidder === redThreatLeaderId) {
+      const givesLeaderDeflate = (cardDeflateInstant > 0 || cardDeflateRecurring > 0 || cardScore >= 0);
+      if (givesLeaderDeflate && opponentCanAffordRaise && currentPlayer.coins >= nextBid && nextBid <= effMax) {
+        return { shouldBid: true, bidAmount: nextBid, isHateBid: true };
+      }
+    }
+
+    // 2 Rounds Out (Yellow Threat): LOWER price bump (conservative, only cheap bumps up to 4 coins / 40% cap)
+    if (yellowThreatLeaderId !== null && G.board.highestBidder === yellowThreatLeaderId) {
+      const givesLeaderDeflate = (cardDeflateInstant > 0 || cardDeflateRecurring > 0);
+      const defenseAgg = teamGenome.threatDefenseWeight || 1.0;
+      const isCheapBump = nextBid <= Math.min(Math.round(4 * defenseAgg), Math.round(effMax * 0.40 * defenseAgg));
+      if (givesLeaderDeflate && opponentCanAffordRaise && isCheapBump && safeRiskForMe && currentPlayer.coins >= nextBid && Math.random() < Math.min(0.85, 0.45 * defenseAgg)) {
+        return { shouldBid: true, bidAmount: nextBid, isPriceBump: true };
+      }
+    }
+
+    const isBargainForOpponent = G.board.highestBid < Math.round(effMax * 0.55);
     if (oppLovesCard && opponentCanAffordRaise && isBargainForOpponent && safeRiskForMe && currentPlayer.coins >= nextBid) {
       if (Math.random() < 0.65) {
         return { shouldBid: true, bidAmount: nextBid, isPriceBump: true };
