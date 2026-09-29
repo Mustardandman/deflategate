@@ -404,16 +404,44 @@ export const resolveAuctionWin = (G, playerID, card) => {
   } else {
     if (p.isCpu) {
       // Bengals ability: May discard acquired player instead of replacing a player.
-      // If CPU Bengals wins an instant player and all current lineup players are valuable per-round engines,
-      // discard the acquired player after triggering its instant effect to preserve core engines.
       if (effectiveTeamId === 'bengals') {
-        const isWonCardInstant = card.effects && card.effects.length > 0 && card.effects.every(e => !e.perRound);
-        const hasDeadCardInLineup = p.lineup.some(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_') || (c.effects && c.effects.every(e => !e.perRound)));
-        if (isWonCardInstant && !hasDeadCardInLineup) {
+        const hasNegativeRecurring = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && (e.type === 'inflate' || (e.type === 'coins' && e.amount < 0)));
+        const isPureInstant = card.effects && card.effects.length > 0 && card.effects.every(e => !e.perRound);
+        const realLineup = p.lineup.filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+        const recurringEngines = realLineup.filter(c => c.effects?.some(e => e.perRound && ((e.type === 'coins' && e.amount > 0) || (e.type === 'deflate' && e.amount > 0))));
+
+        // 1. Toxic/Negative Recurring Cards (e.g. Hunter Henry, Ezekiel Elliott):
+        // Discard immediately after claiming the boosted instant effect so toxic penalties never enter the lineup!
+        if (hasNegativeRecurring) {
           if (!G.decks.discard) G.decks.discard = [];
           G.decks.discard.push(card);
-          addLog(G, `Bengals Ability: CPU Player ${displayId} discarded acquired card ${card.name} after triggering its instant effect.`);
+          addLog(G, `🐅 Bengals Ability: CPU Player ${displayId} discarded ${card.name} after claiming its instant effect, avoiding recurring penalties.`);
           return;
+        }
+
+        // 2. Pure Instant Cards (e.g. Aaron Jones, Malik Nabers, Gibbs, Swift, Deebo, Olave):
+        // Discard instant cards directly after triggering their instant effect to keep the lineup clean!
+        if (isPureInstant) {
+          if (!G.decks.discard) G.decks.discard = [];
+          G.decks.discard.push(card);
+          addLog(G, `🐅 Bengals Ability: CPU Player ${displayId} discarded instant card ${card.name} after triggering its instant effect.`);
+          return;
+        }
+
+        // 3. Recurring Cards when Lineup already has 3 solid recurring engines:
+        // If all 3 slots are full and the acquired recurring card is NOT better than the worst active engine, discard it!
+        if (recurringEngines.length >= 3) {
+          const roundsLeft = Math.max(1, 10 - (G.board?.round || 1));
+          const deflateW = p.genome?.deflateWeight || 2.0;
+          const coinW = p.genome?.coinWeight || 1.0;
+          const newCardVal = scoreCardRaw(card, roundsLeft, deflateW, coinW);
+          const worstStarterVal = Math.min(...recurringEngines.map(c => scoreCardRaw(c, roundsLeft, deflateW, coinW)));
+          if (newCardVal <= worstStarterVal) {
+            if (!G.decks.discard) G.decks.discard = [];
+            G.decks.discard.push(card);
+            addLog(G, `🐅 Bengals Ability: CPU Player ${displayId} discarded ${card.name} to preserve existing superior active lineup.`);
+            return;
+          }
         }
       }
 
@@ -862,9 +890,15 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       let amt = eff.amount || 0;
       const isRecurring = eff.perRound || eff.trigger === 'refresh' || eff.trigger === 'end_round' || eff.type === 'deflate_every_round' || eff.type === 'every_round';
       if (isRecurring) {
-        if (eff.type === 'deflate' || eff.type === 'deflate_every_round') totalDeflate += amt * roundsLeft * recurringMult;
-        if (eff.type === 'coins') totalCoins += amt * roundsLeft * recurringMult;
-        if (eff.type === 'inflate') totalDeflate -= amt * roundsLeft * recurringMult;
+        // Bengals Ability: Can discard any acquired player instead of replacing a starter.
+        // If a card has positive instant effect and negative recurring effect (e.g. Hunter Henry, Ezekiel Elliott),
+        // Bengals discards the player immediately upon acquisition, completely avoiding the negative recurring effect!
+        const isBengalsDiscardableNegative = (effectiveTeamId === 'bengals' && (eff.type === 'inflate' || (eff.type === 'coins' && amt < 0)) && card.effects?.some(e => !e.perRound));
+        if (!isBengalsDiscardableNegative) {
+          if (eff.type === 'deflate' || eff.type === 'deflate_every_round') totalDeflate += amt * roundsLeft * recurringMult;
+          if (eff.type === 'coins') totalCoins += amt * roundsLeft * recurringMult;
+          if (eff.type === 'inflate') totalDeflate -= amt * roundsLeft * recurringMult;
+        }
       } else {
         // Bengals Ability: +2 coins/deflate for instant abilities
         if (effectiveTeamId === 'bengals' && (eff.type === 'deflate' || eff.type === 'coins')) {
@@ -1187,12 +1221,36 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   if (effectiveTeamId === 'bengals') {
     const hasInstant = card.effects && card.effects.some(e => !e.perRound);
     const hasRecurring = card.effects && card.effects.some(e => e.perRound);
+    const hasNegativeRecurring = card.effects?.some(e => e.perRound && (e.type === 'inflate' || (e.type === 'coins' && e.amount < 0)));
+
     if (hasInstant) {
-      rawScore += 4.5;
-      if (card.minBid <= 3) rawScore += 2.0; // Fine grabbing cheap instants early
+      rawScore += 6.0; // High base affinity for boosted instant effects (+2 coins or +2 deflation)
+      if (card.minBid <= 3) rawScore += 3.0; // Cheap instant bargains
     }
-    if (hasInstant && hasRecurring) {
-      rawScore += 6.5; // Dual threat filling two roles
+    if (hasInstant && hasNegativeRecurring) {
+      // Hunter Henry & Ezekiel Elliott: Free boosted nuke without the recurring downside!
+      rawScore += 12.0;
+    }
+    if (hasInstant && hasRecurring && !hasNegativeRecurring) {
+      rawScore += 7.0; // Dual threat filling two roles cleanly
+    }
+
+    // Instant Coin Rockets for Bengals:
+    // Odunze / Nabers give 7 coins! Deebo gives 8 coins! Olave gives 7 coins!
+    const instantCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+    if (instantCoins >= 4) {
+      rawScore += 6.0;
+    }
+
+    // Strategy B Cash Engine Foundation:
+    // When cash-poor (<= 6 coins) in early rounds (1-3), boost recurring coin generators
+    // so Bengals locks in steady round-by-round income to continuously fund instant purchases and discard churn.
+    const round = G?.board?.round || 1;
+    if (round <= 3 && p.coins <= 6) {
+      const recurringCoins = card.effects?.filter(e => e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+      if (recurringCoins >= 2) {
+        rawScore += 5.5;
+      }
     }
   }
 
@@ -1229,10 +1287,10 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     } else if (perRoundCount === 2) {
       if (isCandidateInstantOnly) {
         rawScore += 5.0;
-        if (effectiveTeamId === 'bengals') rawScore += 5.0;
+        if (effectiveTeamId === 'bengals') rawScore += 7.5; // User Directive: 3rd slot tiebreaker favors instant card!
       } else if (isCandidatePerRound && currentLineup.length < maxLineup) {
         if (!isSuperstar && rawScore < 20) {
-          rawScore *= 0.60;
+          rawScore *= (effectiveTeamId === 'bengals' ? 0.70 : 0.60);
         }
       }
     } else if (perRoundCount >= 3) {
@@ -1240,7 +1298,7 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
         rawScore *= 0.60;
       } else if (isCandidateInstantOnly) {
         rawScore += 2.0;
-        if (effectiveTeamId === 'bengals') rawScore += 8.0;
+        if (effectiveTeamId === 'bengals') rawScore += 10.0; // Strategy B: 3 engines locked, pure discard churn
       }
     }
   }
@@ -1378,6 +1436,59 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     }
     const cheapWin = eligibleCards.find(item => item.card.minBid <= currentPlayer.coins && item.score >= 0);
     if (cheapWin) return cheapWin.index;
+  }
+
+  // Bengals Nomination Strategy:
+  // 1. Exploit cards with positive instant + negative recurring (Hunter Henry, Ezekiel Elliott): free boosted nukes!
+  // 2. Instant coin rockets when low on purse (<= 6 coins): Nabers, Odunze, Deebo, Olave, Harrison Jr.
+  // 3. Premier recurring centerpieces if needing engines (< 2 recurring): Bowers, Cousins, Kittle
+  // 4. Instant deflation nukes: Aaron Jones, Jahmyr Gibbs, D'Andre Swift, Tony Pollard
+  // 5. Cheap instant bargains (minBid <= 2)
+  if (effectiveTeamId === 'bengals') {
+    const realLineup = (currentPlayer.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+    const recurringCount = realLineup.filter(c => c.effects?.some(e => e.perRound && ((e.type === 'coins' && e.amount > 0) || (e.type === 'deflate' && e.amount > 0)))).length;
+
+    // 1. Hunter Henry / Ezekiel Elliott: absolute top tier for Bengals
+    const exploitCard = eligibleCards.find(item => 
+      (item.card.id === 'hunter_henry' || item.card.id === 'ezekiel_elliott') &&
+      currentPlayer.coins >= item.card.minBid
+    );
+    if (exploitCard) return exploitCard.index;
+
+    // 2. Instant coin rockets if cash-poor (<= 6 coins)
+    if (currentPlayer.coins <= 6) {
+      const instantCoinRocket = eligibleCards.find(item => 
+        item.card.minBid <= currentPlayer.coins &&
+        item.card.effects?.some(e => !e.perRound && e.type === 'coins' && e.amount >= 4)
+      );
+      if (instantCoinRocket) return instantCoinRocket.index;
+    }
+
+    // 3. If needing to establish initial recurring engines (recurringCount < 2), nominate premier centerpiece
+    if (recurringCount < 2) {
+      const premierCenterpiece = eligibleCards.find(item =>
+        item.card.minBid <= currentPlayer.coins &&
+        (item.card.id === 'brock_bowers' || 
+         item.card.id === 'kirk_cousins' || 
+         item.card.id === 'george_kittle' ||
+         item.card.effects?.some(e => e.perRound && e.type === 'coins' && e.amount >= 3))
+      );
+      if (premierCenterpiece) return premierCenterpiece.index;
+    }
+
+    // 4. Instant deflation nukes (Aaron Jones, Jahmyr Gibbs, D'Andre Swift, etc.)
+    const instantDeflateNuke = eligibleCards.find(item =>
+      item.card.minBid <= currentPlayer.coins &&
+      item.card.effects?.some(e => !e.perRound && e.type === 'deflate' && e.amount >= 4)
+    );
+    if (instantDeflateNuke) return instantDeflateNuke.index;
+
+    // 5. Cheap instant cards (minBid <= 2)
+    const cheapInstant = eligibleCards.find(item =>
+      item.card.minBid <= Math.min(2, currentPlayer.coins) &&
+      item.card.effects?.some(e => !e.perRound)
+    );
+    if (cheapInstant) return cheapInstant.index;
   }
 
   // Jets Nomination Strategy:
@@ -1880,7 +1991,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
   // #5 Exact Turns-to-Zero Endgame Calculus: Championship Instant Win
   // If purchasing this card immediately reduces PSI to <= 0, go all-in to secure the title!
-  const cardInstantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+  const cardInstantDeflate = (card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0) + (effectiveTeamId === 'bengals' && card.effects?.some(e => !e.perRound && e.type === 'deflate') ? 2 : 0);
   if (currentPlayer.psi - cardInstantDeflate <= 0 && currentPlayer.coins >= nextBid) {
     const winBid = Math.min(effMax, currentPlayer.coins);
     return { shouldBid: true, bidAmount: Math.max(nextBid, winBid), isChampionshipBid: true };
@@ -2056,8 +2167,10 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // Patriots can spend all coins in Round 1 on premier centerpieces!
   // Ravens can spend freely on Round 1 anchor stars & completing 3-position engine!
   // Jets can spend full purse on affordable max bid buyouts without hoarding restriction!
+  // Bengals can spend freely on high-value instant cards without hoarding restriction!
   const isJetsMaxTarget = (effectiveTeamId === 'jets' && (effMax <= 5 || currentPlayer.coins >= effMax));
-  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
+  const isBengalsInstantTarget = (effectiveTeamId === 'bengals' && (card.effects?.some(e => !e.perRound) || cardScore >= 12.0));
+  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
@@ -2293,7 +2406,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   valuation = Math.min(valuation, spendableCoins);
-  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets') {
+  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals') {
     valuation = Math.min(valuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
   }
 
