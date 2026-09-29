@@ -1452,33 +1452,50 @@ Configured across `src/ai/teamGenomes.js`, `src/ai/team_weights.json`, and `src/
 
 ---
 
-### 3. Tournament Optimization & Candidate Evaluation
-Tested 6 distinct configurations across **1,200 simulated games** (7P & 10P tables):
+### 3. Tournament Optimization & Deep Multi-Match Calibration (23,400 Total Matches Simulated)
+To rigorously fine-tune the Jets beyond preliminary benchmarks, we conducted three tiers of multi-match tournaments simulating **23,400 competitive games**:
 
-| Candidate | Strategy Description | Key Parameters | 7P Win% | 10P Win% | Avg Win% | 7P / 10P Avg PSI | % 0-Coins | Avg Coins |
-|:---:|:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **C3** | **Selective Sniper (Champion)** | `Def 2.4, Gap 2, Res 1, Agg 1.2` | **25.0%** | **19.0%** | **22.0%** | 11.11 / 12.16 | **13.9% / 16.9%** | 6.93 / 7.78 |
-| **C2** | **User Vision Balanced** | `Def 2.4, Gap 3, Res 0, Agg 1.25` | 24.0% | 21.0% | 22.5% | 11.29 / 12.45 | 16.1% / 19.8% | 6.77 / 7.53 |
-| **C5** | **Deflation Heavy** | `Def 2.8, Gap 3, Res 0, Agg 1.2` | 23.0% | 23.0% | 23.0% | 11.35 / 12.42 | 16.8% / 19.8% | 6.63 / 7.48 |
-| **C1** | **Conservative Baseline** | `Def 2.0, Gap 3, Res 1, Agg 1.2` | 23.0% | 19.0% | 21.0% | 11.60 / 13.23 | 14.0% / 19.5% | 6.49 / 7.76 |
-| **C4** | **Gap 4 Aggressive** | `Def 2.4, Gap 4, Res 0, Agg 1.25` | 22.0% | 22.0% | 22.0% | 11.32 / 13.07 | 17.4% / 19.6% | 6.60 / 7.49 |
-| **C6** | **Low Aggression** | `Def 2.6, Gap 3, Res 1, Agg 1.15` | 21.0% | 20.0% | 20.5% | 11.54 / 13.82 | 15.1% / 21.1% | 6.70 / 7.38 |
+#### A. Initial 12-Candidate Grid Tournament (7,200 Matches: 300 7P + 300 10P per config)
+Tested variations across deflation weights (2.0–2.8), gaps (2–4), bankroll reserves (0–2), and economic engine weights:
 
-#### Key Performance Transformation:
-- **Bankroll Starvation Eliminated**: Zero-coin rounds plummeted from **30.3% $\to$ 16.9%** (10P) and **26.6% $\to$ 13.9%** (7P).
-- **Average Bankroll Doubled**: Average coins throughout the match increased from **4.06 $\to$ 7.78 coins**.
-- **Win Rates**: In 7P tables, Jets achieved **25.0% win rate** (vs 14.3% random parity, **1.75x above expected**). In 10P tables, Jets achieved **19.0% - 21.0% win rate** (vs 10.0% random parity, **2.0x above expected**).
-- **Zero Failures**: `gamesNeverTriggered` stayed at **0.0%**.
+| Rank | Candidate Strategy | 7P Win% | 10P Win% | Blended Win% | Avg PSI | Max Bids / Game | 0-Coin Round % |
+|:---:|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **1 🏆** | **`Coin-1.15 + Recur-1.10` (Cash Engine Foundation)** | **28.7%** | **30.7%** | **29.7%** | **12.34** | **3.60** | **14.6%** |
+| 2 | `MaxBid-Agg-1.30 + Gap 2` (Disciplined Max Buyer) | 29.3% | 28.0% | 28.7% | 12.77 | 3.42 | 14.5% |
+| 3 | `Gap-4 Aggressive` (Def 2.4, Gap 4, Res 0, Agg 1.25) | 24.3% | 32.3% | 28.3% | 12.43 | 3.63 | 19.2% |
+| 4 | `MaxBid-Agg-1.55 + Gap 3` (Hyper Instant Buyouts) | 28.7% | 27.0% | 27.8% | 13.53 | 3.52 | 15.1% |
+| 5 | `Reserve-2 Deep Bankroll` (reserveCoins: 2, Gap 2) | 27.3% | 26.7% | 27.0% | 12.07 | 3.48 | 13.8% |
+| 6 | `Deflate-2.20 + Gap 3` (Patient Builder) | 28.0% | 23.7% | 25.8% | 12.63 | 3.62 | 18.0% |
+| 7 | `Baseline C3` (Def 2.4, Gap 2, Res 1, Agg 1.2) | 24.3% | 26.3% | 25.3% | 12.11 | 3.59 | 15.7% |
+| 8 | `Deflate-2.80 + Gap 2` (Precision Sniper) | 25.0% | 25.3% | 25.2% | 12.83 | 3.58 | 14.3% |
+| 9 | `Synthesis Champion` (Def 2.50, Gap 3, Res 1, Agg 1.20) | 25.7% | 24.0% | 24.8% | 13.71 | 3.41 | 14.8% |
+| 10 | `Deflate-2.60 + Gap 3` (Sharper Deflation Rush) | 21.7% | 27.0% | 24.3% | 14.05 | 3.38 | 17.1% |
+| 11 | `Gap-3 Baseline` (Def 2.4, Gap 3, Res 1, Agg 1.2) | 24.3% | 22.3% | 23.3% | 12.63 | 3.66 | 17.5% |
+| 12 | `Reserve-0 All-In` (reserveCoins: 0, Agg 1.25, Gap 3) | 18.0% | 22.0% | 20.0% | 13.62 | 3.50 | 17.8% |
+
+*Key Insight*: With only 7 starting coins, buying small max cards early delays the economic engine. Prioritizing recurring cash generators in rounds 1–2 (`coinWeight: 1.15, recurringMult: 1.10`) provides the steady cash flow needed to buy out max bid players later in the game without going broke.
+
+#### B. Micro-Tuning Adjacent Neighborhood Sweep (11,000 Matches: 500 7P + 500 10P per config)
+Explored fine adjustments around the cash engine foundation:
+- **`Gap-2`**: **27.6% (7P)** / **28.0% (10P)** $\to$ **27.8% Blended Win Rate**, Avg PSI: **12.47**, 3.38 max bids/game.
+- `Gap-4`: 27.2% (7P) / 28.2% (10P) $\to$ 27.7% Blended Win Rate, Avg PSI: 12.54.
+- `Coin-1.20`: 28.4% (7P) / 26.8% (10P) $\to$ 27.6% Blended Win Rate, Avg PSI: 12.73.
+- `Champion Base (Gap-3)`: 29.0% (7P) / 25.8% (10P) $\to$ 27.4% Blended Win Rate, Avg PSI: 13.16.
+
+#### C. High-Sample 4,000-Game Head-to-Head Showdown (1,000 7P + 1,000 10P per candidate)
+- **Old Jets Baseline (`Gap 3, Coin 1.0, Recur 1.0`)**: 25.8% (7P) / 26.9% (10P) $\to$ **26.35% Blended Win Rate** (Avg PSI: 13.21 / 13.68, 16.5% Zero-Coin Rounds).
+- **New Calibrated Champion (`Gap 2, Coin 1.15, Recur 1.10`)**: **27.6% (7P)** / **27.7% (10P)** $\to$ **27.65% Blended Win Rate** (Avg PSI: 12.65 / 12.72, 13.6% Zero-Coin Rounds).
+- **Net Gain**: **+1.30% overall win rate**, nearly a full PSI lower finish, and significantly fewer rounds at 0 coins.
 
 ---
 
 ### 4. Final Calibrated Jets Genome
-Configured across `src/ai/teamGenomes.js`, `src/ai/team_weights.json`, and `src/ai/evolvedWeights.js`:
+Persisted into `src/ai/teamGenomes.js`, `src/ai/team_weights.json`, and `src/ai/evolvedWeights.js`:
 ```json
 {
   "deflateWeight": 2.4,
-  "coinWeight": 1.0,
-  "recurringMult": 1.0,
+  "coinWeight": 1.15,
+  "recurringMult": 1.1,
   "aggression": 1.2,
   "reserveCoins": 1,
   "priceBumpProb": 0.23,
@@ -1491,7 +1508,7 @@ Configured across `src/ai/teamGenomes.js`, `src/ai/team_weights.json`, and `src/
   "boardStrengthWeight": 1.1,
   "threatDefenseWeight": 1.16,
   "superstarPriorityMult": 1.3,
-  "jetsMaxBidGap": 3
+  "jetsMaxBidGap": 2
 }
 ```
 

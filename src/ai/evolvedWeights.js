@@ -3,6 +3,24 @@
  * These weights override baseline parameters for CPU players.
  */
 export const EVOLVED_TEAM_GENOMES = {
+  "jets": {
+    "deflateWeight": 2.4,
+    "coinWeight": 1.15,
+    "recurringMult": 1.1,
+    "aggression": 1.2,
+    "reserveCoins": 1,
+    "priceBumpProb": 0.23,
+    "synergyBonus": 1.62,
+    "firstClaimAggression": 1.3,
+    "postClaimAggression": 1,
+    "sub5UrgencyBonus": 2.41,
+    "richestBuffer": 1,
+    "instantMaxBidAggression": 1.42,
+    "boardStrengthWeight": 1.1,
+    "threatDefenseWeight": 1.16,
+    "superstarPriorityMult": 1.3,
+    "jetsMaxBidGap": 2
+  },
   "browns": {
     "deflateWeight": 3.93,
     "coinWeight": 0,
