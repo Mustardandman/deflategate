@@ -1191,7 +1191,7 @@ Following the Dolphins overhaul, the user requested an investigation into the **
 ### 2. Diagnosis: The Three Root Causes of Patriots Underperformance
 Telemetry on 100 baseline games and in-depth loss analysis revealed three systemic issues:
 1. **The Toxic Card Trap**: The CPU was drafting Hunter Henry (+8 instant deflate, +3 recurring inflate) and Ezekiel Elliott (+5 instant deflate, -2 coins/round), but retaining them in the active lineup for 6 to 8 rounds. Because Practice Squad players had a hardcoded replacement priority score of `-100` and Hunter Henry evaluated at `-33`, the CPU kept cutting Practice Squad scrubs while letting Henry inflict **+15 to +18 PSI in recurring inflation**!
-2. **The "Pure Sprint" Phase 1 Paralyzation**: In 52.3% of lost games, the Patriots ended the game holding weak Phase 1 cards ($3 \times 1\text{-deflate} = 3\text{ PSI/round}$, requiring 12 rounds to finish). Because Phase 1 lacks large deflation cards, attempting to sprint without coin fuel left them stranded when the game inevitably reached Phase 2.
+2. **The "Pure Sprint" Ceiling**: Even with a strong Phase 1 draft of three 2-deflate starters (e.g. Goedert, Ertz, LaPorta = 6 PSI/round), 3 rounds of Phase 1 only deflates $2 + 4 + 6 = 12\text{ PSI}$ (leaving Patriots at 24 PSI when Phase 2 begins). Attempting to sprint on pure Phase 1 deflation without building coin engines leaves the Patriots with 0 coins when Phase 2 arrives, allowing rivals with cash to buy all the massive 4–6 deflation cards and Hall of Fame legends while the Patriots is locked out.
 3. **Capital Starvation**: Patriots starts with only 7 coins and no coin-generation team ability. Holding 0 coins in 15%–30% of rounds locked them out of Phase 2 and Hall of Fame game-defining cards.
 
 ---
