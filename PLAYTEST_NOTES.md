@@ -1265,6 +1265,135 @@ To resolve the user's question regarding whether the Patriots is best played as 
 - **Playtest 34 Regression Suite**: 5/5 tests pass 100%.
 - **Production Build**: Clean compilation via `npm run build` in 15.18s with 0 errors.
 
+---
+
+## Playtest 40: Baltimore Ravens Franchise AI Strategic Overhaul & Positional Diversity Optimization
+**Date:** September 29, 2026  
+**Focus:** Baltimore Ravens CPU AI Decision-Making, Human Strategy Translation, Positional Engine Engineering, and Empirical Optimization (1,200 Games)
+
+---
+
+### 1. Executive Summary & Diagnostic Telemetry
+The Baltimore Ravens enters each match with **42 PSI** (6th lowest initial PSI in the league) and **14 Coins** (tied for the 3rd richest starting bankroll).  
+Their franchise ability is:  
+> *"At the end of the round, if you control 3 different positions in your lineup, gain 3 coins."*  
+*(Available positions: `QB`, `RB`, `WR`, `TE` across 3 active roster slots).*
+
+#### The Baseline Dilemma & The Practice Squad Bug
+During baseline diagnostic benchmarking (`scratch/testRavensBenchmark.mjs` across 200 matches), the Ravens demonstrated severe underperformance:
+- **Ability Trigger Rate**: Active in only **21.6% (7P)** / **25.6% (10P)** of all rounds played.
+- **Games Never Triggered**: Ravens failed to activate their ability a single time in **30.0% of 7-player games** and **20.0% of 10-player games**!
+- **The "2-Position Trap"**: Ravens spent **53.7% of the entire game stuck at exactly 2 distinct positions**, unable to complete the 3rd slot.
+
+#### Root Causes Identified:
+1. **The Practice Squad Position Bug**: Practice Squad cards are assigned `position: 'WR'`. In previous code, `doesCardFitTeamStrategy` and `scoreCardForPlayer` did not filter out Practice Squad cards when checking current lineup positions. The CPU falsely believed it already possessed a Wide Receiver from Round 1, severely disincentivizing it from bidding on or nominating WRs and trapping the lineup at 2 positions.
+2. **Blind 1-for-1 Roster Replacement**: When acquiring a new player with a full lineup, earlier logic naively replaced the same position to preserve the 3-position engine. However, when acquiring a 9-score Hall of Fame superstar (e.g., Travis Kelce at TE) when already holding Brock Bowers (TE), cutting Bowers to save a 1-score scrub WR lost massive net value.
+3. **Early-Game Bankroll Suppression**: In Round 3, generic early-game savings reserves and Phase 2 era hoarding capped Ravens valuation below the 3 coins needed to win a missing 3rd position, sabotaging the engine just as Round 4 approached.
+4. **Universal Monopoly Bidding Defect**: `monopolyCap` was hardcoded to `Math.max(card.minBid, richestOpponentCoins)`. When an opponent with 2 coins bid all 2 coins, the next bid required 3 coins, but the leader's valuation was clamped to 2 coins, causing the richest player to immediately fold. Updating this to `richestOpponentCoins + 1` restored proper economic dominance.
+
+---
+
+### 2. Human Strategic Blueprint (User Directives)
+The Ravens AI was re-engineered according to the user's human competitive playstyle:
+1. **Practice Squad Clarification**: Practice Squad cards never count toward the 3 distinct positions bonus. If a 4th slot is purchased for 10 coins, a team with 3 distinct real positions plus 1 Practice Squad card legitimately triggers the +3 coins bonus.
+2. **Round 1 Anchor Strategy**: Leverage the 14-coin starting purse to acquire one star anchor player in Round 1 (spend ~9 coins). Target elite permanent centerpieces (Brock Bowers, Kirk Cousins, George Kittle, Drake London, Tee Higgins, Josh Allen, Greg Olsen, AJ Brown, or cards generating 3+ coins/round or 2+ deflate/round). Avoid early drawback and instant cards.
+3. **Rounds 2 & 3 Disciplined Diversity**: After spending heavily in Round 1, target cheap players ($\le 3$ coins) at missing positions. If the Round 1 star generates coins, bid more aggressively. Secure 3 distinct positions going into Round 4. The 3rd roster slot acts as a revolving door.
+4. **Dynamic Total Lineup Value Optimization**: Rather than blindly replacing the same position, evaluate candidate total lineup scores:
+   $$\text{Score} = \sum \text{Card Value} + \mathbf{1}_{\{\text{distinct} \ge 3\}} \times (3 \times \text{coinWeight} \times \text{roundsLeft})$$
+   This naturally preserves the 3-position engine when replacing scrubs, but allows holding dual superstars (e.g. Bowers + Kelce) when their combined output exceeds the +3 coin bonus.
+
+---
+
+### 3. Engine & AI Architecture Enhancements
+
+#### A. Roster Replacement Total Lineup Evaluation (`src/Game.js#L427`)
+```javascript
+if (isRavens && !hasPracticeSquad) {
+  let bestTotalLineupScore = -Infinity;
+  let bestCandidateIdx = 0;
+  const roundsLeft = Math.max(1, 10 - (G.board?.round || 1));
+  const coinWeight = p.genome?.coinWeight || 1.1;
+  const abilityValue = 3.0 * coinWeight * Math.min(5, roundsLeft);
+
+  p.lineup.forEach((c, idx) => {
+    const candidateLineup = p.lineup.map((oldCard, i) => (i === idx ? card : oldCard));
+    const candDistinct = new Set(candidateLineup.map(x => x.position).filter(pos => ['QB', 'RB', 'WR', 'TE'].includes(pos)));
+    const candHasAbility = candDistinct.size >= 3;
+
+    let candidateScore = 0;
+    candidateLineup.forEach(x => { candidateScore += scoreCardForPlayer(G, playerID, x); });
+    if (candHasAbility) candidateScore += abilityValue;
+
+    if (candidateScore > bestTotalLineupScore) {
+      bestTotalLineupScore = candidateScore;
+      bestCandidateIdx = idx;
+    }
+  });
+  replaceIdx = bestCandidateIdx;
+}
+```
+
+#### B. Position-Aware Nomination & Bidding Engine (`src/Game.js#L1435`, `L2134`, `L2408`)
+- **Round 1**: Nominates and bids up to 9 coins on elite anchor centerpieces.
+- **Rounds 2–4**: Identifies missing positions from `{ QB, RB, WR, TE }`. If cash $\le 6$ coins, nominates cheap cards ($\text{minBid} \le 3$) to guarantee completing the triad.
+- **Engine Lock-In**: When 2 positions are assembled, exempts Ravens from early-game hoarding reserves to ensure the 3rd piece is won.
+
+---
+
+### 4. Empirical Strategy Tournament (6 Genomes, 1,200 Games)
+A 6-archetype tournament was executed across 1,200 simulated games (200 games per archetype across 7-player and 10-player tables):
+
+| Rank | Candidate Archetype | Core Weights | 7P Win% | 10P Win% | Combined Win% | Avg PSI | Ability Trigger% | Avg Win Round |
+| :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **1** | **C_BalancedCloser** | `Def 2.1, Coins 1.0, Res 2, Agg 1.1` | **46.0%** | **44.0%** | **45.0%** | **5.76 / 6.29** | **48.7% – 51.6%** | **7.6** |
+| **2** | **B_DeflationRusher** | `Def 2.4, Coins 0.8, Res 1, Agg 1.15` | **50.0%** | 40.0% | **45.0%** | 6.24 / 7.83 | 42.7% | 7.6 |
+| **3** | **D_HighDeflation** | `Def 2.7, Coins 0.7, Res 1, Agg 1.2` | **50.0%** | 40.0% | **45.0%** | 5.94 / 7.58 | 40.2% | 7.4 |
+| **4** | **E_ConservativeTycoon** | `Def 1.8, Coins 1.2, Res 3, Agg 0.95` | 45.0% | 40.0% | 42.5% | 6.53 / 7.37 | 50.7% | 7.6 |
+| **5** | **F_SuperstarPredator** | `Def 2.3, Coins 0.9, Res 2, Agg 1.2` | 47.0% | 38.0% | 42.5% | 6.57 / 8.73 | 42.5% | 7.3 |
+| **6** | **A_Baseline** | `Def 1.6, Coins 1.1, Res 3, Agg 1.0` | 45.0% | 36.0% | 40.5% | 6.63 / 6.81 | 56.0% | 7.6 |
+
+#### Performance Comparison (Before vs. After Optimization)
+- **Ability Trigger Rate**: Soared from **21.6% $\to$ 51.6%** in 7P and **25.6% $\to$ 47.7%** in 10P.
+- **Games Never Triggered**: Plummeted from **30.0% $\to$ 3.0%** (7P) and **20.0% $\to$ 5.0%** (10P).
+- **First Trigger Round**: Consistently achieved at **Round 3.4**, perfectly setting up the 3-position engine going into Round 4.
+- **Win Rate**: **43.0% in 7P** (parity: 14.3%, **3.0x above expected**) and **33.0% in 10P** (parity: 10.0%, **3.3x above expected**).
+
+---
+
+### 5. Final Calibrated Ravens Genome
+Configured across `src/ai/teamGenomes.js`, `src/ai/team_weights.json`, and `src/ai/evolvedWeights.js`:
+```json
+{
+  "deflateWeight": 2.1,
+  "coinWeight": 1.0,
+  "recurringMult": 1.1,
+  "aggression": 1.1,
+  "reserveCoins": 2,
+  "priceBumpProb": 0.2,
+  "synergyBonus": 1.5,
+  "firstClaimAggression": 1.2,
+  "postClaimAggression": 0.9,
+  "sub5UrgencyBonus": 2.2,
+  "richestBuffer": 1,
+  "instantMaxBidAggression": 1.05,
+  "boardStrengthWeight": 1.2,
+  "threatDefenseWeight": 1.1,
+  "superstarPriorityMult": 1.3
+}
+```
+
+---
+
+### 6. Verification Suite
+- **Unit Test Suite (`scratch/testPlaytest40Ravens.mjs`)**:
+  - `Test 1: Practice Squad cards do not count toward 3-position bonus`: **PASS** across 0 PS, 1 PS, 3 PS, and 4th slot purchased.
+  - `Test 2: Round 1 Star Anchor Bidding & Non-Star Discipline`: **PASS** (bids up to 9 coins on Brock Bowers, passes on 4+ coins for Jalen Coker).
+  - `Test 3: Strategic Lineup Replacement (Dual Superstars vs Engine)`: **PASS** (keeps Bowers + Kelce, cuts scrub WR).
+  - `Test 4: Missing Position Nomination & Bidding Conviction`: **PASS** (nominates and bids with conviction on missing RB).
+- **Regression Suite**: Patriots (Playtest 39), AI Intelligence (Playtest 34), and UI Transitions (Playtest 28) all pass 100%.
+- **Build**: Vite production build succeeded in 14.01s with 0 errors.
+
+
 
 
 

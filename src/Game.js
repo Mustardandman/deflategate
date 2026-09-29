@@ -420,25 +420,56 @@ export const resolveAuctionWin = (G, playerID, card) => {
       let replaceIdx = 0;
       let worstScore = Infinity;
 
-      p.lineup.forEach((c, idx) => {
-        let score = 0;
-        const hasRecurringInflation = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
-        const hasRecurringNegativeCoins = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0);
-        if (hasRecurringInflation || hasRecurringNegativeCoins) {
-          score = -300; // Toxic recurring damage card: replace immediately!
-        } else {
-          const hasPerRound = c.effects ? c.effects.some(e => e.perRound) : false;
-          if (!hasPerRound) {
-            score = -100;
-          } else {
-            score = scoreCardForPlayer(G, playerID, c);
+      const isRavens = effectiveTeamId === 'ravens';
+      const hasPracticeSquad = p.lineup.some(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
+
+      if (isRavens && !hasPracticeSquad) {
+        let bestTotalLineupScore = -Infinity;
+        let bestCandidateIdx = 0;
+        const roundsLeft = Math.max(1, 10 - (G.board?.round || 1));
+        const coinWeight = p.genome?.coinWeight || 1.1;
+        const abilityValue = 3.0 * coinWeight * Math.min(5, roundsLeft);
+
+        p.lineup.forEach((c, idx) => {
+          const candidateLineup = p.lineup.map((oldCard, i) => (i === idx ? card : oldCard));
+          const candDistinct = new Set(candidateLineup.map(x => x.position));
+          const candHasAbility = candDistinct.size >= 3;
+
+          let candidateScore = 0;
+          candidateLineup.forEach(x => {
+            candidateScore += scoreCardForPlayer(G, playerID, x);
+          });
+          if (candHasAbility) {
+            candidateScore += abilityValue;
           }
-        }
-        if (score < worstScore) {
-          worstScore = score;
-          replaceIdx = idx;
-        }
-      });
+
+          if (candidateScore > bestTotalLineupScore) {
+            bestTotalLineupScore = candidateScore;
+            bestCandidateIdx = idx;
+          }
+        });
+        replaceIdx = bestCandidateIdx;
+      } else {
+        p.lineup.forEach((c, idx) => {
+          let score = 0;
+          const hasRecurringInflation = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
+          const hasRecurringNegativeCoins = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0);
+          if (hasRecurringInflation || hasRecurringNegativeCoins) {
+            score = -300; // Toxic recurring damage card: replace immediately!
+          } else {
+            const hasPerRound = c.effects ? c.effects.some(e => e.perRound) : false;
+            if (!hasPerRound) {
+              score = -100;
+            } else {
+              score = scoreCardForPlayer(G, playerID, c);
+            }
+          }
+          if (score < worstScore) {
+            worstScore = score;
+            replaceIdx = idx;
+          }
+        });
+      }
 
       const discarded = p.lineup[replaceIdx];
       p.lineup[replaceIdx] = card;
@@ -626,7 +657,8 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
     return effMax <= Math.max(8, player?.coins || 0) || card.effects?.some(e => e.type === 'deflate');
   }
   if (teamId === 'ravens') {
-    const existingPositions = new Set((player?.lineup || []).map(c => c.position));
+    const realStarters = (player?.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+    const existingPositions = new Set(realStarters.map(c => c.position));
     return !existingPositions.has(card.position);
   }
   if (teamId === '49ers') {
@@ -1071,9 +1103,54 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     if (card.effects?.some(e => (e.type === 'coins' && e.amount >= 2) || (e.type === 'deflate' && e.amount >= 2))) rawScore += 3.5;
   }
   if (effectiveTeamId === 'ravens') {
-    const existingPositions = new Set((p.lineup || []).map(c => c.position));
+    const realStarters = (p.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+    const existingPositions = new Set(realStarters.map(c => c.position));
+    const hasPracticeSquad = (p.lineup || []).some(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
+
+    // 1. Permanent Starter Focus in Rounds 1-2:
+    // Ravens wants to clear Practice Squad scrubs with permanent keepers.
+    // Avoid toxic drawback cards (Hunter Henry, Zeke) and pure instant cards early.
+    const isPureInstant = card.effects?.length > 0 && card.effects?.every(e => !e.perRound);
+    const hasDrawback = card.effects?.some(e => e.perRound && ((e.type === 'coins' && e.amount < 0) || e.type === 'inflate'));
+    if (currentRound <= 2) {
+      if (hasDrawback) rawScore -= 8.0;
+      else if (isPureInstant) rawScore -= 4.0;
+    }
+
+    // 2. Round 1 Star Anchor Player:
+    // With 14 coins, Ravens wants to spend ~9 coins on an elite permanent player
+    if (currentRound === 1) {
+      const isEliteR1Star = (
+        card.id === 'brock_bowers' || 
+        card.id === 'george_kittle' || 
+        card.id === 'kirk_cousins' || 
+        card.id === 'drake_london' || 
+        card.id === 'tee_higgins' || 
+        card.id === 'josh_allen' || 
+        card.id === 'greg_olsen' || 
+        card.id === 'aj_brown' ||
+        card.effects?.some(e => e.perRound && ((e.type === 'coins' && e.amount >= 3) || (e.type === 'deflate' && e.amount >= 2)))
+      );
+      if (isEliteR1Star) rawScore += 8.0;
+    }
+
+    // 3. 3-Position Engine Evaluation:
+    // If this card is the 3rd distinct position, it unlocks +3 coins/round for the rest of the game!
     if (!existingPositions.has(card.position)) {
-      rawScore += 5.0; // Unlocks/maintains +3 coins/round
+      if (existingPositions.size === 2) {
+        // The Golden Key: completes 3 distinct positions!
+        const engineBonus = 3.0 * (coinWeight || 1.1) * Math.min(6, roundsLeft);
+        rawScore += engineBonus;
+      } else if (existingPositions.size === 1) {
+        // 2nd distinct position: strong stepping stone
+        rawScore += 5.0;
+      } else {
+        // 1st position (Round 1)
+        rawScore += 2.0;
+      }
+    } else if (hasPracticeSquad && existingPositions.size < 3) {
+      // Duplicate position while Practice Squad remains: small penalty to encourage position diversity
+      rawScore -= 3.0;
     }
   }
   if (effectiveTeamId === 'seahawks') {
@@ -1345,6 +1422,41 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
       if (currentPlayer.coins <= 3) {
         const affordable = eligibleCards.find(item => item.card.minBid <= currentPlayer.coins && item.score >= 0);
         if (affordable) return affordable.index;
+      }
+    }
+  }
+
+  // Ravens Nomination Strategy:
+  // - In Round 1, use 14 coins to nominate an elite star anchor (Bowers, Kittle, Cousins, London, Higgins, Allen, Olsen, Brown).
+  // - In Rounds 2-4, identify missing positions from { QB, RB, WR, TE }.
+  //   If cash is tight (<= 6 coins), nominate an affordable player (minBid <= 3) matching a missing position to complete the set.
+  //   If well-funded, nominate the best player matching a missing position.
+  if (effectiveTeamId === 'ravens') {
+    const currentRound = G.board.round || 1;
+    const realStarters = (currentPlayer.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+    const existingPositions = new Set(realStarters.map(c => c.position));
+
+    if (currentRound === 1) {
+      const eliteStar = eligibleCards.find(item => 
+        item.card.id === 'brock_bowers' || 
+        item.card.id === 'george_kittle' || 
+        item.card.id === 'kirk_cousins' || 
+        item.card.id === 'drake_london' || 
+        item.card.id === 'tee_higgins' || 
+        item.card.id === 'josh_allen' || 
+        item.card.id === 'greg_olsen' || 
+        item.card.id === 'aj_brown' ||
+        item.card.effects?.some(e => e.perRound && ((e.type === 'coins' && e.amount >= 3) || (e.type === 'deflate' && e.amount >= 2)))
+      );
+      if (eliteStar) return eliteStar.index;
+    } else if (currentRound <= 4 && existingPositions.size < 3) {
+      const missingPosCards = eligibleCards.filter(item => !existingPositions.has(item.card.position) && item.score >= 0);
+      if (missingPosCards.length > 0) {
+        if (currentPlayer.coins <= 6) {
+          const cheapMissing = missingPosCards.find(item => item.card.minBid <= 3);
+          if (cheapMissing) return cheapMissing.index;
+        }
+        return missingPosCards[0].index;
       }
     }
   }
@@ -1659,6 +1771,33 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     )
   );
 
+  const isRavensR1Star = (
+    effectiveTeamId === 'ravens' && 
+    (G.board.round || 1) === 1 && 
+    (
+      card.id === 'brock_bowers' || 
+      card.id === 'george_kittle' || 
+      card.id === 'kirk_cousins' || 
+      card.id === 'drake_london' || 
+      card.id === 'tee_higgins' || 
+      card.id === 'josh_allen' || 
+      card.id === 'greg_olsen' || 
+      card.id === 'aj_brown' ||
+      card.effects?.some(e => e.perRound && ((e.type === 'coins' && e.amount >= 3) || (e.type === 'deflate' && e.amount >= 2)))
+    )
+  );
+
+  const nonPsRavensInit = (effectiveTeamId === 'ravens')
+    ? (currentPlayer.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'))
+    : [];
+  const ravensPositionsInit = new Set(nonPsRavensInit.map(c => c.position).filter(pos => ['QB', 'RB', 'WR', 'TE'].includes(pos)));
+  const isRavensCompletingEngine = (
+    effectiveTeamId === 'ravens' && 
+    (G.board.round || 1) <= 4 && 
+    ravensPositionsInit.size === 2 && 
+    !ravensPositionsInit.has(card.position)
+  );
+
   const otherAvailableCards = G.board.auctionPlayers.filter((c, idx) => c !== null && idx !== cardIndex);
   const scoredOtherCards = otherAvailableCards.map(c => ({
     card: c,
@@ -1855,7 +1994,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
   // Dolphins can spend down to 0 without reserve because of instant 3-coin bailout!
   // Patriots can spend all coins in Round 1 on premier centerpieces!
-  const spendableCoins = (isSuperstar || isPatriotsR1Premier || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
+  // Ravens can spend freely on Round 1 anchor stars & completing 3-position engine!
+  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
@@ -2002,6 +2142,48 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  // Ravens Valuation Strategy:
+  // - Round 1: Use 14-coin purse to acquire an elite anchor player (Bowers, Kittle, Cousins, 3+ coins/rd, 2+ deflate/rd).
+  //   Spend around 9 coins if a star is revealed. If not a star player, remain disciplined: cap baseValuation at min(baseValuation, Math.max(card.minBid, 3)).
+  // - Rounds 2-4: Assemble 3 distinct positions { QB, RB, WR, TE } to unlock the +3 coins/round engine!
+  //   If Ravens has a recurring coin producer, bid more aggressively on missing positions.
+  //   If missing the 3rd position, heavily value securing the engine.
+  //   If card is a duplicate position during early game (while Practice Squad cards remain), avoid it unless superstar.
+  if (effectiveTeamId === 'ravens') {
+    const currentRound = G.board.round || 1;
+    const nonPsRavens = (currentPlayer.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+    const ravensPositions = new Set(nonPsRavens.map(c => c.position).filter(pos => ['QB', 'RB', 'WR', 'TE'].includes(pos)));
+    const isNewPosition = !ravensPositions.has(card.position);
+    const hasCoinProducer = nonPsRavens.some(c => c.effects?.some(e => e.perRound && e.type === 'coins' && e.amount >= 2));
+
+    if (currentRound === 1) {
+      if (isRavensR1Star) {
+        // User directive: Spend around 9 coins on the star player in Round 1
+        baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(9, currentPlayer.coins)));
+      } else {
+        // Non-star in Round 1: do not waste capital; expect cheap pickup or pass
+        baseValuation = Math.min(baseValuation, Math.max(card.minBid, 3));
+      }
+    } else if (currentRound <= 4) {
+      if (isNewPosition) {
+        if (ravensPositions.size === 2) {
+          // Completes 3 distinct positions -> activates +3 coins/round engine!
+          const engineUrgency = hasCoinProducer ? 7 : 5;
+          baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(currentPlayer.coins, card.minBid + engineUrgency)));
+        } else if (ravensPositions.size === 1) {
+          // Stepping stone (2nd position)
+          const stepUrgency = hasCoinProducer ? 5 : 3;
+          baseValuation = Math.max(baseValuation, Math.min(effMax, Math.max(card.minBid, Math.min(card.minBid + stepUrgency, 5))));
+        }
+      } else {
+        // Duplicate position while still trying to build 3-position engine
+        if (nonPsRavens.length < 3 && !isSuperstar) {
+          baseValuation = Math.min(baseValuation, card.minBid);
+        }
+      }
+    }
+  }
+
   // Playtest 20 Tuning: Board Parity Principle (e.g. TJ Hockenson when all board cards are good)
   // When multiple cards remain on board and all are roughly equal high-tier strength,
   // the marginal value of winning THIS specific card over whoever is left is tiny (1-2 coins).
@@ -2053,19 +2235,22 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   if (isCoinLeader) {
-    const monopolyCap = Math.max(card.minBid, richestOpponentCoins);
+    const monopolyCap = Math.max(card.minBid, richestOpponentCoins + 1);
     if (valuation > monopolyCap) {
       valuation = monopolyCap;
     }
   }
 
   valuation = Math.min(valuation, spendableCoins);
-  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets') {
+  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets') {
     valuation = Math.min(valuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
   }
 
   if (isLionsFirstBonus || isPatriotsR1Premier) {
     valuation = Math.min(effMax, currentPlayer.coins);
+  }
+  if (isRavensR1Star) {
+    valuation = Math.min(effMax, Math.min(9, currentPlayer.coins));
   }
 
   // Non-Lions Counter-Play
@@ -2227,6 +2412,28 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
         // Game-winning closer: Bid whatever is necessary up to effMax/purse to secure victory!
         targetBid = Math.min(effMax, currentPlayer.coins);
         isJumpBid = true;
+      }
+    }
+  }
+
+  // Ravens Target Bid Refinements:
+  if (effectiveTeamId === 'ravens') {
+    const currentRound = G.board.round || 1;
+    if (currentRound === 1) {
+      if (isRavensR1Star && currentPlayer.coins >= nextBid) {
+        // Human player rule: spend around 9 coins on the anchor star player
+        const r1AnchorTarget = Math.min(effMax, Math.min(9, currentPlayer.coins));
+        if (r1AnchorTarget >= nextBid) {
+          targetBid = Math.max(targetBid, Math.min(nextBid + 1, r1AnchorTarget));
+        }
+      }
+    } else if (currentRound >= 2 && currentRound <= 4) {
+      const nonPsRavens = (currentPlayer.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+      const ravensPositions = new Set(nonPsRavens.map(c => c.position).filter(pos => ['QB', 'RB', 'WR', 'TE'].includes(pos)));
+      const isMissingPos = !ravensPositions.has(card.position);
+      // If this card completes the 3 distinct positions engine, ensure bid meets nextBid up to valuation
+      if (isMissingPos && ravensPositions.size === 2 && valuation >= nextBid && currentPlayer.coins >= nextBid) {
+        targetBid = Math.max(targetBid, nextBid);
       }
     }
   }

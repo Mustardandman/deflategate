@@ -556,5 +556,22 @@ export const EVOLVED_TEAM_GENOMES = {
     "boardStrengthWeight": 1.1,
     "threatDefenseWeight": 1.15,
     "superstarPriorityMult": 1.35
+  },
+  "ravens": {
+    "deflateWeight": 2.1,
+    "coinWeight": 1.0,
+    "recurringMult": 1.1,
+    "aggression": 1.1,
+    "reserveCoins": 2,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.5,
+    "firstClaimAggression": 1.2,
+    "postClaimAggression": 0.9,
+    "sub5UrgencyBonus": 2.2,
+    "richestBuffer": 1,
+    "instantMaxBidAggression": 1.05,
+    "boardStrengthWeight": 1.2,
+    "threatDefenseWeight": 1.1,
+    "superstarPriorityMult": 1.3
   }
 };
