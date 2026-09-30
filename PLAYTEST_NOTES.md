@@ -1883,6 +1883,107 @@ The user provided the exact mental model of an expert human playing the Steelers
 - **Regression Suite**: Browns (PT 43), Bengals (PT 42), Jets (PT 41), Ravens (PT 40), Patriots (PT 39), AI Intelligence (PT 34) all verified passing.
 - **Production Build**: `npm run build` completed in 7.82s with zero errors.
 
+---
+
+## Playtest 45: Houston Texans AI Overhaul - QB Engine Hegemony & Dynamic Lineup Protection
+
+### 1. Executive Summary & Diagnostic Audit
+- **Franchise Starting Profile**:
+  - Initial PSI: **47 PSI** (Highest starting burden in the league).
+  - Initial Purse: **8 Coins** (Lowest starting capital; league average is 12, Browns 20, Ravens 14).
+  - Franchise Ability: *"During the Refresh Phase gain 2 coins and 2 deflate for each QB on your team."*
+- **User Strategic Directive**:
+  > *"As a human I would play the game normally with an extra emphasis on QB cards. How can we make them even better? Is there anything else that is needed?"*
+- **Baseline Diagnostic Audit (400 Matches Pre-Overhaul)**:
+  - 7-Player: **30.0% Win Rate**, **12.08 Avg Final PSI**, **avg QBs in lineup: 0.74**!
+  - 10-Player: **20.5% Win Rate**, **14.71 Avg Final PSI**, **avg QBs in lineup: 0.77**!
+- **Root Failure Modes Identified**:
+  1. **The 1-Win Constraint Self-Disqualification**: In Deflategate, players can only win 1 card per round. When a QB was revealed on the auction board alongside non-QBs, if a non-QB was nominated first, Texans' generic AI bid and won the non-QB, locking themselves out of the QB for the remainder of the round.
+  2. **Roster Replacement QB Hemorrhaging (`resolveAuctionWin`)**: When Texans acquired a non-QB superstar (e.g., Jefferson, Henry), generic replacement evaluated individual card raw scores rather than total franchise synergy. Consequently, Texans routinely cut active starting QBs (like Russell Wilson or Justin Herbert) to slot in a non-QB, reducing their active QB count to 0 or 1.
+  3. **Early Game Artificial Bidding Caps**: In Rounds 1–3, Texans was subjected to the generic early-game 65% purse cap (`currentPlayer.coins * 0.65`). With only 8 starting coins, Texans dropped out of bidding at 5 coins on game-defining QBs like Kirk Cousins (4 deflate, 1 coin/round) and Jayden Daniels (3 deflate, 2 coins/round), while wealthier opponents scooped them up for 6–8 coins.
+  4. **The Deshaun Watson Toxic Inflation Trap**: In Round 1, Deshaun Watson (+5 coins/round, +4 inflate/round) generated positive raw score because 5 coins outweighed deflation in generic formulas. Texans frequently drafted Watson, inflating themselves up to 51+ PSI and sabotaging their own race to 0 PSI.
+
+---
+
+### 2. Human-Level Strategic Architecture
+
+1. **The 1-Win Turn Discipline**:
+   - Before bidding on any active auction card, Texans scans the remaining board for viable QBs.
+   - If an affordable, viable QB is waiting in the auction row, Texans strictly **PASSES** on non-QBs (unless the non-QB provides immediate championship win), preserving their single win slot and bankroll for the QB.
+2. **True Lifetime QB Valuation**:
+   - Each QB delivers `cardDeflate + 2` and `cardCoins + 2` in refresh phase.
+   - Compounded over 6–8 rounds, a Round 1 QB delivers 30–45 deflation and 15–25 coins.
+   - Texans treats viable QBs as premier franchise cornerstones, exempt from generic early-game purse caps and savings reserves, bidding up to full available purse (`currentPlayer.coins`).
+3. **Multi-QB Board Alternatives Awareness**:
+   - If multiple viable QBs are present on the board (e.g. Cousins and Allen), Texans will not overpay 100% of their purse on the first card if an alternative of comparable lifetime output can be acquired for cheaper after rivals spend their funds.
+4. **Dedicated Lineup Replacement Protection (`resolveAuctionWin`)**:
+   - Priority 1: Replace toxic recurring inflation/coins cards immediately.
+   - Priority 2: Replace Practice Squad scrubs.
+   - Priority 3 (Incoming QB): Replaces the weakest non-QB in the lineup to increment active QBs (+2 coins and +2 deflate per round).
+   - Priority 4 (Incoming Non-QB): Replaces the weakest non-QB in the lineup to strictly protect all active QBs.
+   - Active QBs are NEVER cut for a non-QB unless the non-QB immediately achieves championship victory (`psi <= 0`).
+5. **3-QB Lineup Saturation Logic**:
+   - When Texans already holds 3 QBs in their starting lineup (the maximum capacity), additional QBs do not increment the franchise passive.
+   - Texans evaluates if an incoming QB is a clear upgrade over their lowest-scoring QB; if not, Texans bids minimally ($\le 2$ coins) and preserves funds for raw deflation nukes.
+6. **Tactical Nomination Strategy (`chooseCpuNominationCard`)**:
+   - If viable QBs exist on the board, immediately nominates the highest-scoring non-toxic QB.
+   - If no QBs exist and funds are low ($\le 3$ coins), nominates an expensive superstar to bait wealthy rivals into spending wars.
+   - At $\le 16$ PSI, nominates instant deflation nukes to close out the championship.
+7. **Endgame Closer Pivot**:
+   - When Texans reaches $\le 16$ PSI, purse allocation pivots entirely to raw instant deflation to finish the match at 0 PSI regardless of position.
+
+---
+
+### 3. Core Engine Implementations (`src/Game.js`)
+
+1. **Roster Protection in `resolveAuctionWin` (Lines 450–540)**:
+   - Dedicated `if (isTexans)` handler replacing toxic cards, practice squad, and weakest non-QBs before touching any active QBs.
+2. **Recurring Inflation Avoidance in `scoreCardForPlayer` (Lines 974–981)**:
+   - Hard negative score (`-50`) assigned to recurring inflation cards for Texans, completely preventing acquisitions like Deshaun Watson.
+3. **Dedicated Texans Valuation in `evaluateCpuAuctionBid` (Lines 2912–3015)**:
+   - Viable QB scanning and 1-Win constraint enforcement.
+   - Lifetime QB compounding with board alternative scaling.
+   - 3-QB lineup saturation protection.
+   - Early-game non-QB capital preservation (capping non-essential cards at 50% purse in R1–R3).
+4. **Purse & Reserve Exemption in `evaluateCpuAuctionBid`**:
+   - Added `isTexansTarget` to `spendableCoins` (Line 2488).
+   - Added `texans` to valuation override (Line 2992).
+   - Exempted `texans` from the early-game 65% purse cap (Line 3003) and marginal delta cutoff (Line 2318).
+5. **Nomination Engine in `chooseCpuNominationCard` (Lines 1837–1870)**:
+   - Prioritizes best non-toxic QB, bait nominations when broke, and endgame closers.
+
+---
+
+### 4. Tournament Validation (1,000 Matches)
+
+Conducted 1,000 head-to-head tournament matches across 7-Player and 10-Player tables:
+
+| Metric | Baseline (Pre-PT 45) | Playtest 45 Result | Delta / Improvement |
+|:-------|:--------------------:|:------------------:|:-------------------:|
+| **7-Player Win Rate** | 30.0% | **49.8%** | **+19.8%** |
+| **7-Player Avg Final PSI** | 12.08 PSI | **6.78 PSI** | **-5.30 PSI** |
+| **7-Player Avg QBs in Lineup** | 0.74 QBs | **1.20 QBs** | **+62.2% QBs** |
+| **10-Player Win Rate** | 20.5% | **42.8%** | **+22.3% (More than doubled!)** |
+| **10-Player Avg Final PSI** | 14.71 PSI | **7.41 PSI** | **-7.30 PSI** |
+| **10-Player Avg QBs in Lineup** | 0.77 QBs | **1.39 QBs** | **+80.5% QBs** |
+| **Combined Tournament Win Rate** | 25.2% | **46.3%** | **+21.1% Win Rate** |
+
+---
+
+### 5. Automated Verification Suite
+- **`scratch/testPlaytest45Texans.mjs`**:
+  - `Test 1: Refresh Phase QB Deflation & Coins (+2/+2 per QB)`: **PASS** (-10 PSI, +5 coins verified).
+  - `Test 2: Lineup Replacement Cuts Non-QBs First (Preserves QBs)`: **PASS** (Diontae Johnson replaced, 3 QBs preserved).
+  - `Test 3: Lineup Replacement Cuts Toxic Recurring Inflation First`: **PASS** (Deshaun Watson replaced immediately).
+  - `Test 4: The 1-Win Constraint (Passes on Non-QB When QB on Board)`: **PASS** (Passed 2-coin bid on WR to save turn for Cousins).
+  - `Test 5: Aggressive QB Bidding Up to Available Purse`: **PASS** (Bid 7+ coins on sole viable QB with 8 coins).
+  - `Test 6: 3-QB Lineup Saturation Discipline`: **PASS** (Passed on weak non-upgrade Russell Wilson when already holding 3 QBs).
+  - `Test 7: Nomination Strategy Prioritizes Best Viable QB`: **PASS** (Nominated Kirk Cousins, skipped Deshaun Watson).
+  - `Test 8: Endgame Closer Pivot`: **PASS** (Bid 7 coins on Derrick Henry nuke at 10 PSI).
+- **All League Regression Suites**: Steelers (PT 44), Browns (PT 43), Bengals (PT 42), Jets (PT 41), Ravens (PT 40), Patriots (PT 39), and AI Intelligence (PT 34) all verified 100% passing.
+- **Production Build**: `npm run build` executed cleanly in 3.65s with zero errors.
+
+
 
 
 

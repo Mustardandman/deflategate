@@ -448,10 +448,99 @@ export const resolveAuctionWin = (G, playerID, card) => {
       let replaceIdx = 0;
       let worstScore = Infinity;
 
+      const isTexans = effectiveTeamId === 'texans';
       const isRavens = effectiveTeamId === 'ravens';
       const hasPracticeSquad = p.lineup.some(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
 
-      if (isRavens && !hasPracticeSquad) {
+      if (isTexans) {
+        const toxicIdx = p.lineup.findIndex(c => {
+          const hasRecurringInflation = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
+          const hasRecurringNegativeCoins = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0);
+          return hasRecurringInflation || hasRecurringNegativeCoins;
+        });
+        if (toxicIdx !== -1) {
+          replaceIdx = toxicIdx;
+        } else {
+          const psIdx = p.lineup.findIndex(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
+          if (psIdx !== -1) {
+            replaceIdx = psIdx;
+          } else {
+            const isIncomingQb = card.position === 'QB';
+            const nonQbIndices = [];
+            const qbIndices = [];
+            p.lineup.forEach((c, idx) => {
+              if (c.position === 'QB') qbIndices.push(idx);
+              else nonQbIndices.push(idx);
+            });
+
+            if (isIncomingQb) {
+              if (nonQbIndices.length > 0) {
+                // Replace weakest non-QB to increase total QBs and gain +2 coins / +2 deflate
+                let worstScore = Infinity;
+                let worstIdx = nonQbIndices[0];
+                nonQbIndices.forEach(idx => {
+                  const c = p.lineup[idx];
+                  const sc = scoreCardForPlayer(G, playerID, c);
+                  if (sc < worstScore) {
+                    worstScore = sc;
+                    worstIdx = idx;
+                  }
+                });
+                replaceIdx = worstIdx;
+              } else {
+                // All 3 starters are QBs: replace the lowest scoring QB
+                let worstScore = Infinity;
+                let worstIdx = 0;
+                qbIndices.forEach(idx => {
+                  const c = p.lineup[idx];
+                  const sc = scoreCardForPlayer(G, playerID, c);
+                  if (sc < worstScore) {
+                    worstScore = sc;
+                    worstIdx = idx;
+                  }
+                });
+                replaceIdx = worstIdx;
+              }
+            } else {
+              // Incoming card is a non-QB:
+              if (nonQbIndices.length > 0) {
+                // Replace weakest non-QB to preserve all existing QBs
+                let worstScore = Infinity;
+                let worstIdx = nonQbIndices[0];
+                nonQbIndices.forEach(idx => {
+                  const c = p.lineup[idx];
+                  const sc = scoreCardForPlayer(G, playerID, c);
+                  if (sc < worstScore) {
+                    worstScore = sc;
+                    worstIdx = idx;
+                  }
+                });
+                replaceIdx = worstIdx;
+              } else {
+                // All 3 starters are QBs! Only replace a QB if this non-QB immediately wins the game
+                const instantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+                const willWin = (p.psi - instantDeflate <= 0);
+                if (willWin) {
+                  replaceIdx = 0; // Immediate championship win
+                } else {
+                  // Fallback: replace lowest scoring QB
+                  let worstScore = Infinity;
+                  let worstIdx = 0;
+                  qbIndices.forEach(idx => {
+                    const c = p.lineup[idx];
+                    const sc = scoreCardForPlayer(G, playerID, c);
+                    if (sc < worstScore) {
+                      worstScore = sc;
+                      worstIdx = idx;
+                    }
+                  });
+                  replaceIdx = worstIdx;
+                }
+              }
+            }
+          }
+        }
+      } else if (isRavens && !hasPracticeSquad) {
         let bestTotalLineupScore = -Infinity;
         let bestCandidateIdx = 0;
         const roundsLeft = Math.max(1, 10 - (G.board?.round || 1));
@@ -878,6 +967,14 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   if (effectiveTeamId === 'colts') {
     const hasRecurringNegative = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && ((e.type === 'coins' && e.amount < 0) || e.type === 'inflate'));
     if (hasRecurringNegative) {
+      return -50; // Strictly avoid!
+    }
+  }
+
+  // Texans: Starting at 47 PSI, recurring inflation is lethal! Strictly avoid recurring inflation cards (e.g. Deshaun Watson)
+  if (effectiveTeamId === 'texans') {
+    const hasRecurringInflation = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && e.type === 'inflate');
+    if (hasRecurringInflation) {
       return -50; // Strictly avoid!
     }
   }
@@ -1737,10 +1834,37 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     }
   }
 
-  // Texans: Prioritize nominating QBs for their +2 coins / +2 deflate refresh ability
+  // Texans Nomination Strategy:
+  // - Priority 1: Pick the best viable QB (highest score, no recurring inflation)
+  // - Priority 2: If no viable QBs exist:
+  //   * Endgame closer: If PSI <= 16, nominate an instant deflation nuke.
+  //   * Low funds (<= 3 coins): Bait wealthy rivals with a high-cost superstar to drain their coins!
+  //   * Otherwise nominate top scored player.
   if (effectiveTeamId === 'texans') {
-    const qbCard = eligibleCards.find(item => item.card.position === 'QB');
-    if (qbCard) return qbCard.index;
+    const viableQbs = eligibleCards.filter(item => 
+      item.card.position === 'QB' && 
+      !item.card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate')
+    );
+    if (viableQbs.length > 0) {
+      return viableQbs[0].index;
+    }
+
+    if ((currentPlayer.psi || 47) <= 16) {
+      const closerNuke = eligibleCards.find(item => 
+        item.card.minBid <= currentPlayer.coins &&
+        item.card.effects?.some(e => !e.perRound && e.type === 'deflate' && e.amount >= 3)
+      );
+      if (closerNuke) return closerNuke.index;
+    }
+
+    if (currentPlayer.coins <= 3) {
+      const baitCard = eligibleCards.find(item => item.card.maxBid >= 8 || item.card.phase >= 2 || item.score >= 18.0);
+      if (baitCard) return baitCard.index;
+      const affordable = eligibleCards.find(item => item.card.minBid <= currentPlayer.coins && item.score >= 0);
+      if (affordable) return affordable.index;
+    }
+
+    if (eligibleCards.length > 0) return eligibleCards[0].index;
   }
 
   // Packers: Prioritize nominating Phase 1 players to maintain Phase 1 purity
@@ -2192,7 +2316,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (currentLineup.length >= maxLineup && !hasDeadStarter && effectiveTeamId !== 'colts') {
     const isCandidateInstant = card.effects && card.effects.some(e => !e.perRound);
     const isBengalsInstant = (effectiveTeamId === 'bengals' && isCandidateInstant);
-    if (!isBengalsInstant && !isSuperstar) {
+    const isTexansQb = (effectiveTeamId === 'texans' && card.position === 'QB');
+    if (!isBengalsInstant && !isTexansQb && !isSuperstar) {
       if (avoidsDowngrade) {
         if (nextBid > Math.max(card.minBid + 1, 3)) {
           return { shouldBid: false, bidAmount: 0 };
@@ -2361,7 +2486,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     (card.effects?.some(e => e.perRound && e.type === 'deflate' && e.amount >= 2))
   ));
   const isSteelersTarget = (effectiveTeamId === 'steelers');
-  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
+  const isTexansTarget = (effectiveTeamId === 'texans' && (card.position === 'QB' || (currentPlayer.psi || 47) <= 16));
+  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || isTexansTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
@@ -2784,6 +2910,121 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  // Houston Texans Strategic Valuation & QB Engine Hegemony:
+  // Texans Ability: During Refresh Phase gain 2 coins and 2 deflate for each QB on your team.
+  // Profile: Starts with 47 PSI (heavy burden) and 8 Coins (low starting capital).
+  // Strategy:
+  // 1. Board-Scan & 1-Win Discipline:
+  //    - Each round, a team can only win 1 card (unless Double Draft).
+  //    - If viable QBs exist on the auction board (affordable and not toxic inflation):
+  //      * If active card is a NON-QB: PASS! Winning it locks Texans out of bidding on the QB for the rest of the round!
+  //        (Exception: Championship-winning instant deflation).
+  // 2. QB Valuation:
+  //    - Every QB delivers (cardDeflate + 2) deflate/round and (cardCoins + 2) coins/round.
+  //    - Calculate true lifetime deflation and coins over remaining rounds.
+  //    - Viable QBs (Cousins, Allen, Daniels, Lawrence, Murray, Mahomes, Burrow, Lamar, Hurts, Herbert, Purdy, HOF QBs)
+  //      are worth spending up to full available purse (currentPlayer.coins).
+  //    - Board Alternatives / Multi-QB Awareness:
+  //      * If MULTIPLE viable QBs exist on the board, don't get baited into an overpriced war if a second QB can be won cheaper!
+  //      * If this is the SOLE viable QB on the board, bid with maximum urgency to ensure Texans wins it.
+  // 3. Normal Gameplay (When NO viable QBs exist on the board):
+  //    - "Play normally": Value high deflation, elite powerhouses (Bowers, Jefferson, etc.), and coin producers.
+  //    - Capital preservation: In early rounds (R1-R3), cap spending on ordinary non-QBs so Texans retains bankroll for upcoming QBs.
+  // 4. Endgame Closer Pivot (PSI <= 16):
+  //    - Pivot purse to raw instant deflation to close out the championship at 0 PSI.
+  if (effectiveTeamId === 'texans') {
+    const currentRound = G.board.round || 1;
+    const estimatedEnd = calculateEstimatedGameEndRound(G);
+    const roundsRemaining = Math.max(1, estimatedEnd - currentRound + 1);
+    const isEndgameCloser = (currentPlayer.psi <= 16 || currentRound >= 7);
+
+    // 1. Endgame Closer: If card gives instant deflation to reach <= 0 PSI, go all-in!
+    const cardInstDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    if (currentPlayer.psi - cardInstDeflate <= 0 && nextBid <= currentPlayer.coins) {
+      return { shouldBid: true, bidAmount: Math.min(effMax, currentPlayer.coins), isChampionshipBid: true };
+    }
+
+    // Helper to evaluate if a QB is viable (not toxic recurring inflation like Deshaun Watson)
+    const isViableQb = (c) => {
+      if (!c || c.position !== 'QB') return false;
+      const hasRecInflate = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
+      return !hasRecInflate;
+    };
+
+    const isCurrentCardViableQb = isViableQb(card);
+    const otherViableQbs = otherAvailableCards.filter(c => isViableQb(c) && currentPlayer.coins >= c.minBid);
+
+    const maxWinsThisRound = (G.board.activeEvent?.category === 'double_draft') ? 2 : 1;
+    const winsRemainingForMe = maxWinsThisRound - (currentPlayer.cardsWonThisRound || 0);
+
+    // 2. The 1-Win Constraint:
+    // If viable QBs exist on the board that Texans can afford, DO NOT win a non-QB and lock ourselves out!
+    if (!isCurrentCardViableQb && otherViableQbs.length > 0 && winsRemainingForMe <= 1) {
+      if (!isEndgameCloser || cardInstDeflate < (currentPlayer.psi - 4)) {
+        return { shouldBid: false, bidAmount: 0 };
+      }
+    }
+
+    if (isCurrentCardViableQb) {
+      // 3. Current Card IS a Viable QB:
+      const qbsInLineup = (currentPlayer.lineup || []).filter(c => c.position === 'QB');
+      const isLineupFullOfQbs = qbsInLineup.length >= maxLineup;
+
+      const cardRecDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      const cardRecCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+      const cardInstCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+
+      let qbValuation = Math.min(effMax, currentPlayer.coins);
+
+      if (isLineupFullOfQbs) {
+        // Lineup already has 3 QBs! Only replace a QB if this card is an upgrade or superstar
+        let worstQbScore = Infinity;
+        qbsInLineup.forEach(q => {
+          const sc = scoreCardForPlayer(G, currentPlayerId, q);
+          if (sc < worstQbScore) worstQbScore = sc;
+        });
+
+        const myScore = scoreCardForPlayer(G, currentPlayerId, card);
+        const isUpgrade = (myScore > worstQbScore) || isSuperstar;
+        if (!isUpgrade) {
+          qbValuation = Math.min(card.minBid, 2);
+        } else {
+          qbValuation = Math.min(effMax, Math.max(card.minBid + 1, Math.round(currentPlayer.coins * 0.70)));
+        }
+      } else {
+        const netRecDeflate = cardRecDeflate + 2;
+        const lifetimeDeflate = cardInstDeflate + (netRecDeflate * roundsRemaining);
+
+        const hasOtherQbs = otherViableQbs.length > 0;
+        if (hasOtherQbs) {
+          const otherQbLifetimes = otherViableQbs.map(c => {
+            const instD = c.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+            const recD = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+            return instD + ((recD + 2) * roundsRemaining);
+          }).sort((a, b) => b - a);
+
+          const bestAltLifetime = otherQbLifetimes[0] || 0;
+          if (bestAltLifetime >= lifetimeDeflate * 0.80 && currentPlayer.coins >= 8) {
+            qbValuation = Math.min(effMax, Math.max(card.minBid + 2, Math.round(effMax * 0.70), Math.round(currentPlayer.coins * 0.80)));
+          }
+        }
+      }
+
+      baseValuation = qbValuation;
+    } else {
+      // 4. Current Card is a Non-QB and NO viable QBs exist on the board:
+      if (isEndgameCloser) {
+        if (cardInstDeflate >= 3) {
+          baseValuation = Math.max(baseValuation, Math.min(effMax, currentPlayer.coins));
+        }
+      } else if (currentRound <= 3) {
+        if (!isSuperstar && cardScore < 20.0) {
+          baseValuation = Math.min(baseValuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.50)));
+        }
+      }
+    }
+  }
+
   // Playtest 20 Tuning: Board Parity Principle (e.g. TJ Hockenson when all board cards are good)
   // When multiple cards remain on board and all are roughly equal high-tier strength,
   // the marginal value of winning THIS specific card over whoever is left is tiny (1-2 coins).
@@ -2839,7 +3080,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (effectiveTeamId === 'patriots' && (G.board.round || 1) === 1 && !isPatriotsR1Premier) {
     valuation = Math.min(valuation, 3);
   }
-  if (effectiveTeamId === 'browns' || effectiveTeamId === 'steelers') {
+  if (effectiveTeamId === 'browns' || effectiveTeamId === 'steelers' || effectiveTeamId === 'texans') {
     valuation = Math.min(effMax, Math.min(spendableCoins, baseValuation));
   }
 
@@ -2851,7 +3092,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   valuation = Math.min(valuation, spendableCoins);
-  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns' && effectiveTeamId !== 'steelers') {
+  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns' && effectiveTeamId !== 'steelers' && effectiveTeamId !== 'texans') {
     valuation = Math.min(valuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
   }
 
