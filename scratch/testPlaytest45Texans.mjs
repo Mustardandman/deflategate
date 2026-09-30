@@ -184,6 +184,56 @@ function setupMockGame(numPlayers = 7) {
   assert(decision.shouldBid && decision.bidAmount >= 7, `Test 8: Texans pivots to endgame nuke when low PSI (bid=${decision.bidAmount})`);
 }
 
+// TEST 9: Watson Evaluation Is Half As Bad As Other Teams' Evaluation
+{
+  const G = setupMockGame();
+  const watson = { id: 'deshaun_watson', name: 'Deshaun Watson', position: 'QB', effects: [{ type: 'inflate', amount: 4, perRound: true }, { type: 'coins', amount: 5, perRound: true }] };
+
+  // Evaluate Watson for Texans
+  const texansScore = DeflategateGame ? (await import('../src/Game.js')).scoreCardForPlayer(G, '0', watson) : 0;
+  
+  // Baseline other teams evaluation: -4 deflate * 9 rounds * 2.2 = -79.2; +5 coins * 9 rounds * 1.2 = +54; sum = -32.8
+  assert(texansScore < 0, `Test 9A: Watson score for Texans is negative (got ${texansScore})`);
+  assert(texansScore >= -25 && texansScore <= -10, `Test 9B: Watson score is half as bad as other teams (-16.4 vs ~-32.8, got ${texansScore})`);
+}
+
+// TEST 10: Dynamic Lineup Replacement: Travis Kelce (Superstar TE) Can Replace a QB
+{
+  const G = setupMockGame();
+  const texans = G.players['0'];
+  texans.lineup = [
+    { id: 'kirk_cousins', name: 'Kirk Cousins', position: 'QB', effects: [{ type: 'deflate', amount: 4, perRound: true }] },
+    { id: 'russell_wilson', name: 'Russell Wilson', position: 'QB', effects: [{ type: 'deflate', amount: 1, perRound: true }, { type: 'coins', amount: 1, perRound: true }] },
+    { id: 'anthony_richardson', name: 'Anthony Richardson', position: 'QB', effects: [{ type: 'coins', amount: 1, perRound: true }] }
+  ];
+
+  // Incoming card: Travis Kelce (Superstar TE, 4 deflate + 1 coin/round)
+  const kelce = { id: 'travis_kelce', name: 'Travis Kelce', position: 'TE', minBid: 3, maxBid: 16, effects: [{ type: 'deflate', amount: 4, perRound: true }, { type: 'coins', amount: 1, perRound: true }] };
+  resolveAuctionWin(G, '0', kelce, 8);
+
+  assert(texans.lineup.some(c => c.id === 'travis_kelce'), 'Test 10A: Travis Kelce was successfully added to the lineup');
+  assert(!texans.lineup.some(c => c.id === 'anthony_richardson'), 'Test 10B: Weakest QB (Anthony Richardson) was replaced by Travis Kelce');
+  assert(texans.lineup.some(c => c.id === 'kirk_cousins') && texans.lineup.some(c => c.id === 'russell_wilson'), 'Test 10C: Superior QBs (Cousins, Wilson) remained in the lineup');
+}
+
+// TEST 11: Dynamic Lineup Replacement: Deshaun Watson Is Replaced Over Ordinary Non-QBs
+{
+  const G = setupMockGame();
+  const texans = G.players['0'];
+  texans.lineup = [
+    { id: 'kirk_cousins', name: 'Kirk Cousins', position: 'QB', effects: [{ type: 'deflate', amount: 4, perRound: true }] },
+    { id: 'deshaun_watson', name: 'Deshaun Watson', position: 'QB', effects: [{ type: 'inflate', amount: 4, perRound: true }, { type: 'coins', amount: 5, perRound: true }] },
+    { id: 'diontae_johnson', name: 'Diontae Johnson', position: 'WR', effects: [{ type: 'coins', amount: 2, perRound: true }] }
+  ];
+
+  // Incoming card: Russell Wilson (QB)
+  const wilson = { id: 'russell_wilson', name: 'Russell Wilson', position: 'QB', effects: [{ type: 'deflate', amount: 1, perRound: true }, { type: 'coins', amount: 1, perRound: true }] };
+  resolveAuctionWin(G, '0', wilson, 4);
+
+  assert(!texans.lineup.some(c => c.id === 'deshaun_watson'), 'Test 11A: Deshaun Watson was replaced');
+  assert(texans.lineup.some(c => c.id === 'diontae_johnson'), 'Test 11B: Diontae Johnson (positive non-QB) was preserved over Watson');
+}
+
 console.log(`\n========================================`);
 if (allPassed) {
   console.log('ALL PLAYTEST 45 TEXANS TESTS PASSED!');

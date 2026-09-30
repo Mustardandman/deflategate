@@ -453,92 +453,66 @@ export const resolveAuctionWin = (G, playerID, card) => {
       const hasPracticeSquad = p.lineup.some(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
 
       if (isTexans) {
-        const toxicIdx = p.lineup.findIndex(c => {
-          const hasRecurringInflation = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
-          const hasRecurringNegativeCoins = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0);
-          return hasRecurringInflation || hasRecurringNegativeCoins;
-        });
-        if (toxicIdx !== -1) {
-          replaceIdx = toxicIdx;
+        // Priority 1: Always replace Practice Squad first
+        const psIdx = p.lineup.findIndex(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
+        if (psIdx !== -1) {
+          replaceIdx = psIdx;
         } else {
-          const psIdx = p.lineup.findIndex(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
-          if (psIdx !== -1) {
-            replaceIdx = psIdx;
-          } else {
-            const isIncomingQb = card.position === 'QB';
-            const nonQbIndices = [];
-            const qbIndices = [];
-            p.lineup.forEach((c, idx) => {
-              if (c.position === 'QB') qbIndices.push(idx);
-              else nonQbIndices.push(idx);
+          // User directive: "I wouldn't say they should never replace a qb with a non qb. YOu can replace watson, in a vacumm travis kelce or a hof player would be better than a qb in your lineup so you can replace a qb for them. But generally yes you want to keep the qbs. Just add a value of 2 every turn coins and 2 every turn deflation to qb cards when evaluating what to replace."
+          const currentRound = G.board?.round || 1;
+          const roundsLeft = Math.max(1, 10 - currentRound);
+          const deflateWeight = p.genome?.deflateWeight || 1.6;
+          const coinWeight = p.genome?.coinWeight || 1.2;
+
+          let worstScore = Infinity;
+          let worstIdx = 0;
+
+          const evaluateLineupCard = (c) => {
+            if (c.id === 'deshaun_watson') {
+              // Watson evaluation: half as bad as other teams (negative score, replaced naturally)
+              return scoreCardForPlayer(G, playerID, c);
+            }
+            let defPerRound = 0;
+            let coinPerRound = 0;
+            let instDef = 0;
+            let instCoins = 0;
+            (c.effects || []).forEach(e => {
+              const isRec = e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round';
+              if (isRec) {
+                if (e.type === 'deflate' || e.type === 'deflate_every_round') defPerRound += (e.amount || 0);
+                if (e.type === 'coins') coinPerRound += (e.amount || 0);
+                if (e.type === 'inflate') defPerRound -= (e.amount || 0);
+              } else {
+                if (e.type === 'deflate') instDef += (e.amount || 0);
+                if (e.type === 'coins') instCoins += (e.amount || 0);
+                if (e.type === 'inflate') instDef -= (e.amount || 0);
+              }
             });
 
-            if (isIncomingQb) {
-              if (nonQbIndices.length > 0) {
-                // Replace weakest non-QB to increase total QBs and gain +2 coins / +2 deflate
-                let worstScore = Infinity;
-                let worstIdx = nonQbIndices[0];
-                nonQbIndices.forEach(idx => {
-                  const c = p.lineup[idx];
-                  const sc = scoreCardForPlayer(G, playerID, c);
-                  if (sc < worstScore) {
-                    worstScore = sc;
-                    worstIdx = idx;
-                  }
-                });
-                replaceIdx = worstIdx;
-              } else {
-                // All 3 starters are QBs: replace the lowest scoring QB
-                let worstScore = Infinity;
-                let worstIdx = 0;
-                qbIndices.forEach(idx => {
-                  const c = p.lineup[idx];
-                  const sc = scoreCardForPlayer(G, playerID, c);
-                  if (sc < worstScore) {
-                    worstScore = sc;
-                    worstIdx = idx;
-                  }
-                });
-                replaceIdx = worstIdx;
-              }
-            } else {
-              // Incoming card is a non-QB:
-              if (nonQbIndices.length > 0) {
-                // Replace weakest non-QB to preserve all existing QBs
-                let worstScore = Infinity;
-                let worstIdx = nonQbIndices[0];
-                nonQbIndices.forEach(idx => {
-                  const c = p.lineup[idx];
-                  const sc = scoreCardForPlayer(G, playerID, c);
-                  if (sc < worstScore) {
-                    worstScore = sc;
-                    worstIdx = idx;
-                  }
-                });
-                replaceIdx = worstIdx;
-              } else {
-                // All 3 starters are QBs! Only replace a QB if this non-QB immediately wins the game
-                const instantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
-                const willWin = (p.psi - instantDeflate <= 0);
-                if (willWin) {
-                  replaceIdx = 0; // Immediate championship win
-                } else {
-                  // Fallback: replace lowest scoring QB
-                  let worstScore = Infinity;
-                  let worstIdx = 0;
-                  qbIndices.forEach(idx => {
-                    const c = p.lineup[idx];
-                    const sc = scoreCardForPlayer(G, playerID, c);
-                    if (sc < worstScore) {
-                      worstScore = sc;
-                      worstIdx = idx;
-                    }
-                  });
-                  replaceIdx = worstIdx;
-                }
-              }
+            // "Just add a value of 2 every turn coins and 2 every turn deflation to qb cards when evaluating what to replace."
+            if (c.position === 'QB') {
+              defPerRound += 2;
+              coinPerRound += 2;
             }
-          }
+
+            let s = ((defPerRound * deflateWeight) + (coinPerRound * coinWeight)) * roundsLeft + (instDef * deflateWeight) + (instCoins * coinWeight);
+            const effMax = getEffectiveCardMaxBid(c, G.board?.activeEvent);
+            const isSuperstar = (c.phase === 'hof' || effMax >= 16 || c.id === 'patrick_mahomes' || c.id === 'travis_kelce' || c.id === 'christian_mccaffrey' || c.id === 'lamar_jackson' || c.id === 'justin_jefferson');
+            if (c.phase === 'hof') {
+              s = Math.max(s, 24.0) * 1.2;
+            } else if (isSuperstar) {
+              s = Math.max(s, 20.0) * 1.2;
+            }
+            return s;
+          };
+
+          p.lineup.forEach((c, idx) => {
+            const score = evaluateLineupCard(c);
+            if (score < worstScore) {
+              worstScore = score;
+              replaceIdx = idx;
+            }
+          });
         }
       } else if (isRavens && !hasPracticeSquad) {
         let bestTotalLineupScore = -Infinity;
@@ -761,7 +735,7 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
     return card.effects?.some(e => e.type === 'deflate');
   }
   if (teamId === 'texans') {
-    return card.position === 'QB';
+    return card.position === 'QB' && card.id !== 'deshaun_watson';
   }
   if (teamId === 'bengals') {
     return card.effects?.some(e => !e.perRound) || (card.position === 'QB' && card.effects?.some(e => !e.perRound));
@@ -971,11 +945,21 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     }
   }
 
-  // Texans: Starting at 47 PSI, recurring inflation is lethal! Strictly avoid recurring inflation cards (e.g. Deshaun Watson)
+  // Texans: Watson is not a good card, but it isn't as bad for Texans as it is for other teams.
+  // User directive: "Have the texans evaluation be half as bad as other teams' evaluation for watson."
   if (effectiveTeamId === 'texans') {
+    if (card.id === 'deshaun_watson') {
+      // Calculate how a baseline/other team evaluates Watson without the Texans QB passive:
+      // Other teams face -4 inflate/turn and +5 coins/turn:
+      const otherDeflate = -4 * roundsLeft * recurringMult;
+      const otherCoins = 5 * roundsLeft * recurringMult;
+      const otherTeamEval = (otherDeflate * Math.max(2.2, deflateWeight)) + (otherCoins * coinWeight);
+      const watsonScore = otherTeamEval < 0 ? (otherTeamEval / 2) : otherTeamEval;
+      return Math.round(watsonScore * 10) / 10;
+    }
     const hasRecurringInflation = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && e.type === 'inflate');
     if (hasRecurringInflation) {
-      return -50; // Strictly avoid!
+      return -50; // Strictly avoid non-QB recurring inflation (e.g. Hunter Henry)
     }
   }
 
@@ -1843,7 +1827,7 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
   if (effectiveTeamId === 'texans') {
     const viableQbs = eligibleCards.filter(item => 
       item.card.position === 'QB' && 
-      !item.card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate')
+      scoreCardForPlayer(G, currentPlayerId, item.card) > 0
     );
     if (viableQbs.length > 0) {
       return viableQbs[0].index;
@@ -2316,7 +2300,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (currentLineup.length >= maxLineup && !hasDeadStarter && effectiveTeamId !== 'colts') {
     const isCandidateInstant = card.effects && card.effects.some(e => !e.perRound);
     const isBengalsInstant = (effectiveTeamId === 'bengals' && isCandidateInstant);
-    const isTexansQb = (effectiveTeamId === 'texans' && card.position === 'QB');
+    const isTexansQb = (effectiveTeamId === 'texans' && card.position === 'QB' && card.id !== 'deshaun_watson');
     if (!isBengalsInstant && !isTexansQb && !isSuperstar) {
       if (avoidsDowngrade) {
         if (nextBid > Math.max(card.minBid + 1, 3)) {
@@ -2486,7 +2470,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     (card.effects?.some(e => e.perRound && e.type === 'deflate' && e.amount >= 2))
   ));
   const isSteelersTarget = (effectiveTeamId === 'steelers');
-  const isTexansTarget = (effectiveTeamId === 'texans' && (card.position === 'QB' || (currentPlayer.psi || 47) <= 16));
+  const isTexansTarget = (effectiveTeamId === 'texans' && ((card.position === 'QB' && card.id !== 'deshaun_watson') || (currentPlayer.psi || 47) <= 16));
   const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || isTexansTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
@@ -2944,11 +2928,10 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
       return { shouldBid: true, bidAmount: Math.min(effMax, currentPlayer.coins), isChampionshipBid: true };
     }
 
-    // Helper to evaluate if a QB is viable (not toxic recurring inflation like Deshaun Watson)
+    // Helper to evaluate if a QB is viable (positive value, not toxic recurring inflation like Deshaun Watson)
     const isViableQb = (c) => {
       if (!c || c.position !== 'QB') return false;
-      const hasRecInflate = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
-      return !hasRecInflate;
+      return scoreCardForPlayer(G, currentPlayerId, c) > 0;
     };
 
     const isCurrentCardViableQb = isViableQb(card);

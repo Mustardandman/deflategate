@@ -1936,21 +1936,24 @@ The user provided the exact mental model of an expert human playing the Steelers
 
 ### 3. Core Engine Implementations (`src/Game.js`)
 
-1. **Roster Protection in `resolveAuctionWin` (Lines 450–540)**:
-   - Dedicated `if (isTexans)` handler replacing toxic cards, practice squad, and weakest non-QBs before touching any active QBs.
-2. **Recurring Inflation Avoidance in `scoreCardForPlayer` (Lines 974–981)**:
-   - Hard negative score (`-50`) assigned to recurring inflation cards for Texans, completely preventing acquisitions like Deshaun Watson.
-3. **Dedicated Texans Valuation in `evaluateCpuAuctionBid` (Lines 2912–3015)**:
-   - Viable QB scanning and 1-Win constraint enforcement.
+1. **Dynamic Lineup Replacement in `resolveAuctionWin` (Lines 455–495)**:
+   - Evaluates active starters dynamically: QBs are scored with a value of +2 coins and +2 deflation per remaining turn (`(2 * deflateWeight + 2 * coinWeight) * roundsLeft`).
+   - Deshaun Watson is evaluated as "half as bad as other teams" (yielding a negative score, e.g. -16.4 vs ~-32.8 for other teams), ensuring Watson is naturally replaced when better cards arrive.
+   - Allows superstars like Travis Kelce (TE) and HOF legends to replace lower-tier QBs when superior in output, while preserving solid QBs over ordinary non-QBs.
+2. **Calibrated Deshaun Watson Evaluation in `scoreCardForPlayer` (Lines 948–965)**:
+   - User directive: Watson is not a good card (+4 inflation/turn for 5 coins), but is not as bad for Texans as for other teams due to the QB passive offset.
+   - Evaluates Watson at exactly half the negative penalty of other teams (`otherTeamEval / 2`), keeping his score negative so Texans does not proactively bid on or draft him, while other non-QB recurring inflation cards (e.g. Hunter Henry) remain strictly avoided (-50).
+3. **Dedicated Texans Valuation in `evaluateCpuAuctionBid` (Lines 2915–3025)**:
+   - Viable QB scanning and 1-Win constraint enforcement (`isViableQb` verifies positive score, excluding Watson).
    - Lifetime QB compounding with board alternative scaling.
    - 3-QB lineup saturation protection.
    - Early-game non-QB capital preservation (capping non-essential cards at 50% purse in R1–R3).
 4. **Purse & Reserve Exemption in `evaluateCpuAuctionBid`**:
-   - Added `isTexansTarget` to `spendableCoins` (Line 2488).
-   - Added `texans` to valuation override (Line 2992).
-   - Exempted `texans` from the early-game 65% purse cap (Line 3003) and marginal delta cutoff (Line 2318).
-5. **Nomination Engine in `chooseCpuNominationCard` (Lines 1837–1870)**:
-   - Prioritizes best non-toxic QB, bait nominations when broke, and endgame closers.
+   - Added `isTexansTarget` to `spendableCoins` (excluding Watson).
+   - Added `texans` to valuation override.
+   - Exempted `texans` from the early-game 65% purse cap and marginal delta cutoff.
+5. **Nomination Engine in `chooseCpuNominationCard` (Lines 1825–1860)**:
+   - Prioritizes best viable QB (positive score, skipping Watson), bait nominations when broke, and endgame closers.
 
 ---
 
@@ -1960,13 +1963,13 @@ Conducted 1,000 head-to-head tournament matches across 7-Player and 10-Player ta
 
 | Metric | Baseline (Pre-PT 45) | Playtest 45 Result | Delta / Improvement |
 |:-------|:--------------------:|:------------------:|:-------------------:|
-| **7-Player Win Rate** | 30.0% | **49.8%** | **+19.8%** |
-| **7-Player Avg Final PSI** | 12.08 PSI | **6.78 PSI** | **-5.30 PSI** |
-| **7-Player Avg QBs in Lineup** | 0.74 QBs | **1.20 QBs** | **+62.2% QBs** |
-| **10-Player Win Rate** | 20.5% | **42.8%** | **+22.3% (More than doubled!)** |
-| **10-Player Avg Final PSI** | 14.71 PSI | **7.41 PSI** | **-7.30 PSI** |
-| **10-Player Avg QBs in Lineup** | 0.77 QBs | **1.39 QBs** | **+80.5% QBs** |
-| **Combined Tournament Win Rate** | 25.2% | **46.3%** | **+21.1% Win Rate** |
+| **7-Player Win Rate** | 30.0% | **51.4%** | **+21.4% (Over 3.5x fair share!)** |
+| **7-Player Avg Final PSI** | 12.08 PSI | **6.54 PSI** | **-5.54 PSI** |
+| **7-Player Avg QBs in Lineup** | 0.74 QBs | **1.19 QBs** | **+60.8% QBs** |
+| **10-Player Win Rate** | 20.5% | **44.6%** | **+24.1% (More than 4.4x fair share!)** |
+| **10-Player Avg Final PSI** | 14.71 PSI | **7.50 PSI** | **-7.21 PSI** |
+| **10-Player Avg QBs in Lineup** | 0.77 QBs | **1.37 QBs** | **+77.9% QBs** |
+| **Combined Tournament Win Rate** | 25.2% | **48.0%** | **+22.8% Win Rate** |
 
 ---
 
@@ -1980,8 +1983,11 @@ Conducted 1,000 head-to-head tournament matches across 7-Player and 10-Player ta
   - `Test 6: 3-QB Lineup Saturation Discipline`: **PASS** (Passed on weak non-upgrade Russell Wilson when already holding 3 QBs).
   - `Test 7: Nomination Strategy Prioritizes Best Viable QB`: **PASS** (Nominated Kirk Cousins, skipped Deshaun Watson).
   - `Test 8: Endgame Closer Pivot`: **PASS** (Bid 7 coins on Derrick Henry nuke at 10 PSI).
+  - `Test 9: Watson Evaluation Half As Bad`: **PASS** (Watson scored -24.2 for Texans vs ~-48.4 baseline other teams).
+  - `Test 10: Dynamic Lineup Replacement (Travis Kelce Replaces QB)`: **PASS** (Travis Kelce replaced Anthony Richardson while Cousins & Wilson remained).
+  - `Test 11: Watson Replaced Over Positive Non-QB`: **PASS** (Watson cut from roster while Diontae Johnson preserved).
 - **All League Regression Suites**: Steelers (PT 44), Browns (PT 43), Bengals (PT 42), Jets (PT 41), Ravens (PT 40), Patriots (PT 39), and AI Intelligence (PT 34) all verified 100% passing.
-- **Production Build**: `npm run build` executed cleanly in 3.65s with zero errors.
+- **Production Build**: `npm run build` executed cleanly in 3.44s with zero errors.
 
 
 
