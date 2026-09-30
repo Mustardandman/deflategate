@@ -1261,25 +1261,30 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     }
 
     const currentRound = G?.board?.round || 1;
+    const recDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const instDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const isDualThreatPhase1 = (card.phase === 1 || currentRound <= 3) && recDeflate >= 2 && instDeflate >= 1;
+
     if (currentRound <= 3) {
-      if (card.id === 'brock_bowers') {
-        // Brock Bowers is the absolute crown jewel of Phase 1 (2 instant + 2 recurring deflate)
+      if (isDualThreatPhase1) {
+        // Dual-threat Phase 1 centerpiece (2+ recurring + instant, e.g. Bowers or equivalent)
         rawScore = Math.max(rawScore, 24.0);
+      } else if (recDeflate >= 2) {
+        rawScore = Math.max(rawScore, 18.0);
       } else {
         // For other Phase 1 deflation cards: seek best deflation for lowest cost (bang-for-buck)
-        // Cap score so Browns does not overpay for ordinary +1/+2 deflaters
-        const deflateAmt = card.effects?.filter(e => e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        const deflateAmt = recDeflate + instDeflate;
         const efficiency = deflateAmt / Math.max(1, card.minBid);
         rawScore = (deflateAmt * 3.5) + (efficiency * 2.5);
       }
     } else {
       // Phase 2+ (Rounds 4+): High deflation superstars are paramount!
-      if (card.id === 'patrick_mahomes' || card.id === 'travis_kelce' || card.id === 'adrian_peterson' || card.id === 'marshawn_lynch') {
-        rawScore = Math.max(rawScore, 28.0);
-      } else if (card.phase === 'hof') {
+      if (recDeflate >= 5 || card.phase === 'hof') {
         rawScore = Math.max(rawScore, 30.0);
-      } else if (card.effects?.some(e => e.type === 'deflate' && e.amount >= 4)) {
-        rawScore = Math.max(rawScore, 20.0);
+      } else if (recDeflate >= 4 || instDeflate >= 6) {
+        rawScore = Math.max(rawScore, 26.0);
+      } else if (recDeflate >= 2 || instDeflate >= 4) {
+        rawScore = Math.max(rawScore, 18.0);
       }
     }
   }
@@ -1582,9 +1587,20 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     if (deflateEligible.length > 0) {
       const currentRound = G.board.round || 1;
       if (currentRound <= 3) {
-        // Phase 1: Bowers first
-        const bowers = deflateEligible.find(item => item.card.id === 'brock_bowers' && currentPlayer.coins >= item.card.minBid);
-        if (bowers) return bowers.index;
+        // Phase 1: Dual-threat deflaters first (2+ recurring + instant, e.g. Bowers or equivalent)
+        const dualThreat = deflateEligible.find(item => {
+          const rec = item.card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+          const inst = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+          return rec >= 2 && inst >= 1 && currentPlayer.coins >= item.card.minBid;
+        });
+        if (dualThreat) return dualThreat.index;
+
+        // Next: Any 2+ recurring deflaters
+        const rec2 = deflateEligible.find(item => {
+          const rec = item.card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+          return rec >= 2 && currentPlayer.coins >= item.card.minBid;
+        });
+        if (rec2) return rec2.index;
 
         // Otherwise highest efficiency (deflate / minBid)
         const sortedEfficiency = [...deflateEligible].sort((a, b) => {
@@ -2237,7 +2253,11 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // Bengals can spend freely on high-value instant cards without hoarding restriction!
   const isJetsMaxTarget = (effectiveTeamId === 'jets' && (effMax <= 5 || currentPlayer.coins >= effMax));
   const isBengalsInstantTarget = (effectiveTeamId === 'bengals' && (card.effects?.some(e => !e.perRound) || cardScore >= 12.0));
-  const isBrownsTarget = (effectiveTeamId === 'browns' && (G.board.round >= 5 || card.id === 'brock_bowers'));
+  const isBrownsTarget = (effectiveTeamId === 'browns' && (
+    (G.board?.round || 1) >= 4 || 
+    (card.effects?.filter(e => e.type === 'deflate').reduce((s, e) => s + e.amount, 0) >= 3) ||
+    (card.effects?.some(e => e.perRound && e.type === 'deflate' && e.amount >= 2))
+  ));
   const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
@@ -2417,55 +2437,164 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   // Browns Valuation Strategy:
-  // User Strategic Vision:
-  // - Pure coin cards give 0 coins and zero deflation -> strictly zero valuation / do not bid.
-  // - Phase 1 (Rounds 1-3):
-  //   * Brock Bowers is the crown jewel (2 instant + 2 recurring deflate): willing to spend up to 12-14 coins.
-  //   * All other Phase 1 deflation cards: seek best deflation for lowest cost (bang-for-buck). Cap valuation at 3-5 coins.
-  // - Round 4: Phase 2 arrives. Spend remaining Phase 1 purse on the best available player before the Round 5 cash drop.
-  // - Round 5+: With 30+ coins, bully auctions on high deflation cards (Mahomes, Kelce, Peterson, Lynch, HOF, nukes), paying up to effMax.
-  // - Solitary Star Scarcity: If this is the ONLY viable deflation card on the board and all others are junk/coins,
-  //   Browns values winning it highly, up to their walk-away ceiling. If rival bids exceed the walk-away ceiling,
-  //   Browns folds, preserves coins, and takes the cheap fallback.
+  // Human-like Strategic & Board-Tier Forward-Thinking Valuation:
+  // - Pure coin cards: zero deflation and zero coins -> strictly zero valuation / do not bid.
+  // - Evaluates card's lifetime deflation: instant + (recurring * roundsRemaining).
+  // - Evaluates all alternative cards on the board and their deflation tiers:
+  //   * If other top-tier deflation cards exist, don't get into an overpriced war; let rival overspend and buy the alternative.
+  //   * If this is the ONLY viable deflation card on the board (all others are pure coins/junk), the fallback is literally ZERO,
+  //     so Browns bids with extreme urgency to avoid a wasted round.
+  //   * In Phase 1 (Rounds 1-3): Budgets against the 20-coin initial purse and rounds until the Round 5 +30 bonus.
+  //     Dual-threat cards (e.g. Bowers or any 2+ recurring + instant) are prized centerpieces worth bidding up aggressively (leaving 1-2 coins/round).
+  //     Ordinary cards are bought for low cost (bang-for-buck).
+  //   * Round 4: Spend remaining Phase 1 purse before the Round 5 cash drop.
+  //   * Round 5+: With 30+ coins, bully auctions on high-deflation targets (Mahomes, Kelce, HOF, nukes), budgeting spendable
+  //     coins per remaining round so coins are never left unspent when the game ends.
   if (effectiveTeamId === 'browns') {
     if (cardScore <= -50) {
       return { shouldBid: false, bidAmount: 0 };
     }
 
     const currentRound = G.board.round || 1;
-    const viableOtherCount = otherScores.filter(s => s > 0).length;
-    const isSolitaryViableTarget = (cardScore > 0 && viableOtherCount === 0);
+    const estimatedEnd = calculateEstimatedGameEndRound(G);
+    const roundsRemaining = Math.max(1, estimatedEnd - currentRound + 1);
+
+    // Dynamic Deflation Output of this card
+    const cardRecDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const cardInstDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const cardLifetimeDeflate = cardInstDeflate + (cardRecDeflate * roundsRemaining);
+
+    // Dual-threat Phase 1 centerpiece (e.g. Bowers or any 2+ recurring + instant)
+    const isDualThreatPhase1 = (card.phase === 1 || currentRound <= 3) && cardRecDeflate >= 2 && cardInstDeflate >= 1;
+
+    // Analyze ALL other available cards on the board for their deflation value to Browns
+    const otherDeflateCards = otherAvailableCards.map(c => {
+      const rec = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      const inst = c.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      const lifetime = inst + (rec * roundsRemaining);
+      const isDual = (c.phase === 1 || currentRound <= 3) && rec >= 2 && inst >= 1;
+      return { card: c, rec, inst, lifetime, isDual, minBid: c.minBid };
+    }).filter(c => c.lifetime > 0);
+
+    otherDeflateCards.sort((a, b) => b.lifetime - a.lifetime);
+
+    const bestAlt = otherDeflateCards.length > 0 ? otherDeflateCards[0] : null;
+    const bestAltLifetime = bestAlt ? bestAlt.lifetime : 0;
+
+    // Board Competition & Scarcity Analysis
+    const maxWinsThisRound = (G.board.activeEvent?.category === 'double_draft') ? 2 : 1;
+    const rivalsNeedingCards = Object.keys(G.players).filter(
+      id => id !== currentPlayerId && (G.players[id].cardsWonThisRound || 0) < maxWinsThisRound && !G.board.passedAuctionPlayers.includes(id)
+    );
+    const numRivals = rivalsNeedingCards.length;
+
+    // Is this the ONLY deflation card remaining on the board? (Monopoly on deflation)
+    const isSolitaryDeflationCard = (otherDeflateCards.length === 0);
+    // Are there more deflation cards than rivals needing cards? (Guaranteed deflation without bidding war)
+    const hasDeflationSurplus = (otherDeflateCards.length >= numRivals && numRivals > 0);
+
+    let targetValuation = card.minBid;
 
     if (currentRound <= 3) {
-      if (card.id === 'brock_bowers') {
-        // Brock Bowers: crown jewel of Phase 1
-        baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(currentPlayer.coins, 13)));
+      // -------------------------------------------------------------
+      // PHASE 1 (Rounds 1-3): Budgeting 20 Starting Coins
+      // -------------------------------------------------------------
+      const roundsUntilBonus = Math.max(1, 5 - currentRound);
+      const budgetPerPhase1Round = Math.floor(currentPlayer.coins / roundsUntilBonus);
+
+      if (isDualThreatPhase1) {
+        // Dual-threat (2 recurring + instant, e.g. Bowers or equivalent):
+        // Crown jewel of Phase 1! Delivers ~16 lifetime deflation.
+        if (isSolitaryDeflationCard) {
+          // Solitary dual-threat: alternative is 0 deflation!
+          // Willing to spend up to currentPlayer.coins - (roundsUntilBonus - 1)
+          const keepReserve = Math.max(1, roundsUntilBonus - 1);
+          targetValuation = Math.max(card.minBid, Math.min(effMax, currentPlayer.coins - keepReserve));
+        } else if (bestAltLifetime >= 12) {
+          // Another great 2-deflate card is on the board!
+          // Marginal advantage is small -> don't overpay; cap bid reasonably
+          targetValuation = Math.max(card.minBid, Math.min(effMax, Math.min(budgetPerPhase1Round + 4, 8)));
+        } else {
+          // Alternative is mediocre (1-deflate or junk) -> strong priority
+          const keepReserve = Math.max(2, roundsUntilBonus);
+          targetValuation = Math.max(card.minBid, Math.min(effMax, currentPlayer.coins - keepReserve));
+        }
+      } else if (cardRecDeflate >= 2) {
+        // Solid 2-deflate card in Phase 1:
+        if (isSolitaryDeflationCard) {
+          const keepReserve = Math.max(2, roundsUntilBonus * 2);
+          targetValuation = Math.max(card.minBid, Math.min(effMax, currentPlayer.coins - keepReserve));
+        } else if (hasDeflationSurplus) {
+          targetValuation = Math.min(card.minBid + 1, 4);
+        } else {
+          targetValuation = Math.min(card.minBid + 2, Math.max(card.minBid, 5));
+        }
       } else {
-        // Other Phase 1 deflation cards: bang-for-buck, cap at 4-5 coins unless solitary target
-        const phase1Cap = isSolitaryViableTarget ? Math.min(effMax, Math.min(currentPlayer.coins, 8)) : Math.min(effMax, Math.max(card.minBid, 4));
-        baseValuation = Math.min(baseValuation, phase1Cap);
+        // Ordinary 1-deflate or minor instant card in Phase 1:
+        // Bang-for-buck! Cap at low cost to preserve bankroll for future rounds
+        if (isSolitaryDeflationCard) {
+          targetValuation = Math.min(card.minBid + 3, Math.max(card.minBid, 6));
+        } else {
+          targetValuation = Math.min(card.minBid + 1, Math.max(card.minBid, 4));
+        }
       }
     } else if (currentRound === 4) {
-      // Round 4: Spend remaining Phase 1 budget on best available deflation player
-      if (cardScore >= 15.0 || isSolitaryViableTarget) {
-        baseValuation = Math.max(baseValuation, Math.min(effMax, currentPlayer.coins));
-      } else if (cardScore > 0) {
-        baseValuation = Math.max(baseValuation, Math.min(effMax, Math.round(currentPlayer.coins * 0.75)));
+      // -------------------------------------------------------------
+      // ROUND 4 (Phase 2 Arrival, Pre-Bonus):
+      // -------------------------------------------------------------
+      // Next turn is Round 5 (+30 coins guaranteed). Spend freely on best player!
+      if (cardLifetimeDeflate >= 12 || isSolitaryDeflationCard) {
+        targetValuation = Math.min(effMax, currentPlayer.coins);
+      } else if (cardLifetimeDeflate >= 6) {
+        targetValuation = Math.min(effMax, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.80)));
+      } else {
+        targetValuation = Math.min(card.minBid + 2, 5);
       }
     } else {
-      // Rounds 5+: 30-coin war chest unleashed!
-      if (cardScore >= 18.0 || isSuperstar || card.phase === 'hof') {
-        baseValuation = Math.max(baseValuation, Math.min(effMax, currentPlayer.coins));
-      } else if (cardScore >= 8.0) {
-        baseValuation = Math.max(baseValuation, Math.min(effMax, Math.round(currentPlayer.coins * 0.70)));
+      // -------------------------------------------------------------
+      // ROUNDS 5+ (Post-Bonus War Chest): 30+ Coins In Hand!
+      // -------------------------------------------------------------
+      // Unspent coins at game end are WORTHLESS!
+      const spendPowerPerRound = Math.ceil(currentPlayer.coins / roundsRemaining);
+
+      const isEliteSuperstar = (
+        cardRecDeflate >= 4 || 
+        cardInstDeflate >= 6 || 
+        cardLifetimeDeflate >= 15 || 
+        card.phase === 'hof' || 
+        card.id === 'patrick_mahomes' || 
+        card.id === 'travis_kelce'
+      );
+
+      if (isEliteSuperstar) {
+        if (isSolitaryDeflationCard) {
+          // Solitary monster card (e.g. Mahomes/Kelce and all other cards are coins):
+          // Bully auction! Spend up to full purse (keeping tiny reserve for subsequent rounds if roundsRemaining > 1)
+          const keepForFuture = (roundsRemaining > 1) ? Math.min(6, Math.round(currentPlayer.coins * 0.15)) : 0;
+          targetValuation = Math.min(effMax, Math.max(card.minBid, currentPlayer.coins - keepForFuture));
+        } else if (bestAlt && (bestAlt.rec >= 4 || bestAlt.lifetime >= 14)) {
+          // Another elite card exists on the board (e.g. both Mahomes and Kelce)!
+          // Don't blow full purse; let rivals fight over the first, take the second
+          targetValuation = Math.min(effMax, Math.max(card.minBid + 4, spendPowerPerRound + 4));
+        } else {
+          // Solitary elite card among mediocre deflation cards:
+          const keepForFuture = (roundsRemaining > 1) ? Math.min(6, Math.round(currentPlayer.coins * 0.20)) : 0;
+          targetValuation = Math.min(effMax, Math.max(card.minBid, currentPlayer.coins - keepForFuture));
+        }
+      } else if (cardLifetimeDeflate >= 8) {
+        // Solid Tier 2 deflater in Phase 2
+        if (isSolitaryDeflationCard) {
+          targetValuation = Math.min(effMax, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
+        } else {
+          targetValuation = Math.min(effMax, Math.max(card.minBid, Math.min(spendPowerPerRound, 10)));
+        }
+      } else {
+        // Minor floor deflater
+        targetValuation = Math.min(effMax, Math.max(card.minBid, 4));
       }
     }
 
-    // Walk-Away Ceiling: In solitary target situations, if bidding gets too crazy, walk away and save coins!
-    const walkAwayCeiling = (currentRound <= 3) ? (card.id === 'brock_bowers' ? 14 : 7) : (currentRound === 4 ? Math.min(currentPlayer.coins, 16) : Math.min(effMax, 22));
-    if (nextBid > walkAwayCeiling) {
-      return { shouldBid: false, bidAmount: 0 };
-    }
+    baseValuation = targetValuation;
   }
 
   // Playtest 20 Tuning: Board Parity Principle (e.g. TJ Hockenson when all board cards are good)
@@ -2522,6 +2651,9 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
   if (effectiveTeamId === 'patriots' && (G.board.round || 1) === 1 && !isPatriotsR1Premier) {
     valuation = Math.min(valuation, 3);
+  }
+  if (effectiveTeamId === 'browns') {
+    valuation = Math.min(effMax, Math.min(spendableCoins, baseValuation));
   }
 
   if (isCoinLeader) {
@@ -2598,7 +2730,9 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     const oppTeamId = highestTeamId;
     const oppLovesCard = doesCardFitTeamStrategy(oppTeamId, card, highestBidderPlayer, G);
     const opponentCanAffordRaise = highestBidderPlayer && highestBidderPlayer.coins >= nextBid + bidStep;
-    const safeRiskForMe = cardScore >= 0; // Colts strictly avoid bumping negative cards!
+    const safeRiskForMe = (effectiveTeamId === 'browns')
+      ? ((G.board?.round || 1) >= 5 && nextBid <= Math.round(currentPlayer.coins * 0.40))
+      : (cardScore >= 0); // Colts strictly avoid bumping negative cards!
 
     // #2 Threat Level Price Bump Scaling:
     // 1 Round Out (Red Threat): HIGHER price bump aggression (emergency table defense up to effMax)

@@ -1682,16 +1682,18 @@ Tested Baseline C2 vs Micro-Tuned Champion (`agg: 1.12, instMax: 1.04, recur: 1.
 - **Primary Strategic Imperatives**:
   1. **Strict Deflation Purity**: Browns receives zero coins from player card abilities. Pure coin cards (DK Metcalf, Justin Jefferson, CeeDee Lamb, etc.) are strictly worth 0 / negative valuation (`score <= -50`), never nominated, and never bid on.
   2. **Start of Round 5 Cash Influx**: Browns receives their **+30 coins at the start of Round 5** (before the Round 5 auction begins), not delayed to the end of Round 5 during refresh.
-  3. **Phase 1 (Rounds 1–3) Crown Jewel & Bang-for-Buck Discipline**:
-     - In Phase 1, the maximum recurring deflation available is 2 deflate/round, plus Brock Bowers (2 deflate/round recurring + 2 instant deflate).
-     - Brock Bowers is the absolute centerpiece crown jewel of Phase 1: Browns outbids rivals aggressively (willing to spend up to 12–14 coins).
-     - For all other Phase 1 deflation cards: Browns seeks the best deflation for the lowest cost (bang-for-buck), capping bids at 4–5 coins rather than squandering their initial bankroll on ordinary +1/+2 cards.
+  3. **Phase 1 (Rounds 1–3) Dual-Threat Centerpieces & Bang-for-Buck Discipline**:
+     - In Phase 1, the maximum recurring deflation available is 2 deflate/round, with dual-threat centerpieces offering 2 deflate/round recurring + 2 instant deflate (Brock Bowers, George Kittle, Greg Olsen).
+     - Any Phase 1 dual-threat card is dynamically prioritized as a crown jewel, with Browns aggressively outbidding rivals.
+     - For all other Phase 1 deflation cards: Browns seeks the best deflation for the lowest cost (bang-for-buck), capping bids at 4–5 coins rather than squandering their initial bankroll on ordinary cards.
   4. **Round 4 Purse Exhaustion**: With Phase 2 players appearing and the guaranteed 30-coin grant arriving in Round 5, Browns aggressively spends remaining Phase 1 funds on the best available player before Round 5.
-  5. **Round 5+ Bully Purchasing (The 30-Coin War Chest)**: With 30+ coins in hand, Browns bullies rival CPUs on elite high-deflation targets (Mahomes 5/rd, Kelce 6/rd, Adrian Peterson, Marshawn Lynch, Hall of Fame legends, 7-deflate nukes), willing to pay up to effMax.
-  6. **Auction Board Tier System & Solitary Target Scarcity**:
-     - When evaluating an auction card, Browns analyzes all other players on the auction board.
-     - If a superstar (or Brock Bowers in Phase 1) is the *only* viable deflation player on the board and all other options are pure coins, Browns recognizes extreme scarcity and bids with high urgency.
-     - *Walk-Away Ceiling*: If rival bidding escalates out of control (e.g. 14+ early or 22+ late), Browns exercises disciplined restraint, walks away, and preserves coins for future rounds.
+  5. **Round 5+ Bully Purchasing (The 30-Coin War Chest)**: With 30+ coins in hand, Browns bullies rival CPUs on elite high-deflation targets (Mahomes 5/rd, Kelce 6/rd, Adrian Peterson, Marshawn Lynch, Hall of Fame legends, 7-deflate nukes), budgeting spendable funds across remaining rounds.
+  6. **Dynamic Board-Tier System & Human-like Forward-Thinking Strategy (Zero Rigid Ceilings)**:
+     - Replaced rigid hardcoded ceilings (e.g. 14+ or 22+ auto-pass) with dynamic economic valuation based on board state:
+       * **Lifetime Deflation Calculation**: `instantDeflate + (recurringDeflate * roundsRemaining)`.
+       * **Alternative Board Options & Marginal Upgrade**: Evaluates all other cards on the board. If comparable top-tier deflaters exist (e.g. both Mahomes and Kelce), Browns steps aside when bidding gets competitive and waits for the alternative.
+       * **Solitary Monopoly Scarcity**: If a card is the *only* viable deflation player on the board and all other options are pure coins, the fallback is a wasted round (0 deflation); Browns bids with elevated urgency up to their full spendable purchasing power.
+       * **Purse Lifecycle & Runway**: In Rounds 1–4, budgets across the 20-coin purse before the Round 5 cash drop; in Round 5+, liquidates the war chest so coins are never left unspent when the game ends.
 
 ---
 
@@ -1702,23 +1704,23 @@ Tested Baseline C2 vs Micro-Tuned Champion (`agg: 1.12, instMax: 1.04, recur: 1.
 - Removed the delayed grant from `refreshPhase.onBegin` so funds are fully spendable during the Round 5 auction.
 - Updated ability card description in [src/GameData.js](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/GameData.js) line 8 to reflect: *"Players can’t give you coins. Gain 30 coins at the start of round 5"*.
 
-#### B. Card Scoring (`scoreCardForPlayer`)
+#### B. Dynamic Card Scoring (`scoreCardForPlayer`)
 - Pure coin cards return a flat `-100.0` score for the Browns.
-- In Phase 1 (Rounds 1–3): Brock Bowers is boosted to a priority score of `24.0`. Other Phase 1 deflaters are scored on a bang-for-buck ratio: `(deflate * 3.5) + (efficiency * 2.5)`.
-- In Phase 2+ (Rounds 4+): Elite deflaters (Mahomes 5/rd, Kelce 6/rd, Peterson, Lynch, HOF cards, and $\ge 4$ recurring deflaters) are assigned priority scores of 20.0 to 30.0.
+- In Phase 1 (Rounds 1–3): Any dual-threat deflater (`recurringDeflate >= 2 && instantDeflate >= 1`, including Brock Bowers, George Kittle, Greg Olsen) is boosted to a priority score of `24.0`. Other Phase 1 deflaters are scored on a bang-for-buck ratio: `(deflate * 3.5) + (efficiency * 2.5)`.
+- In Phase 2+ (Rounds 4+): High-deflation superstars (recurring $\ge 4$ or instant $\ge 6$ or HOF cards) are assigned priority scores of 20.0 to 30.0 based on raw deflation power.
 
-#### C. Nomination Strategy (`chooseCpuNominationCard`)
+#### C. Dynamic Nomination Strategy (`chooseCpuNominationCard`)
 - Dedicated Browns nomination logic:
-  - In Phase 1: Brock Bowers is nominated #1 whenever available. Otherwise, highest efficiency Phase 1 deflaters are prioritized.
+  - In Phase 1: Dual-threat centerpieces (Bowers, Kittle, Olsen, or any 2 recurring + instant card) are nominated #1 whenever available. Next, 2+ recurring deflaters are nominated. Otherwise, highest efficiency Phase 1 deflaters are prioritized.
   - In Phase 2+: Elite superstars (Mahomes, Kelce, HOF, 4+ deflaters) are nominated immediately.
   - Pure coin cards are completely skipped.
 
-#### D. Auction Bidding & Solitary Scarcity (`evaluateCpuAuctionBid`)
+#### D. Human-like Auction Bidding & Board-Tier State (`evaluateCpuAuctionBid`)
 - Any card with `cardScore <= -50` is instantly rejected (`shouldBid: false, bidAmount: 0`).
-- In Phase 1: Brock Bowers valuation allows bidding up to 13–14 coins. Other Phase 1 deflaters are capped at 4–5 coins unless solitary scarcity elevates the ceiling.
-- In Round 4: Browns spends remaining purse before the Round 5 cash drop.
-- In Round 5+: With 30+ coins, Browns bids up to effMax on elite deflation centerpieces.
-- Solitary Star Scarcity & Walk-Away Ceiling: When `isSolitaryViableTarget` is detected, base valuation is boosted by +4 to +6 coins up to a strict walk-away ceiling (13 in Phase 1, 20–22 in Phase 2+). If rival bids exceed the ceiling, Browns walks away and lets opponents overpay.
+- Calculates lifetime deflation value for the current card and every alternative card remaining on the auction board.
+- If multiple top-tier alternatives are present, Browns avoids bidding wars and waits for the alternative.
+- If solitary target is present, Browns leverages their purse to lock in the monopoly value.
+- Phase 1 bankroll protection: Restricted price-bumping when `nextBid > valuation` in Rounds 1–4 so Browns never risks getting stuck paying above their budget on ordinary cards.
 - Boundary condition fix: Updated `monopolyCap` to `Math.max(card.minBid, (G.board?.highestBid || 0) + 1, richestOpponentCoins + 1)` ensuring coin leaders do not pass against active rival bids when an opponent goes all-in.
 
 ---

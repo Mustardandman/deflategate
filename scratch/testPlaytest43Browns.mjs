@@ -19,6 +19,16 @@ function createTestGame(round = 1, brownsCoins = 20, brownsPsi = 45) {
   G.players['0'].isCpu = true;
   G.players['0'].genome = { ...ACTIVE_TEAM_GENOMES.browns };
 
+  for (let i = 1; i < 7; i++) {
+    const seat = String(i);
+    if (G.players[seat]) {
+      G.players[seat].psi = 38;
+      G.players[seat].coins = 12;
+      G.players[seat].team = TEAMS[i] || TEAMS[0];
+      G.players[seat].isCpu = true;
+    }
+  }
+
   return G;
 }
 
@@ -84,44 +94,45 @@ console.log('Test 2: Pure Coin Cards Rejection');
 }
 
 // -------------------------------------------------------------
-// Test 3: Phase 1 Crown Jewel (Brock Bowers Outbid up to 12-13 Coins)
+// Test 3: Phase 1 Dual-Threat Crown Jewels (Bowers & Kittle Dynamic Targeting)
 // -------------------------------------------------------------
-console.log('Test 3: Brock Bowers Phase 1 Priority Outbid');
+console.log('Test 3: Phase 1 Dual-Threat Crown Jewels (Any 2 recurring + instant deflate card)');
 {
   const G = createTestGame(1, 20, 45);
-  const bowers = {
-    id: 'brock_bowers',
-    name: 'Brock Bowers',
+  // Test with George Kittle (same effect as Brock Bowers: 2 recurring + 2 instant)
+  const kittle = {
+    id: 'george_kittle',
+    name: 'George Kittle',
     position: 'TE',
     phase: 1,
-    minBid: 2,
-    maxBid: 16,
+    minBid: 1,
+    maxBid: 15,
     effects: [
       { type: 'deflate', amount: 2, perRound: true },
       { type: 'deflate', amount: 2, perRound: false }
     ]
   };
 
-  G.board.auctionPlayers = [bowers];
+  G.board.auctionPlayers = [kittle];
   G.board.activeAuctionCardIndex = 0;
-  G.board.highestBid = 8;
+  G.board.highestBid = 8; // nextBid = 9
   G.board.highestBidder = '1';
   G.board.passedAuctionPlayers = [];
   G.players['1'].coins = 15;
   G.players['1'].team = TEAMS.find(t => t.id === 'patriots');
 
   const bidDecision = evaluateCpuAuctionBid(G, '0');
-  console.log(`  Bowers at nextBid=9 with 20 coins: shouldBid = ${bidDecision.shouldBid}, bidAmount = ${bidDecision.bidAmount}`);
+  console.log(`  George Kittle (Dual-Threat) at nextBid=9 with 20 coins: shouldBid = ${bidDecision.shouldBid}, bidAmount = ${bidDecision.bidAmount}`);
 
   if (bidDecision.shouldBid && bidDecision.bidAmount >= 9) {
-    console.log('  -> PASS: Browns actively outbids rivals for Brock Bowers in Round 1!\n');
+    console.log('  -> PASS: Browns actively targets any dual-threat Phase 1 card (not just hardcoded Bowers)!\n');
   } else {
-    throw new Error(`FAIL: Browns should aggressively bid on Brock Bowers in Round 1`);
+    throw new Error(`FAIL: Browns should aggressively bid on George Kittle in Round 1`);
   }
 }
 
 // -------------------------------------------------------------
-// Test 4: Phase 1 Ordinary Deflater Discipline (Cap at 4-5 coins)
+// Test 4: Phase 1 Ordinary Deflater Discipline (Bang-for-Buck)
 // -------------------------------------------------------------
 console.log('Test 4: Ordinary Phase 1 Deflater Discipline (Bang-for-Buck)');
 {
@@ -150,9 +161,11 @@ console.log('Test 4: Ordinary Phase 1 Deflater Discipline (Bang-for-Buck)');
   G.board.highestBid = 6; // nextBid = 7
   G.board.highestBidder = '1';
   G.board.passedAuctionPlayers = [];
+  G.players['1'].coins = 15;
+  G.players['1'].team = TEAMS.find(t => t.id === 'chiefs');
 
   const bidDecision = evaluateCpuAuctionBid(G, '0');
-  console.log(`  Ordinary deflater at nextBid=7: shouldBid = ${bidDecision.shouldBid}`);
+  console.log(`  Ordinary deflater at nextBid=7: shouldBid = ${bidDecision.shouldBid}`, bidDecision);
 
   if (!bidDecision.shouldBid) {
     console.log('  -> PASS: Browns disciplined! Folds when price on ordinary deflater exceeds 4-5 coins.\n');
@@ -162,9 +175,9 @@ console.log('Test 4: Ordinary Phase 1 Deflater Discipline (Bang-for-Buck)');
 }
 
 // -------------------------------------------------------------
-// Test 5: Solitary Star Scarcity & Walk-Away Ceiling
+// Test 5: Dynamic Board-Tier State & Fallback Alternatives
 // -------------------------------------------------------------
-console.log('Test 5: Solitary Star Scarcity & Walk-Away Ceiling');
+console.log('Test 5: Dynamic Board-Tier State & Alternative Card Awareness');
 {
   const G = createTestGame(5, 35, 28);
   const mahomes = {
@@ -173,7 +186,7 @@ console.log('Test 5: Solitary Star Scarcity & Walk-Away Ceiling');
     position: 'QB',
     phase: 2,
     minBid: 2,
-    maxBid: 20,
+    maxBid: 25,
     effects: [
       { type: 'deflate', amount: 5, perRound: true },
       { type: 'coins', amount: 3, perRound: true }
@@ -182,51 +195,64 @@ console.log('Test 5: Solitary Star Scarcity & Walk-Away Ceiling');
   const pureCoin1 = { id: 'dk_metcalf', phase: 2, minBid: 2, maxBid: 10, effects: [{ type: 'coins', amount: 3, perRound: true }] };
   const pureCoin2 = { id: 'ceedee_lamb', phase: 2, minBid: 2, maxBid: 8, effects: [{ type: 'coins', amount: 5, perRound: true }] };
 
+  // Case A: Solitary Star (all other board cards are coins) -> Browns bids 15
   G.board.auctionPlayers = [mahomes, pureCoin1, pureCoin2];
   G.board.activeAuctionCardIndex = 0;
-
-  // Case A: At nextBid 15 with 35 coins, Browns should bid
   G.board.highestBid = 14;
   G.board.highestBidder = '1';
   G.board.passedAuctionPlayers = [];
   G.players['1'].coins = 30;
   G.players['1'].team = TEAMS.find(t => t.id === 'chiefs');
-  const bid15 = evaluateCpuAuctionBid(G, '0');
-  console.log(`  Mahomes as Solitary Star at nextBid=15: shouldBid = ${bid15.shouldBid}, bidAmount = ${bid15.bidAmount}`);
+  const bidSolitary = evaluateCpuAuctionBid(G, '0');
+  console.log(`  Case A: Mahomes as Solitary Star at nextBid=15: shouldBid = ${bidSolitary.shouldBid}, bidAmount = ${bidSolitary.bidAmount}`);
 
-  // Case B: At nextBid 23 (above walk-away ceiling 22), Browns should walk away
-  G.board.highestBid = 22;
+  // Case B: Board has ANOTHER elite superstar (Travis Kelce 6 deflate/rd)
+  // When rival pushes Mahomes price to 18, Browns recognizes Kelce is on the board
+  // and lets the rival overpay for Mahomes while Browns waits for Kelce!
+  const kelce = {
+    id: 'travis_kelce',
+    name: 'Travis Kelce',
+    position: 'TE',
+    phase: 2,
+    minBid: 2,
+    maxBid: 21,
+    effects: [{ type: 'deflate', amount: 6, perRound: true }]
+  };
+  G.board.auctionPlayers = [mahomes, kelce, pureCoin1];
+  G.board.activeAuctionCardIndex = 0;
+  G.board.highestBid = 18; // nextBid = 19
   G.board.highestBidder = '1';
   G.board.passedAuctionPlayers = [];
-  const bid23 = evaluateCpuAuctionBid(G, '0');
-  console.log(`  Mahomes at crazy price nextBid=23: shouldBid = ${bid23.shouldBid}`);
+  const bidWithAlt = evaluateCpuAuctionBid(G, '0');
+  console.log(`  Case B: Mahomes at nextBid=19 with Kelce also on board: shouldBid = ${bidWithAlt.shouldBid}`);
 
-  if (bid15.shouldBid && !bid23.shouldBid) {
-    console.log('  -> PASS: Browns bids aggressively on solitary star but respects walk-away ceiling!\n');
+  if (bidSolitary.shouldBid && !bidWithAlt.shouldBid) {
+    console.log('  -> PASS: Human-like board-tier reasoning! Pursues solitary star, but steps aside when equal superstar is on board!\n');
   } else {
-    throw new Error(`FAIL: Expected bid at 15 and walk-away at 23`);
+    throw new Error(`FAIL: Expected bid on solitary star and pass when equal superstar available`);
   }
 }
 
 // -------------------------------------------------------------
-// Test 6: Browns Nomination Strategy
+// Test 6: Dynamic Nomination Strategy (Targeting Any Dual-Threat)
 // -------------------------------------------------------------
-console.log('Test 6: Browns Nomination Strategy');
+console.log('Test 6: Dynamic Nomination Strategy');
 {
   const G = createTestGame(1, 20, 45);
-  const bowers = { id: 'brock_bowers', phase: 1, minBid: 2, maxBid: 16, effects: [{ type: 'deflate', amount: 2, perRound: true }, { type: 'deflate', amount: 2, perRound: false }] };
+  // Greg Olsen: Phase 1 dual-threat (2 recurring + 2 instant deflate)
+  const olsen = { id: 'greg_olsen', phase: 1, minBid: 1, maxBid: 14, effects: [{ type: 'deflate', amount: 2, perRound: true }, { type: 'deflate', amount: 2, perRound: false }] };
   const pureCoin = { id: 'dk_metcalf', phase: 1, minBid: 1, maxBid: 5, effects: [{ type: 'coins', amount: 3, perRound: true }] };
   const cheapDeflater = { id: 'jordan_love', phase: 1, minBid: 1, maxBid: 8, effects: [{ type: 'deflate', amount: 1, perRound: true }] };
 
-  G.board.auctionPlayers = [pureCoin, bowers, cheapDeflater];
+  G.board.auctionPlayers = [pureCoin, olsen, cheapDeflater];
   const nomIdx = chooseCpuNominationCard(G, '0');
   const nomCard = G.board.auctionPlayers[nomIdx];
-  console.log(`  Nominated card in Phase 1 with Bowers present: ${nomCard.id}`);
+  console.log(`  Nominated card in Phase 1 with Greg Olsen present: ${nomCard.id}`);
 
-  if (nomCard.id === 'brock_bowers') {
-    console.log('  -> PASS: Browns correctly nominates Brock Bowers first in Phase 1!\n');
+  if (nomCard.id === 'greg_olsen') {
+    console.log('  -> PASS: Browns dynamically nominates any dual-threat card (tested with Greg Olsen)!\n');
   } else {
-    throw new Error(`FAIL: Expected brock_bowers, got ${nomCard.id}`);
+    throw new Error(`FAIL: Expected greg_olsen, got ${nomCard.id}`);
   }
 }
 
