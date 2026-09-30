@@ -5,7 +5,7 @@ export const TEAMS = [
   { id: 'jets', name: 'Jets', initialPsi: 44, coins: 7, ability: 'Every time you pay the Maximum for a player deflate 4 PSI' },
   { id: 'ravens', name: 'Ravens', initialPsi: 42, coins: 14, ability: 'At the end of the round, if you control 3 different positions in your lineup, gain 3 coins' },
   { id: 'bengals', name: 'Bengals', initialPsi: 46, coins: 9, ability: 'Players with instant abilities give you +2 coins/deflate. When acquiring a player, you may discard them instead of replacing a player.' },
-  { id: 'browns', name: 'Browns', initialPsi: 45, coins: 20, ability: 'Players can’t give you coins. Gain 30 coins after round 5' },
+  { id: 'browns', name: 'Browns', initialPsi: 45, coins: 20, ability: 'Players can’t give you coins. Gain 30 coins at the start of round 5' },
   { id: 'steelers', name: 'Steelers', initialPsi: 48, coins: 12, ability: 'At the start of the round, if you are the richest player, give every other player a PSI' },
   { id: 'texans', name: 'Texans', initialPsi: 47, coins: 8, ability: 'During the Refresh Phase gain 2 coins and 2 deflate for each QB on your team' },
   { id: 'colts', name: 'Colts', initialPsi: 50, coins: 5, ability: 'You have unlimited player spots in your lineup. When you acquire a player, add them to your lineup as an additional member.' },

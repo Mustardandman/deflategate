@@ -1671,6 +1671,134 @@ Tested Baseline C2 vs Micro-Tuned Champion (`agg: 1.12, instMax: 1.04, recur: 1.
 
 **Conclusion**: Across more than 23,000 simulated games, the calibrated genome weights (`deflateWeight: 2.2, coinWeight: 1.15, recurringMult: 1.0–1.05, aggression: 1.12–1.15, reserveCoins: 2`) sit solidly at the global Pareto peak, virtually doubling parity win rates (23%–26% vs 14.3% in 7P; 22%–24% vs 10.0% in 10P) across all table sizes.
 
+---
+
+## Playtest 43: Cleveland Browns Strategic Overhaul & Board Tier Valuation (2026-09-30)
+
+### 1. Executive Summary & Franchise Profile
+- **Franchise**: Cleveland Browns
+- **Starting Condition**: 45 PSI (steep deflation burden), 20 Starting Coins (highest purse in the NFL).
+- **Franchise Ability**: *"Players can’t give you coins. Gain 30 coins at the start of round 5."*
+- **Primary Strategic Imperatives**:
+  1. **Strict Deflation Purity**: Browns receives zero coins from player card abilities. Pure coin cards (DK Metcalf, Justin Jefferson, CeeDee Lamb, etc.) are strictly worth 0 / negative valuation (`score <= -50`), never nominated, and never bid on.
+  2. **Start of Round 5 Cash Influx**: Browns receives their **+30 coins at the start of Round 5** (before the Round 5 auction begins), not delayed to the end of Round 5 during refresh.
+  3. **Phase 1 (Rounds 1–3) Crown Jewel & Bang-for-Buck Discipline**:
+     - In Phase 1, the maximum recurring deflation available is 2 deflate/round, plus Brock Bowers (2 deflate/round recurring + 2 instant deflate).
+     - Brock Bowers is the absolute centerpiece crown jewel of Phase 1: Browns outbids rivals aggressively (willing to spend up to 12–14 coins).
+     - For all other Phase 1 deflation cards: Browns seeks the best deflation for the lowest cost (bang-for-buck), capping bids at 4–5 coins rather than squandering their initial bankroll on ordinary +1/+2 cards.
+  4. **Round 4 Purse Exhaustion**: With Phase 2 players appearing and the guaranteed 30-coin grant arriving in Round 5, Browns aggressively spends remaining Phase 1 funds on the best available player before Round 5.
+  5. **Round 5+ Bully Purchasing (The 30-Coin War Chest)**: With 30+ coins in hand, Browns bullies rival CPUs on elite high-deflation targets (Mahomes 5/rd, Kelce 6/rd, Adrian Peterson, Marshawn Lynch, Hall of Fame legends, 7-deflate nukes), willing to pay up to effMax.
+  6. **Auction Board Tier System & Solitary Target Scarcity**:
+     - When evaluating an auction card, Browns analyzes all other players on the auction board.
+     - If a superstar (or Brock Bowers in Phase 1) is the *only* viable deflation player on the board and all other options are pure coins, Browns recognizes extreme scarcity and bids with high urgency.
+     - *Walk-Away Ceiling*: If rival bidding escalates out of control (e.g. 14+ early or 22+ late), Browns exercises disciplined restraint, walks away, and preserves coins for future rounds.
+
+---
+
+### 2. Implementation Details
+
+#### A. Timing Correction for Franchise Ability
+- Moved the +30 coin grant into `eventPhase.onBegin` and `preAuctionPhase.onBegin` in [src/Game.js](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js) when `G.board.round === 5`.
+- Removed the delayed grant from `refreshPhase.onBegin` so funds are fully spendable during the Round 5 auction.
+- Updated ability card description in [src/GameData.js](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/GameData.js) line 8 to reflect: *"Players can’t give you coins. Gain 30 coins at the start of round 5"*.
+
+#### B. Card Scoring (`scoreCardForPlayer`)
+- Pure coin cards return a flat `-100.0` score for the Browns.
+- In Phase 1 (Rounds 1–3): Brock Bowers is boosted to a priority score of `24.0`. Other Phase 1 deflaters are scored on a bang-for-buck ratio: `(deflate * 3.5) + (efficiency * 2.5)`.
+- In Phase 2+ (Rounds 4+): Elite deflaters (Mahomes 5/rd, Kelce 6/rd, Peterson, Lynch, HOF cards, and $\ge 4$ recurring deflaters) are assigned priority scores of 20.0 to 30.0.
+
+#### C. Nomination Strategy (`chooseCpuNominationCard`)
+- Dedicated Browns nomination logic:
+  - In Phase 1: Brock Bowers is nominated #1 whenever available. Otherwise, highest efficiency Phase 1 deflaters are prioritized.
+  - In Phase 2+: Elite superstars (Mahomes, Kelce, HOF, 4+ deflaters) are nominated immediately.
+  - Pure coin cards are completely skipped.
+
+#### D. Auction Bidding & Solitary Scarcity (`evaluateCpuAuctionBid`)
+- Any card with `cardScore <= -50` is instantly rejected (`shouldBid: false, bidAmount: 0`).
+- In Phase 1: Brock Bowers valuation allows bidding up to 13–14 coins. Other Phase 1 deflaters are capped at 4–5 coins unless solitary scarcity elevates the ceiling.
+- In Round 4: Browns spends remaining purse before the Round 5 cash drop.
+- In Round 5+: With 30+ coins, Browns bids up to effMax on elite deflation centerpieces.
+- Solitary Star Scarcity & Walk-Away Ceiling: When `isSolitaryViableTarget` is detected, base valuation is boosted by +4 to +6 coins up to a strict walk-away ceiling (13 in Phase 1, 20–22 in Phase 2+). If rival bids exceed the ceiling, Browns walks away and lets opponents overpay.
+- Boundary condition fix: Updated `monopolyCap` to `Math.max(card.minBid, (G.board?.highestBid || 0) + 1, richestOpponentCoins + 1)` ensuring coin leaders do not pass against active rival bids when an opponent goes all-in.
+
+---
+
+### 3. Calibrated Champion Genome
+The final optimized genome weights persisted to `src/ai/teamGenomes.js`, `src/ai/evolvedWeights.js`, and `src/ai/team_weights.json`:
+
+```json
+{
+  "deflateWeight": 4.5,
+  "coinWeight": 0,
+  "recurringMult": 1,
+  "aggression": 1,
+  "reserveCoins": 1,
+  "priceBumpProb": 0.14,
+  "synergyBonus": 1.5,
+  "firstClaimAggression": 1.35,
+  "postClaimAggression": 0.9,
+  "sub5UrgencyBonus": 2,
+  "richestBuffer": 1,
+  "instantMaxBidAggression": 1.15,
+  "boardStrengthWeight": 1,
+  "threatDefenseWeight": 1.2,
+  "superstarPriorityMult": 1.7
+}
+```
+
+---
+
+### 4. Tournament Sweeps & Empirical Validation (11,500 Matches Simulated)
+
+#### A. Comprehensive 13-Candidate Grid Sweep (6,500 Matches: 250 7P + 250 10P per config)
+| Rank | Candidate Configuration | 7P Win% | 10P Win% | Combined Win% | Avg Final PSI |
+|:---:|:---|:---:|:---:|:---:|:---:|
+| **1 🏆** | **Cand 9: First Claim Bully (`FCA: 1.35, Res: 1`)** | **69.2%** | **72.0%** | **70.6%** | **2.91** |
+| 2 | Cand 8: Superstar Dominance (`SS: 1.70, Res: 1`) | 67.2% | 70.0% | 68.6% | 3.01 |
+| 3 | Cand 5: High Deflate (`Def: 4.50, Res: 1`) | 72.8% | 64.0% | 68.4% | 3.04 |
+| 4 | Cand 3: Mod Reserve (`Res: 2`) | 67.2% | 68.8% | 68.0% | 2.62 |
+| 5 | Cand 10: Price Bumper (`Bump: 0.28, Res: 1`) | 68.4% | 67.6% | 68.0% | 2.67 |
+| 6 | Cand 11: Pure Aggressor Hybrid | 68.0% | 66.4% | 67.2% | 3.18 |
+| 7 | Cand 12: Zero-Reserve Maximalist (`Res: 0`) | 65.6% | 66.8% | 66.2% | 2.92 |
+| 8 | Cand 6: High Deflate (`Def: 5.00, Res: 0`) | 66.0% | 66.0% | 66.0% | 3.01 |
+| 9 | Cand 0: Baseline Evolved (`Res: 5`) | 65.6% | 65.2% | 65.4% | 3.31 |
+| 10 | Cand 2: Lean Reserve (`Res: 1`) | 66.8% | 63.2% | 65.0% | 2.77 |
+| 11 | Cand 4: High Aggression (`Agg: 1.20, Res: 1`) | 66.8% | 63.2% | 65.0% | 3.36 |
+| 12 | Cand 7: Aggressive Closer (`Sub5: 3.0, Res: 1`) | 70.4% | 58.4% | 64.4% | 3.33 |
+| 13 | Cand 1: Zero Reserve Baseline (`Res: 0`) | 64.0% | 62.0% | 63.0% | 3.52 |
+
+#### B. Micro-Tuning Adjacent Neighborhood Sweep (4,000 Matches: 250 7P + 250 10P per config)
+| Rank | Micro-Configuration | 7P Win% | 10P Win% | Combined Win% | Avg Final PSI |
+|:---:|:---|:---:|:---:|:---:|:---:|
+| **1 👑** | **Micro 5: `FCA: 1.35, Deflate: 4.50, SS: 1.70, Res: 1`** | **76.0%** | **73.6%** | **74.8%** | **2.17** |
+| 2 | Micro 7: `FCA: 1.35, Deflate: 4.40, SS: 1.60, Res: 2` | 70.0% | 72.0% | 71.0% | 2.37 |
+| 3 | Micro 3: `FCA: 1.35, Deflate: 4.40, SS: 1.55, Res: 1` | 69.6% | 71.6% | 70.6% | 2.89 |
+| 4 | Micro 1: `FCA: 1.35, SS: 1.40, Deflate: 3.93, Res: 1` | 68.8% | 70.0% | 69.4% | 3.00 |
+| 5 | Micro 6: `FCA: 1.35, SS: 1.60, Bump: 0.22, Def: 4.20` | 68.8% | 67.6% | 68.2% | 2.92 |
+| 6 | Micro 4: `FCA: 1.40, Deflate: 4.30, SS: 1.65, Res: 1` | 69.6% | 66.4% | 68.0% | 3.04 |
+| 7 | Micro 8: `FCA: 1.45, Deflate: 4.50, SS: 1.70, Res: 1` | 67.2% | 67.2% | 67.2% | 2.85 |
+| 8 | Micro 2: `FCA: 1.35, SS: 1.65, Deflate: 3.93, Res: 1` | 70.0% | 64.4% | 67.2% | 2.90 |
+
+#### C. Confirmatory 1,000-Match Head-to-Head Tournament
+- **Matches Simulated**: 1,000 total games (500 7-Player + 500 10-Player).
+- **7-Player Result**: 336 Wins / 500 Games (**67.2% Win Rate**), Avg PSI: 2.93, Avg Win Round: 6.35.
+- **10-Player Result**: 339 Wins / 500 Games (**67.8% Win Rate**), Avg PSI: 3.03, Avg Win Round: 6.16.
+- **Combined Metrics**: **67.50% Win Rate**, **2.98 Avg Final PSI**, successfully overcoming a 45 PSI starting burden in ~6.2 rounds.
+
+---
+
+### 5. Automated Verification Suite
+- **`scratch/testPlaytest43Browns.mjs`**:
+  - `Test 1: Start of Round 5 (+30 Coins)`: **PASS** (Coins jumped from 5 to 35, flag verified).
+  - `Test 2: Pure Coin Cards Rejection`: **PASS** (DK Metcalf score -100, shouldBid false).
+  - `Test 3: Brock Bowers Phase 1 Priority Outbid`: **PASS** (Outbid rival at nextBid 9).
+  - `Test 4: Ordinary Phase 1 Deflater Discipline`: **PASS** (Folded when price on ordinary deflater hit 7).
+  - `Test 5: Solitary Star Scarcity & Walk-Away Ceiling`: **PASS** (Bid 15 on solitary Mahomes; walked away at crazy 23-coin price).
+  - `Test 6: Browns Nomination Strategy`: **PASS** (Brock Bowers nominated #1 in Phase 1).
+- **Regression Tests**: Bengals (Playtest 42), Jets (Playtest 41), Ravens (Playtest 40), Patriots (Playtest 39), AI Intelligence (Playtest 34) all verified passing.
+- **Production Build**: `npm run build` completed in 7.59s with zero errors.
+
+
 
 
 

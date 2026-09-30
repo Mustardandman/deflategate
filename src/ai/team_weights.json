@@ -18,21 +18,21 @@
     "jetsMaxBidGap": 2
   },
   "browns": {
-    "deflateWeight": 3.93,
+    "deflateWeight": 4.5,
     "coinWeight": 0,
     "recurringMult": 1,
     "aggression": 1,
-    "reserveCoins": 5,
+    "reserveCoins": 1,
     "priceBumpProb": 0.14,
     "synergyBonus": 1.5,
-    "firstClaimAggression": 1.2,
+    "firstClaimAggression": 1.35,
     "postClaimAggression": 0.9,
     "sub5UrgencyBonus": 2,
     "richestBuffer": 1,
     "instantMaxBidAggression": 1.15,
     "boardStrengthWeight": 1,
     "threatDefenseWeight": 1.2,
-    "superstarPriorityMult": 1.4
+    "superstarPriorityMult": 1.7
   },
   "colts": {
     "deflateWeight": 2,

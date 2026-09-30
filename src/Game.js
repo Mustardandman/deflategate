@@ -1253,6 +1253,36 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       }
     }
   }
+  if (effectiveTeamId === 'browns') {
+    const hasAnyDeflate = card.effects?.some(e => e.type === 'deflate' || e.type === 'deflate_every_round');
+    // Hard Rule: Pure coin cards give Browns 0 coins and zero deflation. Strictly avoid!
+    if (!hasAnyDeflate && card.id !== 'tyreek_hill') {
+      return -100.0;
+    }
+
+    const currentRound = G?.board?.round || 1;
+    if (currentRound <= 3) {
+      if (card.id === 'brock_bowers') {
+        // Brock Bowers is the absolute crown jewel of Phase 1 (2 instant + 2 recurring deflate)
+        rawScore = Math.max(rawScore, 24.0);
+      } else {
+        // For other Phase 1 deflation cards: seek best deflation for lowest cost (bang-for-buck)
+        // Cap score so Browns does not overpay for ordinary +1/+2 deflaters
+        const deflateAmt = card.effects?.filter(e => e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        const efficiency = deflateAmt / Math.max(1, card.minBid);
+        rawScore = (deflateAmt * 3.5) + (efficiency * 2.5);
+      }
+    } else {
+      // Phase 2+ (Rounds 4+): High deflation superstars are paramount!
+      if (card.id === 'patrick_mahomes' || card.id === 'travis_kelce' || card.id === 'adrian_peterson' || card.id === 'marshawn_lynch') {
+        rawScore = Math.max(rawScore, 28.0);
+      } else if (card.phase === 'hof') {
+        rawScore = Math.max(rawScore, 30.0);
+      } else if (card.effects?.some(e => e.type === 'deflate' && e.amount >= 4)) {
+        rawScore = Math.max(rawScore, 20.0);
+      }
+    }
+  }
 
   // Cards with low Max Bid
   const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
@@ -1534,6 +1564,43 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
       });
     if (affordableMaxJets.length > 0) {
       return affordableMaxJets[0].index;
+    }
+  }
+
+  // Browns Nomination Strategy:
+  // User Strategic Vision:
+  // - Strictly NEVER nominate pure coin cards (score <= 0).
+  // - Phase 1 (Rounds 1-3):
+  //   1. Nominate Brock Bowers if revealed and affordable (Phase 1 crown jewel).
+  //   2. Nominate best deflation card for lowest minBid (highest efficiency bang-for-buck).
+  // - Phase 2+ (Rounds 4+):
+  //   1. Nominate high deflation superstars (Patrick Mahomes, Travis Kelce, Adrian Peterson, Marshawn Lynch, Derrick Henry, HOF legends).
+  //   2. Nominate high instant deflation nukes (Aaron Jones, Jahmyr Gibbs, Kenneth Walker).
+  //   3. Nominate any card with positive deflation.
+  if (effectiveTeamId === 'browns') {
+    const deflateEligible = eligibleCards.filter(item => item.score > 0);
+    if (deflateEligible.length > 0) {
+      const currentRound = G.board.round || 1;
+      if (currentRound <= 3) {
+        // Phase 1: Bowers first
+        const bowers = deflateEligible.find(item => item.card.id === 'brock_bowers' && currentPlayer.coins >= item.card.minBid);
+        if (bowers) return bowers.index;
+
+        // Otherwise highest efficiency (deflate / minBid)
+        const sortedEfficiency = [...deflateEligible].sort((a, b) => {
+          const defA = a.card.effects?.filter(e => e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+          const defB = b.card.effects?.filter(e => e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+          const effA = defA / Math.max(1, a.card.minBid);
+          const effB = defB / Math.max(1, b.card.minBid);
+          if (effB !== effA) return effB - effA;
+          return a.card.minBid - b.card.minBid; // cheaper first
+        });
+        return sortedEfficiency[0].index;
+      } else {
+        // Phase 2+ (Rounds 4+): highest raw score / deflation superstars first
+        deflateEligible.sort((a, b) => b.score - a.score);
+        return deflateEligible[0].index;
+      }
     }
   }
 
@@ -2170,7 +2237,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // Bengals can spend freely on high-value instant cards without hoarding restriction!
   const isJetsMaxTarget = (effectiveTeamId === 'jets' && (effMax <= 5 || currentPlayer.coins >= effMax));
   const isBengalsInstantTarget = (effectiveTeamId === 'bengals' && (card.effects?.some(e => !e.perRound) || cardScore >= 12.0));
-  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
+  const isBrownsTarget = (effectiveTeamId === 'browns' && (G.board.round >= 5 || card.id === 'brock_bowers'));
+  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
@@ -2348,6 +2416,58 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  // Browns Valuation Strategy:
+  // User Strategic Vision:
+  // - Pure coin cards give 0 coins and zero deflation -> strictly zero valuation / do not bid.
+  // - Phase 1 (Rounds 1-3):
+  //   * Brock Bowers is the crown jewel (2 instant + 2 recurring deflate): willing to spend up to 12-14 coins.
+  //   * All other Phase 1 deflation cards: seek best deflation for lowest cost (bang-for-buck). Cap valuation at 3-5 coins.
+  // - Round 4: Phase 2 arrives. Spend remaining Phase 1 purse on the best available player before the Round 5 cash drop.
+  // - Round 5+: With 30+ coins, bully auctions on high deflation cards (Mahomes, Kelce, Peterson, Lynch, HOF, nukes), paying up to effMax.
+  // - Solitary Star Scarcity: If this is the ONLY viable deflation card on the board and all others are junk/coins,
+  //   Browns values winning it highly, up to their walk-away ceiling. If rival bids exceed the walk-away ceiling,
+  //   Browns folds, preserves coins, and takes the cheap fallback.
+  if (effectiveTeamId === 'browns') {
+    if (cardScore <= -50) {
+      return { shouldBid: false, bidAmount: 0 };
+    }
+
+    const currentRound = G.board.round || 1;
+    const viableOtherCount = otherScores.filter(s => s > 0).length;
+    const isSolitaryViableTarget = (cardScore > 0 && viableOtherCount === 0);
+
+    if (currentRound <= 3) {
+      if (card.id === 'brock_bowers') {
+        // Brock Bowers: crown jewel of Phase 1
+        baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(currentPlayer.coins, 13)));
+      } else {
+        // Other Phase 1 deflation cards: bang-for-buck, cap at 4-5 coins unless solitary target
+        const phase1Cap = isSolitaryViableTarget ? Math.min(effMax, Math.min(currentPlayer.coins, 8)) : Math.min(effMax, Math.max(card.minBid, 4));
+        baseValuation = Math.min(baseValuation, phase1Cap);
+      }
+    } else if (currentRound === 4) {
+      // Round 4: Spend remaining Phase 1 budget on best available deflation player
+      if (cardScore >= 15.0 || isSolitaryViableTarget) {
+        baseValuation = Math.max(baseValuation, Math.min(effMax, currentPlayer.coins));
+      } else if (cardScore > 0) {
+        baseValuation = Math.max(baseValuation, Math.min(effMax, Math.round(currentPlayer.coins * 0.75)));
+      }
+    } else {
+      // Rounds 5+: 30-coin war chest unleashed!
+      if (cardScore >= 18.0 || isSuperstar || card.phase === 'hof') {
+        baseValuation = Math.max(baseValuation, Math.min(effMax, currentPlayer.coins));
+      } else if (cardScore >= 8.0) {
+        baseValuation = Math.max(baseValuation, Math.min(effMax, Math.round(currentPlayer.coins * 0.70)));
+      }
+    }
+
+    // Walk-Away Ceiling: In solitary target situations, if bidding gets too crazy, walk away and save coins!
+    const walkAwayCeiling = (currentRound <= 3) ? (card.id === 'brock_bowers' ? 14 : 7) : (currentRound === 4 ? Math.min(currentPlayer.coins, 16) : Math.min(effMax, 22));
+    if (nextBid > walkAwayCeiling) {
+      return { shouldBid: false, bidAmount: 0 };
+    }
+  }
+
   // Playtest 20 Tuning: Board Parity Principle (e.g. TJ Hockenson when all board cards are good)
   // When multiple cards remain on board and all are roughly equal high-tier strength,
   // the marginal value of winning THIS specific card over whoever is left is tiny (1-2 coins).
@@ -2397,16 +2517,22 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (betterCardsCount >= 1 && isMidTierPhase1) {
     valuation = Math.min(valuation, 4);
   }
+  if (effectiveTeamId === 'ravens' && (G.board.round || 1) === 1 && !isRavensR1Star) {
+    valuation = Math.min(valuation, 3);
+  }
+  if (effectiveTeamId === 'patriots' && (G.board.round || 1) === 1 && !isPatriotsR1Premier) {
+    valuation = Math.min(valuation, 3);
+  }
 
   if (isCoinLeader) {
-    const monopolyCap = Math.max(card.minBid, richestOpponentCoins + 1);
+    const monopolyCap = Math.max(card.minBid, (G.board?.highestBid || 0) + 1, richestOpponentCoins + 1);
     if (valuation > monopolyCap) {
       valuation = monopolyCap;
     }
   }
 
   valuation = Math.min(valuation, spendableCoins);
-  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals') {
+  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns') {
     valuation = Math.min(valuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
   }
 
@@ -3224,11 +3350,6 @@ export const calculateRefreshResults = (G) => {
 
     if (effectiveTeamId === 'browns') {
       lineupCoins = 0;
-      if (G.board.round === 5 && !p.hasBrownsBonus) {
-        p.coins += 30;
-        p.hasBrownsBonus = true;
-        addLog(G, `Browns Ability: Reached Round 5! Gained +30 coins.`);
-      }
     }
 
     if (effectiveTeamId === 'cowboys') bonusCoins += 2;
@@ -4621,6 +4742,17 @@ export const DeflategateGame = {
           addLog(G, `⭐ Hall of Fame legends shuffled into the player deck at Round 7!`);
         }
 
+        // Browns Ability: At start of Round 5, gain +30 coins
+        Object.keys(G.players).forEach(id => {
+          const p = G.players[id];
+          const effTeam = getEffectiveTeamId(p);
+          if (effTeam === 'browns' && G.board.round >= 5 && !p.hasBrownsBonus) {
+            p.coins += 30;
+            p.hasBrownsBonus = true;
+            addLog(G, `Browns Ability: Start of Round 5! Gained +30 coins.`);
+          }
+        });
+
         // Reveal Event (with safety if deck runs low) - draws from top of deck (index 0)
         let ev = G.decks.event.shift();
         if (!ev) {
@@ -4842,6 +4974,17 @@ export const DeflategateGame = {
       turn: { activePlayers: ActivePlayers.ALL },
       onBegin: ({ G, ctx, events }) => {
         G.board.preAuctionComplete = false;
+
+        // Browns Ability: At start of Round 5, gain +30 coins (safety check)
+        Object.keys(G.players).forEach(id => {
+          const p = G.players[id];
+          const effTeam = getEffectiveTeamId(p);
+          if (effTeam === 'browns' && G.board.round >= 5 && !p.hasBrownsBonus) {
+            p.coins += 30;
+            p.hasBrownsBonus = true;
+            addLog(G, `Browns Ability: Start of Round 5! Gained +30 coins.`);
+          }
+        });
 
         // Draw auction cards for the round
         const regularCards = [];
