@@ -1800,6 +1800,90 @@ The final optimized genome weights persisted to `src/ai/teamGenomes.js`, `src/ai
 - **Regression Tests**: Bengals (Playtest 42), Jets (Playtest 41), Ravens (Playtest 40), Patriots (Playtest 39), AI Intelligence (Playtest 34) all verified passing.
 - **Production Build**: `npm run build` completed in 7.59s with zero errors.
 
+---
+
+## Playtest 44: Pittsburgh Steelers AI Strategic Overhaul & Predictive Richest Hegemony
+
+### 1. Executive Summary & Diagnostic Baseline
+- **Franchise Profile**: Initial PSI: **48 PSI** (Highest burden in the game), Initial Purse: **12 Coins**.
+- **Franchise Ability**: *"At the start of the round, if you are the richest player, give every other player a PSI."*
+  - In a 7-Player game: **-6 PSI to Steelers**, **+1 PSI to all 6 opponents** (Net 12-PSI swing relative to the field every round!).
+  - In a 10-Player game: **-9 PSI to Steelers**, **+1 PSI to all 9 opponents** (Net 18-PSI swing relative to the field every round!).
+- **Baseline Diagnostics (400 Matches)**:
+  - 7-Player: **11.0% Win Rate**, **45.84 Avg Final PSI** (barely deflating 2 PSI all game!), **Ability Trigger Rate: 3.6%**.
+  - 10-Player: **20.0% Win Rate**, **47.04 Avg Final PSI**, **Ability Trigger Rate: 1.2%**.
+  - **Root Cause**: The Steelers AI had no concept of its ability's massive value, lacked opponent purse prediction, used arbitrary savings locks, and engaged in suicidal price bumps that blew its bankroll on cards it did not want.
+
+---
+
+### 2. User-Guided Strategic Architecture: Thinking Like a Human Player
+The user provided the exact mental model of an expert human playing the Steelers:
+1. **The 6–9 Deflation Swing as Priority #1**:
+   - The ability's -6 to -9 PSI drop is equivalent to or better than a Patrick Mahomes or Travis Kelce every single round, while simultaneously burdening every opponent.
+2. **Dynamic Coin vs. Deflate Valuation**:
+   - When trailing or in a tight race, compounding coin engines are priority #1 to capture the lead.
+   - When leading by a wide margin ($\ge 4$ coins), excessive coin hoarding is wasteful; pivot valuation into raw deflation and high-efficiency cards.
+3. **Opponent Purse Prediction**:
+   - Predict rivals' end-of-round bankrolls by factoring in active roster recurring coins, franchise passives (Cowboys +2, Ravens +3 for 3 pos, Texans +2*QB, Browns R5 +30, Dolphins bailout, Bills discard threat), and whether opponents have already won a card or are currently winning.
+4. **The Critical Trade-Off (Austerity vs. Investment)**:
+   - If passing guarantees being strictly richest next round (`isRichestIfPass === true`), but bidding `nextBid` would lose the title, **PASS**! Guaranteed 6 to 9 deflation vastly outperforms an ordinary player.
+   - In Round 1 against 20-coin juggernauts (Browns/Broncos), spending 5–7 coins on a 3-coin/round player fails because rivals finish with 14+ coins; instead, cap bids at 2 coins, preserve starting capital, and seize the richest title in Round 2!
+5. **Board Alternatives Discipline**:
+   - If viable alternatives exist in the auction row, do not blow the entire surplus on the first card—cap bids at 60% of maxBid and let rivals overpay.
+6. **Endgame Closer Pivot**:
+   - When Steelers reaches $\le 18$ PSI or Round $\ge 7$, holding coins is secondary to crossing 0 PSI; pivot bankroll into raw deflation nukes.
+
+---
+
+### 3. Core Engine Implementations (`src/Game.js`)
+1. **Dynamic Roster & Margin Scoring (`scoreCardForPlayer`)**:
+   - Computes `coinMargin = player.coins - maxOppCoins`.
+   - If `coinMargin >= 4`: raw deflation weighted heavily (+3.5 instant, +4.0 recurring); moderate bonus for coins.
+   - If `coinMargin < 4`: compounding lifetime coins weighted heavily (`lifetimeCoins * 2.5`) to capture dominance.
+2. **Opponent Prediction Engine (`predictRivalsNextRoundPurse`)**:
+   - Full projection of every opponent's end-of-round cash incorporating rosters, abilities, and auction state.
+3. **Strategic Auction Bidding (`evaluateCpuAuctionBid`)**:
+   - Compares `projectedWinCoins` vs `projectedPassCoins` against `maxPredictedOppCoins`.
+   - Folds when bidding sacrifices the 6–9 PSI transfer.
+   - Bids within safe surplus when remaining richest.
+   - Limits Phase 1 spending against 20-coin rivals to $\le 2$ coins.
+   - Endgame pivot at $\le 18$ PSI to close out matches.
+4. **Protective Price Bumping (`safeRiskForMe`)**:
+   - Restricted to `false` for Steelers when `nextBid > valuation`, eliminating accidental bankroll sabotage.
+5. **Tactical Nomination (`chooseCpuNominationCard`)**:
+   - When trailing, nominates high-cost bait cards to drain rivals' coins.
+   - When leading, nominates recurring coin cards or cheap surplus pickups.
+
+---
+
+### 4. Empirical Tuning & Tournament Validation
+
+#### A. Round 1 / Austerity Sweep (250 Matches Each, 7P)
+- **Max 2 Coins (Austere Pass)**: **22.4% Win Rate**, **13.70 Avg PSI**, **53.8% Ability Triggers**.
+- **Max 4 Coins (Balanced)**: **19.2% Win Rate**, **13.89 Avg PSI**, **53.0% Ability Triggers**.
+- **Max 6 Coins (Aggressive)**: **21.6% Win Rate**, **16.20 Avg PSI**, **49.6% Ability Triggers**.
+
+#### B. Confirmatory 1,000-Match Head-to-Head Tournament
+- **Matches Simulated**: 1,000 total games (500 7-Player + 500 10-Player).
+- **7-Player Result**: 141 Wins / 500 Games (**28.2% Win Rate** vs 11% baseline), **12.18 Avg Final PSI** (from 48 initial!), **50.0% Ability Triggers**.
+- **10-Player Result**: 191 Wins / 500 Games (**38.2% Win Rate** vs 20% baseline), **10.96 Avg Final PSI**, **44.4% Ability Triggers**.
+- **Combined Metrics**: **33.2% Overall Win Rate**, **11.57 Avg Final PSI**, deflating ~36.5 PSI from a 48 PSI starting burden in ~7.0 rounds.
+
+---
+
+### 5. Automated Verification Suite
+- **`scratch/testPlaytest44Steelers.mjs`**:
+  - `Test 1: Start of Round Richest Ability Transfer`: **PASS** (-6 PSI in 7P, alert verified).
+  - `Test 2: Passing to Secure Richest Title`: **PASS** (Passed 6-coin bid to protect 6-PSI ability drop).
+  - `Test 3: Spending Within Safe Surplus`: **PASS** (Bid 3 coins when remaining richest).
+  - `Test 4: Austerity in Round 1 Against 20-Coin Juggernauts`: **PASS** (Passed at 5 coins).
+  - `Test 5: Board Alternatives Discipline`: **PASS** (Stepped aside at 11 coins with Barkley on board).
+  - `Test 6: Endgame Closer Pivot`: **PASS** (Bid 13 on Mahomes at 14 PSI).
+  - `Test 7: Steelers Nomination Strategy`: **PASS** (Nominated bait card when trailing).
+- **Regression Suite**: Browns (PT 43), Bengals (PT 42), Jets (PT 41), Ravens (PT 40), Patriots (PT 39), AI Intelligence (PT 34) all verified passing.
+- **Production Build**: `npm run build` completed in 7.82s with zero errors.
+
+
 
 
 

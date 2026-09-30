@@ -1106,8 +1106,30 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     }
   }
   if (effectiveTeamId === 'steelers') {
-    const cardCoins = card.effects?.filter(e => e.type === 'coins').reduce((sum, e) => sum + e.amount, 0) || 0;
-    if (cardCoins > 0) rawScore += cardCoins * 1.6;
+    const activeOpponents = Object.keys(G.players || {}).filter(id => id !== playerID);
+    const maxOppCoins = activeOpponents.length > 0 ? Math.max(...activeOpponents.map(id => G.players[id]?.coins || 0)) : 0;
+    const coinMargin = (p.coins || 0) - maxOppCoins;
+    
+    const currentRound = G.board?.round || 1;
+    const estimatedEnd = calculateEstimatedGameEndRound(G);
+    const roundsRemaining = Math.max(1, estimatedEnd - currentRound + 1);
+
+    const cardRecurringCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+    const cardInstantCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+    const cardRecurringDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const cardInstantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+
+    // If Steelers has a comfortable coin lead (>= 4 coins ahead of everyone),
+    // they don't need excessive coin hoarding; pivot value to deflation and efficiency!
+    if (coinMargin >= 4) {
+      rawScore += (cardInstantDeflate * 3.5) + (cardRecurringDeflate * 4.0);
+      if (cardRecurringCoins > 0) rawScore += cardRecurringCoins * 2.0;
+    } else {
+      // In a tight race or trailing: compounding coin engines are high priority to establish richest dominance
+      const lifetimeCoins = cardInstantCoins + (cardRecurringCoins * roundsRemaining);
+      rawScore += lifetimeCoins * 2.5;
+      rawScore += (cardInstantDeflate * 2.0) + (cardRecurringDeflate * 2.5);
+    }
   }
   if (effectiveTeamId === 'patriots') {
     // 1. Pump & Dump Valuation:
@@ -1727,10 +1749,22 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     if (phase1Card) return phase1Card.index;
   }
 
-  // Steelers: If coin leader, nominate coin cards to expand bankroll dominance
-  if (effectiveTeamId === 'steelers' && currentPlayer.coins >= richestOpponentCoins) {
-    const coinCard = eligibleCards.find(item => item.card.effects?.some(e => e.type === 'coins') && item.score >= 3.0);
-    if (coinCard) return coinCard.index;
+  // Steelers Nomination Strategy:
+  // - If NOT yet coin leader (e.g. Rounds 1-2): Bait rivals by nominating high-cost or high-demand cards
+  //   that competitors will fight over, draining their purses so Steelers can overtake them!
+  // - If IS coin leader: Nominate recurring coin cards to solidify dominance, or cheap utility cards
+  //   that Steelers can win comfortably within their spendable surplus.
+  if (effectiveTeamId === 'steelers') {
+    const isLeadingCoins = currentPlayer.coins > richestOpponentCoins;
+    if (!isLeadingCoins) {
+      const baitCard = eligibleCards.find(item => item.card.maxBid >= 8 || item.card.phase >= 2 || item.card.effects?.some(e => e.type === 'deflate' && e.amount >= 3));
+      if (baitCard) return baitCard.index;
+    } else {
+      const coinCard = eligibleCards.find(item => item.card.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins' && e.amount >= 2));
+      if (coinCard) return coinCard.index;
+      const cheapTarget = eligibleCards.find(item => item.card.minBid <= 2 && item.card.effects?.some(e => e.type === 'deflate' || e.type === 'coins'));
+      if (cheapTarget) return cheapTarget.index;
+    }
   }
 
   // 49ers: Nominate cards that bring purse below 5 coins to trigger double deflation
@@ -1968,6 +2002,74 @@ export const evaluateBillsDiscardClaim = (G, billsId) => {
   }
 
   return bestCandidateAction;
+};
+
+// Predicts opponents' projected coin purses at the start of next round
+export const predictRivalsNextRoundPurse = (G, currentPlayerId, card, currentHighBid, currentBidderId) => {
+  const activeOpponents = Object.keys(G.players).filter(id => id !== currentPlayerId);
+  const oppPurses = {};
+
+  activeOpponents.forEach(id => {
+    const opp = G.players[id];
+    let coins = opp.coins;
+    const oppLineup = opp.lineup || [];
+
+    // Recurring coins from lineup
+    const recurring = oppLineup.reduce((sum, c) => {
+      return sum + (c.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0);
+    }, 0);
+    coins += recurring;
+
+    // Franchise refresh bonuses
+    const teamId = getEffectiveTeamId(opp);
+    if (teamId === 'cowboys') coins += 2;
+    if (teamId === 'ravens') {
+      const distinctPos = new Set(oppLineup.map(c => c.position).filter(pos => ['QB', 'WR', 'TE', 'RB'].includes(pos)));
+      if (distinctPos.size >= 3) coins += 3;
+    }
+    if (teamId === 'texans') {
+      const qbs = oppLineup.filter(c => c.position === 'QB').length;
+      coins += qbs * 2;
+    }
+    if (teamId === 'browns') {
+      // Browns cannot get coins from players, but get 30 coins at start of R5
+      if ((G.board.round + 1) >= 5 && !opp.hasBrownsBonus) {
+        coins = opp.coins + 30;
+      } else {
+        coins = opp.coins; // Ignore lineup coins
+      }
+    }
+    if (teamId === 'dolphins' && coins === 0) coins += 3;
+
+    // Bills discard ability threat: if Bills hasn't used ability and discard has high coin card
+    if (teamId === 'bills' && !opp.hasUsedBillsAbility && G.decks?.discard) {
+      const nabers = G.decks.discard.find(c => c.id === 'malik_nabers' || (c.effects?.some(e => e.type === 'coins' && e.amount >= 3)));
+      if (nabers && coins >= nabers.minBid) {
+        const nabersCoins = nabers.effects?.filter(e => e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+        coins += (nabersCoins - nabers.minBid);
+      }
+    }
+
+    // Auction activity:
+    const hasWon = opp.hasWonAuction || (opp.cardsWonThisRound || 0) >= 1;
+    if (hasWon) {
+      // Opponent already finished bidding
+      oppPurses[id] = coins;
+    } else if (currentBidderId === id) {
+      // Opponent is currently winning the active card!
+      coins = Math.max(0, coins - currentHighBid);
+      const cardRec = card?.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+      coins += cardRec;
+      oppPurses[id] = coins;
+    } else {
+      // Opponent has not won yet and is not currently high bidder
+      // They will likely spend at least 1-2 coins to win a card
+      coins = Math.max(0, coins - 2);
+      oppPurses[id] = coins;
+    }
+  });
+
+  return oppPurses;
 };
 
 export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
@@ -2258,7 +2360,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     (card.effects?.filter(e => e.type === 'deflate').reduce((s, e) => s + e.amount, 0) >= 3) ||
     (card.effects?.some(e => e.perRound && e.type === 'deflate' && e.amount >= 2))
   ));
-  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
+  const isSteelersTarget = (effectiveTeamId === 'steelers');
+  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
@@ -2270,15 +2373,6 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     : 0;
 
   const isCoinLeader = currentPlayer.coins > richestOpponentCoins;
-
-  // Steelers Ability: If richest player at start of round, give all opponents +1 PSI!
-  // Maintain savings reserve to protect the coin lead unless card is a true superstar
-  if (effectiveTeamId === 'steelers' && !isSuperstar) {
-    const buffer = teamGenome.richestBuffer !== undefined ? teamGenome.richestBuffer : 1;
-    if (isCoinLeader || (richestOpponentCoins - currentPlayer.coins <= buffer)) {
-      savingsReserve = Math.max(savingsReserve, Math.min(currentPlayer.coins, richestOpponentCoins + buffer));
-    }
-  }
 
   // Bills Discard Coordination: If a viable discard claim exists, reserve its minBid so Bills does not get locked out
   if (effectiveTeamId === 'bills' && !currentPlayer.hasUsedBillsAbility && G.decks.discard && G.decks.discard.length > 0) {
@@ -2597,6 +2691,99 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     baseValuation = targetValuation;
   }
 
+  // Steelers Valuation Strategy:
+  // Human-Level Economic Prediction & Bankroll Dominance:
+  // - Ability: Strictly richest at start of round siphons 1 PSI from every opponent (Steelers -6 to -9 PSI, opponents +1 PSI)!
+  // - 1. Endgame Closer Pivot: If PSI <= 18 or Round >= 7, crossing 0 PSI is prioritized over hoarding coins.
+  //      Bid up to full purse on game-winning deflation (Mahomes, Kelce, legends, 4-7 instant deflation nukes).
+  // - 2. Predict Opponent End-of-Round Purses:
+  //      * Considers active rosters, recurring income, and franchise abilities (Cowboys, Ravens, Texans, Browns, Dolphins, Bills).
+  //      * Tracks if opponents have already won this round or are currently winning.
+  // - 3. Critical Trade-Off (Austerity vs Investment):
+  //      * If PASSING makes Steelers strictly richest, but BIDDING would surrender the title, PASS!
+  //        (Guaranteed 6 to 9 deflation next round vastly outweighs any ordinary player).
+  //      * If Steelers can WIN and STILL be strictly richest, bid within safe surplus.
+  //      * If alternatives exist in the auction row, do not overpay on the first card (cap at 60% maxBid).
+  // - 4. If Steelers cannot be richest this round regardless (e.g. Round 1 against 20-coin Browns/Broncos):
+  //      * Strict austerity: cap bids at 2 coins on compounding engines; let rivals blow purses so Steelers takes the lead next round!
+  if (effectiveTeamId === 'steelers') {
+    const currentRound = G.board.round || 1;
+    const currentHighBid = G.board.highestBid || 0;
+    const currentBidderId = G.board.highestBidder;
+    const nextBid = (currentBidderId === null) ? card.minBid : (currentHighBid + 1);
+
+    const myLineup = currentPlayer.lineup || [];
+    const myLineupCoins = myLineup.reduce((sum, c) => {
+      return sum + (c.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0);
+    }, 0);
+
+    const cardRecCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+    const cardInstCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+    const cardRecDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const cardInstDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+
+    // 1. Endgame Closer Pivot
+    const closerThreshold = teamGenome.closerPsiThreshold !== undefined ? teamGenome.closerPsiThreshold : 18;
+    if (currentPlayer.psi <= closerThreshold || currentRound >= 7) {
+      const roundsLeft = Math.max(1, 10 - currentRound);
+      const totalDeflate = cardInstDeflate + (cardRecDeflate * roundsLeft);
+      if (totalDeflate >= 3 || cardInstDeflate >= currentPlayer.psi) {
+        if (nextBid <= currentPlayer.coins) {
+          return { shouldBid: true, bidAmount: nextBid, isChampionshipBid: (cardInstDeflate >= currentPlayer.psi) };
+        }
+      }
+    }
+
+    // 2. Predict opponent end-of-round purses
+    const oppPurses = predictRivalsNextRoundPurse(G, currentPlayerId, card, currentHighBid, currentBidderId);
+    const maxPredictedOppCoins = Math.max(0, ...Object.values(oppPurses));
+
+    // 3. Projected Steelers Purses
+    const projectedWinCoins = currentPlayer.coins - nextBid + myLineupCoins + cardRecCoins + cardInstCoins;
+    const projectedPassCoins = currentPlayer.coins - 1 + myLineupCoins;
+
+    const staysRichestIfWin = (projectedWinCoins > maxPredictedOppCoins);
+    const isRichestIfPass = (projectedPassCoins > maxPredictedOppCoins);
+
+    // Scan remaining cards on the board
+    const otherCards = (G.board.auctionPlayers || []).filter((c, idx) => c !== null && idx !== cardIndex);
+    const otherHasCoins = otherCards.some(c => c.effects?.some(e => e.type === 'coins'));
+    const otherHasDeflate = otherCards.some(c => c.effects?.some(e => e.type === 'deflate'));
+
+    // 4. Critical User Trade-Off:
+    // If PASSING guarantees richest (+6 to +9 PSI deflation swing!), but BIDDING loses the title: PASS!
+    if (isRichestIfPass && !staysRichestIfWin) {
+      return { shouldBid: false, bidAmount: 0 };
+    }
+
+    // 5. If we stay richest with this bid:
+    if (staysRichestIfWin) {
+      const safeSurplus = (currentPlayer.coins + myLineupCoins + cardRecCoins + cardInstCoins) - (maxPredictedOppCoins + 1);
+      let bidLimit = Math.min(currentPlayer.coins, nextBid + safeSurplus);
+
+      if (otherHasCoins || otherHasDeflate) {
+        const altCapRatio = teamGenome.altCapRatio !== undefined ? teamGenome.altCapRatio : 0.60;
+        const reasonableCap = Math.max(card.minBid + 1, Math.round(card.maxBid * altCapRatio));
+        bidLimit = Math.min(bidLimit, reasonableCap);
+      }
+
+      baseValuation = Math.min(effMax, bidLimit);
+    } else {
+      // 6. If we CANNOT be richest this round regardless:
+      // Austere investment: cap bids at 2 coins on compounding engines; let rivals blow their purses!
+      const r1MaxCoinBid = teamGenome.r1MaxCoinBid !== undefined ? teamGenome.r1MaxCoinBid : 2;
+      let allowedBid = 0;
+      if (cardRecCoins >= 2 && nextBid <= r1MaxCoinBid) {
+        allowedBid = nextBid;
+      } else if (cardRecCoins >= 1 && nextBid <= Math.min(2, r1MaxCoinBid)) {
+        allowedBid = nextBid;
+      } else if (cardInstDeflate >= 3 && nextBid <= 2) {
+        allowedBid = nextBid;
+      }
+      baseValuation = allowedBid;
+    }
+  }
+
   // Playtest 20 Tuning: Board Parity Principle (e.g. TJ Hockenson when all board cards are good)
   // When multiple cards remain on board and all are roughly equal high-tier strength,
   // the marginal value of winning THIS specific card over whoever is left is tiny (1-2 coins).
@@ -2652,7 +2839,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (effectiveTeamId === 'patriots' && (G.board.round || 1) === 1 && !isPatriotsR1Premier) {
     valuation = Math.min(valuation, 3);
   }
-  if (effectiveTeamId === 'browns') {
+  if (effectiveTeamId === 'browns' || effectiveTeamId === 'steelers') {
     valuation = Math.min(effMax, Math.min(spendableCoins, baseValuation));
   }
 
@@ -2664,7 +2851,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   valuation = Math.min(valuation, spendableCoins);
-  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns') {
+  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns' && effectiveTeamId !== 'steelers') {
     valuation = Math.min(valuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
   }
 
@@ -2732,7 +2919,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     const opponentCanAffordRaise = highestBidderPlayer && highestBidderPlayer.coins >= nextBid + bidStep;
     const safeRiskForMe = (effectiveTeamId === 'browns')
       ? ((G.board?.round || 1) >= 5 && nextBid <= Math.round(currentPlayer.coins * 0.40))
-      : (cardScore >= 0); // Colts strictly avoid bumping negative cards!
+      : (effectiveTeamId === 'steelers' ? false : (cardScore >= 0)); // Colts strictly avoid bumping negative cards!
 
     // #2 Threat Level Price Bump Scaling:
     // 1 Round Out (Red Threat): HIGHER price bump aggression (emergency table defense up to effMax)
