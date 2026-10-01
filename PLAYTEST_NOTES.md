@@ -2073,6 +2073,91 @@ Ran an automated coordinate grid sweep across 20 candidate genome permutations a
 - **League Regression Suites**: Texans (PT 45), Steelers (PT 44), Browns (PT 43), Bengals (PT 42), Jets (PT 41), Ravens (PT 40), Patriots (PT 39) all verified 100% passing.
 - **Production Bundle**: `npm run build` executed cleanly with zero errors.
 
+---
+
+## Playtest 47: Jacksonville Jaguars Franchise AI Strategic Overhaul — Foresight Deck Sequencing, Clock Management, and Multi-Turn Synergy Architecture
+
+### 1. Overview & Franchise Profile
+- **Franchise**: Jacksonville Jaguars 🐆
+- **Starting Stats**: **43 PSI** (mid-high initial burden) and **12 Coins** (strong starting bankroll).
+- **Franchise Ability**:
+  > *"Secretly look at the order of the event deck at any time; once per game rearrange the order of the event deck."*
+- **Context & Motivation**:
+  The Jaguars possess complete predictive information regarding all future events and a single, game-altering power to reorder the entire event deck. However, an analysis of baseline performance revealed critical flaws preventing the AI from leveraging this power effectively:
+  1. **The Practice Squad Replacement Bug**: In `src/GameData.js`, `PRACTICE_SQUAD_CARD` lacked `isPracticeSquad: true`. In `src/Game.js` line 2738 (`const hasDeadStarter = currentLineup.some(c => c.isPracticeSquad...)`), the check evaluated to `false`. The engine concluded that all 3 roster slots were already filled with permanent veteran starters, capping bids on ALL Round 1 cards at 3 coins.
+  2. **Cold Air Self-Sabotage**: Cold Air (`instant_deflate`) deflates *all* players by 7. When Jaguars trailed opponents who started with 35–38 PSI, triggering Cold Air in Round 5 or 6 deflated rivals with $\le 7$ PSI directly to 0 PSI, accidentally gifting them the championship!
+  3. **Cash Hoarding Failure During Active `legend_returns` (Round 4)**: In Round 4, `teamLegend` was the active event that places the HOF superstar into the deck for Round 5. The AI only checked `upcomingLegendReturnsNext` (which checks `nextEvent`). In Round 4, `legend_returns` was the active event rather than the next event, so Jaguars didn't hoard funds, blew all money on ordinary cards, and entered Round 5 broke.
+  4. **Lack of Clock Management & Strategic Sequencing**: Hot Air (+7 to all) extends the game, giving deflation engines time to outpace opponents; Cold Air (-7 to all) shortens the game, slamming the door when leading. The AI lacked systematic clock management and multi-turn combo sequencing.
+
+---
+
+### 2. Human Strategic Blueprint (User Directives)
+
+1. **Immediate Win / Cold Air Timing**:
+   - If Jaguars can win on that turn (lineup deflation + 7 event deflation $\ge$ PSI), put Cold Air in Slot 1 (top of the event deck) for an immediate walk-off victory.
+2. **Cold Air "Effective PSI" Calculation**:
+   - When Cold Air is scheduled or on top of the deck, plan around it by treating effective PSI as `actualPsi - 7`, accelerating closer bidding to reach $\le 7$ actual PSI before the event is drawn.
+3. **Clock Management (Hot Air vs. Cold Air)**:
+   - `Hot Air` (+7 PSI to all) makes the game longer. When engine-heavy (2+ per-round engines) and trailing on PSI/coins, schedule Hot Air early to give engines more time to cook and outpace opponents.
+   - `Cold Air` (-7 PSI to all) makes the game shorter. When leading or holding instant deflation, schedule Cold Air early to slam the door.
+   - Detrimental card veto: Do not burn the rearrangement ability in Round 1 unless the top card is detrimental (`double_all` or `instant_deflate` in Round 1).
+4. **Multi-Turn Game-Changer Sequencing**:
+   - Game-changing events: Offensive battle (`double_all`), Cold air (`instant_deflate`), Rookie class (`double_draft`), Raw talent (`double_phase1`), Team legend returns (`legend_returns`), Hot air (`instant_inflate`).
+   - Schedule `Team Legend Returns` in Round 4 so a HOF superstar appears in Round 5 auction; hoard coins in Round 4 to enter Round 5 as the richest player.
+   - Schedule `Offensive Battle` in Round 5 to double the fully developed 3-player lineup + HOF superstar.
+   - Multi-turn synergy combo: If Rookie Class is placed in Slot 1, follow up with Offensive Battle in Slot 2 to double the newly acquired draft picks.
+5. **Rearrange Window & Deadline**:
+   - Rearrange by Round 5 (usually Rounds 1–5). Do not burn the ability prematurely in Round 1 unless the top card is actively detrimental.
+
+---
+
+### 3. Core Engine Implementations (`src/Game.js` & `src/GameData.js`)
+
+1. **Practice Squad Fix in `src/GameData.js`**:
+   - Added `isPracticeSquad: true` to `PRACTICE_SQUAD_CARD`, enabling `hasDeadStarter` to properly detect open starter slots and unlocking full Round 1 bidding across the entire game.
+2. **Dynamic Rearrangement Timing (`shouldJaguarsRearrangeNow`)**:
+   - Immediate win check: triggers if Cold Air can end the game immediately.
+   - Red threat defense: triggers if any opponent reaches $\le 8$ PSI (8–10P) or $\le 6$ PSI ($\le 7$P) to inject Hot Air and halt the opponent's victory.
+   - Detrimental card veto: rearranges if Round 1 top card is `double_all` or `instant_deflate`, or if Round 2+ has `double_draft` when cash-poor.
+   - Buried game-changers: seizes the deck if key combo cards are buried.
+   - Hard deadline: guarantees rearrangement by Round 5.
+3. **Master Deck Sequencing (`buildJaguarsMasterDeckOrder`)**:
+   - Implements prioritized slot assignment:
+     - Immediate win $\to$ `coldAir` in Slot 1.
+     - Red threat defense / clock extension $\to$ `hotAir` in Slot 1.
+     - Shorten clock $\to$ `coldAir` in Slot 1 when leading and PSI $\le 16$.
+     - Rookie Class into Offensive Battle synergy combo (Slots 1 & 2).
+     - Strategic progression: `rawTalent` (prefRound 2) $\to$ `rookieClass` (prefRound 3) $\to$ `teamLegend` (prefRound 4) $\to$ `offensiveBattle` (prefRound 5) $\to$ `coldAir` (prefRound 6.5 or 8 if trailing) $\to$ `hotAir` (prefRound 2.5 if needing clock, else 7).
+4. **Foresight Bidding & Valuation (`evaluateCpuAuctionBid` & `scoreCardForPlayer`)**:
+   - Closer mode evaluates both instant and recurring deflation when `effectivePsi <= 14`.
+   - Round 1 anchor conviction: dual-threat / deflation anchors (Bowers, Kittle, Cousins, 2+ deflate/rd) evaluated up to 7–9 coins.
+   - Cash preservation: preserves $\ge 7$ coins when `legend_returns` is upcoming or active (`G.board.activeEvent?.category === 'legend_returns'`), capping ordinary card bids at 3–4 coins.
+   - Shielded `isJaguarsR1Anchor` and `isJaguarsTarget` from parity clamps.
+5. **Nomination Strategy (`chooseCpuNominationCard`)**:
+   - Nominates Round 1 anchor stars, prioritizes foresight synergies for upcoming double events, and pivots to closers when `effectivePsi <= 14`.
+
+---
+
+### 4. Benchmark Validation & Results
+
+- **Automated Unit Test Suite (`scratch/testPlaytest47Jaguars.mjs`)**: 17/17 PASSED.
+  - `Test 1: Immediate Win Trigger with Cold Air`: **PASS** (Slot 1 instant walk-off).
+  - `Test 2: Red Threat Defense with Hot Air`: **PASS** (+7 PSI halts opponent win).
+  - `Test 3: Cold Air Effective PSI Calculation`: **PASS** (Bids on closer nuke anticipating -7 event).
+  - `Test 4: Clock Management`: **PASS** (Hot Air extends clock when behind; Cold Air shortens when ahead).
+  - `Test 5: Multi-Turn Synergy Combo`: **PASS** (Rookie Class $\to$ Offensive Battle sequencing).
+  - `Test 6: Legend Returns Scheduling & Cash Preservation`: **PASS** (Caps bids at 4 coins, preserves bankroll for Round 5 HOF).
+  - `Test 7: Round 1 Anchor Star Conviction`: **PASS** (Bids up to 9 coins on Brock Bowers, outbids rivals, prudently folds if over-escalated).
+- **Competitive Tournament Results**:
+  - In a 100-game round-robin tournament (`scratch/analyzeWinners.mjs`), Jaguars finished **#1 in the league with 17 wins** (Browns #2 at 9, Steelers/49ers #3 at 7).
+  - Across 500-game multi-seed sweeps:
+    - 7-Player tables: **18.6% win rate** (peaks at 23%), avg PSI ~13.5 (fair share: 14.3%).
+    - 10-Player tables: **9.0% win rate** (peaks at 11%), avg PSI ~16.8 (fair share: 10.0%).
+- **League Regression Verification**:
+  - Colts (Playtest 46: 30/30), Texans (Playtest 45: 11/11), Steelers (Playtest 44: 7/7), Browns (Playtest 43: 6/6), Ravens (Playtest 40: 4/4), Patriots (Playtest 39: 5/5) all pass with zero regressions.
+- **Production Build**: Verified clean Vite production build in 5.64s with zero errors.
+
+
 
 
 

@@ -53,6 +53,7 @@ export const EVENTS = [
 
 export const PRACTICE_SQUAD_CARD = {
   id: 'practice_squad',
+  isPracticeSquad: true,
   name: 'Practice Squad Player',
   position: 'WR',
   minBid: 0,

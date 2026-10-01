@@ -827,6 +827,13 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
     return card.effects?.some(e => e.type === 'deflate' || e.type === 'coins');
   }
   if (teamId === 'jaguars') {
+    const foresight = evaluateJaguarsEventForesight(G, player?.id);
+    if (foresight?.upcomingDoublePhase1) {
+      return card.phase === 1;
+    }
+    if (foresight?.upcomingDoubleAll) {
+      return card.effects?.some(e => e.perRound);
+    }
     return card.effects?.some(e => e.type === 'deflate' || e.type === 'coins');
   }
   if (teamId === 'broncos') {
@@ -837,6 +844,248 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
     return copiedTeam && copiedTeam !== 'buccaneers' ? doesCardFitTeamStrategy(copiedTeam, card, player, G) : true;
   }
   return false;
+};
+
+// Jacksonville Jaguars Event Foresight & Strategic Rearrangement Engine:
+// "Look at the order of the event deck at any time. Once per game rearrange the order of the event deck."
+export const evaluateJaguarsEventForesight = (G, jaguarsPlayerId) => {
+  if (!G?.decks?.event) return null;
+  const p = jaguarsPlayerId ? G.players?.[jaguarsPlayerId] : null;
+
+  // Next round's event is G.decks.event[0], 2 rounds out is G.decks.event[1]
+  const nextEvent = G.decks.event[0] || null;
+  const inTwoRoundsEvent = G.decks.event[1] || null;
+
+  // Cold Air position tracking
+  const coldAirIndex = G.decks.event.findIndex(e => e && e.category === 'instant_deflate');
+  const coldAirRoundsAway = coldAirIndex !== -1 ? (coldAirIndex + 1) : null;
+  const upcomingColdAirSoon = (coldAirIndex === 0 || coldAirIndex === 1);
+
+  return {
+    nextEvent,
+    inTwoRoundsEvent,
+    coldAirIndex,
+    coldAirRoundsAway,
+    upcomingColdAirSoon,
+    upcomingDoubleAll: nextEvent?.category === 'double_all' || inTwoRoundsEvent?.category === 'double_all',
+    upcomingDoublePhase1: nextEvent?.category === 'double_phase1' || inTwoRoundsEvent?.category === 'double_phase1',
+    upcomingDoubleDraft: nextEvent?.category === 'double_draft',
+    upcomingDoubleDraftSoon: nextEvent?.category === 'double_draft' || inTwoRoundsEvent?.category === 'double_draft',
+    upcomingFreeAgency: nextEvent?.category === 'free_agency',
+    upcomingFreeAgencySoon: nextEvent?.category === 'free_agency' || inTwoRoundsEvent?.category === 'free_agency',
+    upcomingHotAir: nextEvent?.category === 'instant_inflate' || inTwoRoundsEvent?.category === 'instant_inflate',
+    upcomingLegendReturns: nextEvent?.category === 'legend_returns' || inTwoRoundsEvent?.category === 'legend_returns',
+    upcomingLegendReturnsNext: nextEvent?.category === 'legend_returns',
+    upcomingTradeRumors: nextEvent?.category === 'pass_right'
+  };
+};
+
+export const shouldJaguarsRearrangeNow = (G, jaguarsPlayerId) => {
+  if (G.board.jaguarsAbilityUsed) return false;
+  const p = G.players[jaguarsPlayerId];
+  if (!p) return false;
+  const currentRound = G.board.round || 1;
+
+  // Calculate Jaguars' current lineup deflation output
+  const lineupDeflate = (p.lineup || []).reduce((sum, c) => {
+    return sum + (c.effects || []).filter(e => e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0);
+  }, 0);
+
+  // 1. Immediate Win Trigger:
+  // If Cold Air (-7) plus lineup deflation reaches <= 0 PSI on this upcoming turn:
+  const hasColdAir = G.decks.event.some(e => e && e.category === 'instant_deflate');
+  if (hasColdAir && (p.psi - (lineupDeflate + 7) <= 0)) {
+    return true; // WIN NOW!
+  }
+
+  // 2. Red Threat Defense (Anti-Loss Veto):
+  // If an opponent has <= 6 PSI (or <= 8 in 8-10P) and about to win, and Jaguars is trailing:
+  const activeOpponents = Object.keys(G.players).filter(id => id !== jaguarsPlayerId);
+  const minOpponentPsi = Math.min(...activeOpponents.map(id => G.players[id]?.psi || 99));
+  const hasHotAir = G.decks.event.some(e => e && e.category === 'instant_inflate');
+  const numP = Object.keys(G.players).length;
+  const threatThreshold = numP >= 8 ? 8 : 6;
+  if (minOpponentPsi <= threatThreshold && p.psi > minOpponentPsi && hasHotAir) {
+    return true; // Defend from loss with Hot Air!
+  }
+
+  // User Directive: "I think the best time to rearrange is based on where the game changing cards are in the deck.
+  // I would label the following as game changing: Offensive battle, cold air, rookie class, raw talent, team legend returns."
+  const gameChangingCats = ['double_all', 'instant_deflate', 'double_draft', 'double_phase1', 'legend_returns'];
+  const top1 = G.decks.event[0];
+  const top2 = G.decks.event[1];
+  const isTop1GameChanger = top1 && gameChangingCats.includes(top1.category);
+  const isTop2GameChanger = top2 && gameChangingCats.includes(top2.category);
+
+  // 3. Misaligned Game-Changer on Top (Save it before it's wasted!):
+  // - Offensive Battle on top in Round 1: No real engines yet, only practice squads! Save it for later!
+  if (top1?.category === 'double_all' && currentRound === 1) {
+    return true;
+  }
+  // - Cold Air on top in Round 1: Compresses game prematurely before engines can cook! Save it for closer!
+  if (top1?.category === 'instant_deflate' && currentRound === 1) {
+    return true;
+  }
+  // - Rookie Class on top when broke (< 6 coins or poorest player in Round 2+): Opponents will win both picks! Save it!
+  const richestOppCoins = Math.max(...activeOpponents.map(id => G.players[id]?.coins || 0));
+  if (top1?.category === 'double_draft' && currentRound >= 2 && (p.coins < 6 || p.coins < richestOppCoins)) {
+    return true;
+  }
+  // - Cold Air on top when Jaguars is engine-heavy and trailing at high PSI:
+  //   Compresses the game prematurely before engines can cook! Save it for when closer!
+  const isEngineHeavy = (p.lineup || []).filter(c => !c.isPracticeSquad && c.id !== 'practice_squad' && !c.uniqueId?.startsWith('ps_') && (c.effects || []).some(e => e.perRound)).length >= 2;
+  if (top1?.category === 'instant_deflate' && isEngineHeavy && p.psi > minOpponentPsi + 4 && p.psi >= 25) {
+    return true;
+  }
+
+  // 4. Buried Game Changers (Neither top 1 nor top 2 is a game changer in Round 2+):
+  // If the next 2 rounds are mediocre filler events while game changers are buried >= 3 cards deep:
+  const hasGameChangersRemaining = G.decks.event.some(e => e && gameChangingCats.includes(e.category));
+  if (!isTop1GameChanger && !isTop2GameChanger && hasGameChangersRemaining && currentRound >= 2 && currentRound <= 5) {
+    return true; // Bring game changers forward!
+  }
+
+  // 5. Opportunistic Advantage Triggers (Round 2+):
+  // - Coin Leader Seize: If Jaguars holds >= 8 coins and is richest, and Rookie Class is in deck but not on top:
+  const hasRookieClass = G.decks.event.some(e => e && e.category === 'double_draft');
+  if (hasRookieClass && p.coins >= 8 && p.coins > richestOppCoins && top1?.category !== 'double_draft' && currentRound >= 2 && currentRound <= 5) {
+    return true;
+  }
+
+  // - Engine Maturity Seize: If Jaguars has 2+ real engines and Offensive Battle is in deck but not on top:
+  const nonPsCount = (p.lineup || []).filter(c => !c.isPracticeSquad && c.id !== 'practice_squad' && !c.uniqueId?.startsWith('ps_')).length;
+  const hasOffensiveBattle = G.decks.event.some(e => e && e.category === 'double_all');
+  if (hasOffensiveBattle && nonPsCount >= 2 && top1?.category !== 'double_all' && currentRound >= 2 && currentRound <= 5) {
+    return true;
+  }
+
+  // 6. Round 5 Deadline:
+  // "Normally I would rearrange event cards by round 5, usually round 1,2,3,4,5. And then you can plan the whole game around the order you set."
+  if (currentRound >= 5) {
+    return true;
+  }
+
+  return false;
+};
+
+export const buildJaguarsMasterDeckOrder = (G, jaguarsPlayerId) => {
+  const p = G.players[jaguarsPlayerId];
+  const currentRound = G.board.round || 1;
+  const remainingEvents = [...G.decks.event];
+
+  // Helper to extract an event by category
+  const takeEvent = (cat) => {
+    const idx = remainingEvents.findIndex(e => e && e.category === cat);
+    if (idx !== -1) {
+      return remainingEvents.splice(idx, 1)[0];
+    }
+    return null;
+  };
+
+  // Game-Changing Cards (per user directive):
+  // Offensive battle (double_all), Cold air (instant_deflate), Rookie class (double_draft),
+  // Raw talent (double_phase1), Team legend returns (legend_returns), plus Hot air (instant_inflate)
+  const offensiveBattle = takeEvent('double_all');
+  const coldAir = takeEvent('instant_deflate');
+  const rookieClass = takeEvent('double_draft');
+  const rawTalent = takeEvent('double_phase1');
+  const teamLegend = takeEvent('legend_returns');
+  const hotAir = takeEvent('instant_inflate');
+
+  const activeOpponents = Object.keys(G.players).filter(id => id !== jaguarsPlayerId);
+  const minOpponentPsi = Math.min(...activeOpponents.map(id => G.players[id]?.psi || 99));
+  const richestOppCoins = Math.max(...activeOpponents.map(id => G.players[id]?.coins || 0));
+  const isCoinLeader = p.coins >= richestOppCoins && p.coins >= 8;
+  const lineupDeflate = (p.lineup || []).reduce((sum, c) => sum + (c.effects || []).filter(e => e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0), 0);
+  const nonPsLineup = (p.lineup || []).filter(c => !c.isPracticeSquad && c.id !== 'practice_squad' && !c.uniqueId?.startsWith('ps_'));
+  const engineCount = nonPsLineup.filter(c => (c.effects || []).some(e => e.perRound)).length;
+  const instantCount = nonPsLineup.filter(c => (c.effects || []).some(e => !e.perRound && e.type === 'deflate')).length;
+  const isBehindOnPsi = p.psi > minOpponentPsi + 4;
+
+  // Immediate Win Check: Can Cold Air win immediately on turn 1?
+  if (coldAir && (p.psi - (lineupDeflate + 7) <= 0)) {
+    const reordered = [coldAir];
+    if (offensiveBattle) reordered.push(offensiveBattle);
+    if (teamLegend) reordered.push(teamLegend);
+    if (rookieClass) reordered.push(rookieClass);
+    if (rawTalent) reordered.push(rawTalent);
+    if (hotAir) reordered.push(hotAir);
+    return [...reordered, ...remainingEvents];
+  }
+
+  // Red Threat Defense: Opponent about to win? Put Hot Air first to inflate all opponents by +7!
+  const numPlayers = Object.keys(G.players).length;
+  const threatThreshold = numPlayers >= 8 ? 8 : 6;
+  if (hotAir && minOpponentPsi <= threatThreshold && p.psi > minOpponentPsi) {
+    const reordered = [hotAir];
+    if (rookieClass) reordered.push(rookieClass);
+    if (offensiveBattle) reordered.push(offensiveBattle);
+    if (teamLegend) reordered.push(teamLegend);
+    if (coldAir) reordered.push(coldAir);
+    if (rawTalent) reordered.push(rawTalent);
+    return [...reordered, ...remainingEvents];
+  }
+
+  // User Clock Management Directive:
+  // "Hot Air makes the game longer, Cold air makes the game shorter, if you have a lot of reoccuring
+  // engines and are behind on the coin/PSI race then Hot air is better to give you more time for your
+  // engines to cook and out pace your opponents. The opposite is true as well if you have acquired a lot of
+  // instants and are currently in the lead."
+  const needsMoreTimeToCook = (engineCount >= 2 && isBehindOnPsi);
+  const hasLeadAndWantsShorter = (!isBehindOnPsi && (p.psi <= 24 || instantCount >= 2));
+
+  const plannedSequence = [];
+
+  // Slot 1 (Immediate Next Round Event):
+  if (needsMoreTimeToCook && hotAir) {
+    plannedSequence.push(hotAir); // Extend the clock!
+  } else if (hasLeadAndWantsShorter && coldAir) {
+    plannedSequence.push(coldAir); // Shorten the clock / win immediately!
+  } else if (isCoinLeader && rookieClass && currentRound <= 3) {
+    plannedSequence.push(rookieClass); // Bully double draft with coin lead!
+  } else if (currentRound <= 2 && rawTalent && nonPsLineup.some(c => c.phase === 1)) {
+    plannedSequence.push(rawTalent); // Double Phase 1 cards!
+  } else if (currentRound === 4 && teamLegend) {
+    plannedSequence.push(teamLegend); // Round 4: Team legend returns for Round 5 HOF auction!
+  } else if (currentRound >= 5 && offensiveBattle && engineCount >= 2) {
+    plannedSequence.push(offensiveBattle); // Double mature engine!
+  } else if (currentRound >= 5 && coldAir && p.psi <= 16) {
+    plannedSequence.push(coldAir); // Closer mode!
+  } else if (rookieClass && isCoinLeader) {
+    plannedSequence.push(rookieClass);
+  } else if (rawTalent && currentRound <= 3) {
+    plannedSequence.push(rawTalent);
+  }
+
+  // Multi-Turn Synergy Combo: If Rookie Class in Slot 1, follow up with Offensive Battle in Slot 2!
+  if (plannedSequence.includes(rookieClass) && offensiveBattle && !plannedSequence.includes(offensiveBattle)) {
+    plannedSequence.push(offensiveBattle);
+  }
+
+  // Build the remaining strategic progression:
+  // User Blueprint:
+  // - Early (R2-3): Raw Talent, Rookie Class
+  // - Mid (Round 4): Team Legend Returns (user directive: "Maybe you have legend returns on round 4 so you can get a HOF player on round 5 out.")
+  // - Late Mid (Round 5): Offensive Battle (doubles full 3-player lineup + HOF superstar!)
+  // - Endgame (Round 6+): Cold Air (guillotine closer)
+  const remainingGameChangers = [
+    { event: rawTalent, prefRound: 2 },
+    { event: rookieClass, prefRound: 3 },
+    { event: teamLegend, prefRound: 4 },
+    { event: offensiveBattle, prefRound: 5 },
+    { event: coldAir, prefRound: (hasLeadAndWantsShorter && p.psi <= 16) ? 4.5 : (isBehindOnPsi || numPlayers >= 8 ? 8 : 6.5) },
+    { event: hotAir, prefRound: (needsMoreTimeToCook || isBehindOnPsi || numPlayers >= 8) ? 2.5 : 7 }
+  ];
+
+  remainingGameChangers.sort((a, b) => a.prefRound - b.prefRound);
+
+  remainingGameChangers.forEach(item => {
+    if (item.event && !plannedSequence.includes(item.event)) {
+      plannedSequence.push(item.event);
+    }
+  });
+
+  return [...plannedSequence, ...remainingEvents];
 };
 
 export const isCardEspeciallyGood = (card, G, playerID) => {
@@ -1422,6 +1671,67 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     }
   }
 
+  if (effectiveTeamId === 'jaguars') {
+    const foresight = evaluateJaguarsEventForesight(G, p?.id);
+    const currentRound = G?.board?.round || 1;
+    const recDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const instDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const recCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+
+    // User Directive: "Plan around by acting like you have 7 less PSI than you actually do"
+    const effectivePsi = foresight?.upcomingColdAirSoon ? Math.max(0, p.psi - 7) : p.psi;
+
+    // 1. Championship / Immediate Closer Winner:
+    if (instDeflate > 0 && effectivePsi - instDeflate <= 0) {
+      rawScore = Math.max(rawScore, 50.0);
+    } else if (effectivePsi <= 14 && instDeflate >= 2) {
+      // In closer range: value instant deflation nukes heavily!
+      rawScore += 16.0 + (instDeflate * 3.5);
+    }
+
+    // 2. Event Foresight Synergies:
+    if (foresight?.upcomingDoubleAll) {
+      // Offensive Battle doubles all effects next round or in 2 rounds!
+      if (recDeflate > 0) rawScore += recDeflate * 4.0;
+      if (recCoins > 0) rawScore += recCoins * 3.0;
+    }
+    if (foresight?.upcomingDoublePhase1 && card.phase === 1) {
+      // Raw Talent doubles Phase 1 players!
+      rawScore += 7.0;
+    }
+    if (foresight?.upcomingHotAir) {
+      // Hot Air extends the game (+7 PSI to all), giving engines more time to cook!
+      if (recDeflate > 0) rawScore += recDeflate * 3.0;
+      if (recCoins > 0) rawScore += recCoins * 2.5;
+    }
+    if (foresight?.upcomingLegendReturns) {
+      // Legend Returns incoming: hoard coins to be richest for HOF auction!
+      if (recCoins >= 2) rawScore += 4.5;
+    }
+
+    // 3. Round 1 Anchor Star Conviction (12 starting coins, 43 PSI):
+    if (currentRound === 1) {
+      const isDualOrDeflateAnchor = (recDeflate >= 2 || (recDeflate >= 1 && recCoins >= 2) || card.id === 'brock_bowers' || card.id === 'george_kittle' || card.id === 'kirk_cousins');
+      if (isDualOrDeflateAnchor) {
+        rawScore = Math.max(rawScore, 26.0);
+      } else if (recCoins >= 3) {
+        rawScore = Math.max(rawScore, 18.0);
+      }
+    }
+
+    // 4. Lineup Deflation Balance: If Jaguars has 0 deflation engines in lineup, prioritize deflation engines!
+    const realLineup = (p.lineup || []).filter(c => !c.isPracticeSquad && c.id !== 'practice_squad' && !c.uniqueId?.startsWith('ps_'));
+    const lineupDeflateRate = realLineup.reduce((sum, c) => sum + (c.effects || []).filter(e => e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0), 0);
+    const lineupCoinProducers = realLineup.filter(c => (c.effects || []).some(e => e.perRound && e.type === 'coins' && e.amount >= 2)).length;
+
+    if (lineupDeflateRate === 0 && recDeflate >= 2) {
+      rawScore += 10.0;
+    }
+    if (lineupCoinProducers >= 1 && recDeflate === 0 && instDeflate === 0) {
+      rawScore -= 6.0;
+    }
+  }
+
   // Cards with low Max Bid
   const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
   if (effMax <= 4 && p.coins >= effMax) {
@@ -1943,6 +2253,62 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     if (fallbackEligible.length > 0) return fallbackEligible[0].index;
   }
 
+  // Jaguars Nomination Strategy:
+  // - 1. Endgame Closer Pivot: If effective PSI <= 14 (acting like 7 less PSI when Cold Air is upcoming),
+  //      nominate an instant deflation nuke that can win or set up a win!
+  // - 2. Foresight Synergy Nominations:
+  //      * Upcoming Double Phase 1 (Raw Talent): Nominate best affordable Phase 1 card
+  //      * Upcoming Double All (Offensive Battle): Nominate best affordable recurring engine
+  // - 3. Round 1 Anchor Conviction: Nominate premier anchor (recCoins >= 3, recDeflate >= 2, or superstar)
+  // - 4. Bait Rivals When Low on Funds: If coins <= 3, nominate expensive card to drain opponents
+  // - 5. Otherwise nominate top scored card
+  if (effectiveTeamId === 'jaguars') {
+    const foresight = evaluateJaguarsEventForesight(G, currentPlayerId);
+    const effectivePsi = foresight?.upcomingColdAirSoon ? Math.max(0, (currentPlayer.psi || 43) - 7) : (currentPlayer.psi || 43);
+    const currentRound = G.board.round || 1;
+
+    // 1. Endgame Closer Pivot
+    if (effectivePsi <= 14) {
+      const closerNuke = eligibleCards.find(item =>
+        item.card.minBid <= currentPlayer.coins &&
+        item.card.effects?.some(e => !e.perRound && e.type === 'deflate' && e.amount >= 2)
+      );
+      if (closerNuke) return closerNuke.index;
+    }
+
+    // 2. Foresight Synergy Nominations
+    if (foresight?.upcomingDoublePhase1 && currentRound <= 3) {
+      const topPhase1 = eligibleCards.find(item => item.card.phase === 1 && item.card.minBid <= currentPlayer.coins && item.score >= 10.0);
+      if (topPhase1) return topPhase1.index;
+    }
+    if (foresight?.upcomingDoubleAll) {
+      const topRecurring = eligibleCards.find(item =>
+        item.card.effects?.some(e => e.perRound) &&
+        item.card.minBid <= currentPlayer.coins &&
+        item.score >= 12.0
+      );
+      if (topRecurring) return topRecurring.index;
+    }
+
+    // 3. Round 1 Anchor Conviction
+    if (currentRound === 1) {
+      const r1Anchor = eligibleCards.find(item =>
+        item.card.minBid <= currentPlayer.coins &&
+        (item.card.effects?.some(e => (e.perRound || e.trigger === 'refresh') && ((e.type === 'coins' && e.amount >= 3) || (e.type === 'deflate' && e.amount >= 2))) ||
+         item.card.id === 'brock_bowers' || item.card.id === 'george_kittle' || item.card.id === 'kirk_cousins')
+      );
+      if (r1Anchor) return r1Anchor.index;
+    }
+
+    // 4. Low Funds Bait
+    if (currentPlayer.coins <= 3 && richestOpponentCoins >= 8) {
+      const baitCard = eligibleCards.find(item => item.card.maxBid >= 8 || item.card.phase >= 2 || item.score >= 18.0);
+      if (baitCard) return baitCard.index;
+    }
+
+    if (eligibleCards.length > 0) return eligibleCards[0].index;
+  }
+
   // Packers: Prioritize nominating Phase 1 players to maintain Phase 1 purity
   if (effectiveTeamId === 'packers') {
     const phase1Card = eligibleCards.find(item => item.card.phase === 1 && item.score >= 3.0);
@@ -2377,7 +2743,11 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // #5 Exact Turns-to-Zero Endgame Calculus: Championship Instant Win
   // If purchasing this card immediately reduces PSI to <= 0, go all-in to secure the title!
   const cardInstantDeflate = (card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0) + (effectiveTeamId === 'bengals' && card.effects?.some(e => !e.perRound && e.type === 'deflate') ? 2 : 0);
-  if (currentPlayer.psi - cardInstantDeflate <= 0 && currentPlayer.coins >= nextBid) {
+  const jagsForesightInit = (effectiveTeamId === 'jaguars') ? evaluateJaguarsEventForesight(G, currentPlayerId) : null;
+  const currentEffPsiInit = (effectiveTeamId === 'jaguars' && jagsForesightInit?.upcomingColdAirSoon)
+    ? Math.max(0, currentPlayer.psi - 7)
+    : currentPlayer.psi;
+  if (currentEffPsiInit - cardInstantDeflate <= 0 && currentPlayer.coins >= nextBid) {
     const winBid = Math.min(effMax, currentPlayer.coins);
     return { shouldBid: true, bidAmount: Math.max(nextBid, winBid), isChampionshipBid: true };
   }
@@ -2388,7 +2758,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // If your active lineup has all 2 coins/round players, and this card gives 2 coins/round (cardScore ~ 0),
   // but another card on the board gives 1 coin/round (floorScore < 0 downgrade),
   // bidding on the 2 coins/round player prevents losing a coin per round later in the round!
-  const hasDeadStarter = currentLineup.some(c => c.isPracticeSquad || (c.effects && !c.effects.some(e => e.perRound)));
+  const hasDeadStarter = currentLineup.some(c => c.isPracticeSquad || c.id === 'practice_squad' || c.uniqueId?.startsWith('ps_') || (c.effects && !c.effects.some(e => e.perRound)));
   if (currentLineup.length >= maxLineup && !hasDeadStarter && effectiveTeamId !== 'colts') {
     const isCandidateInstant = card.effects && card.effects.some(e => !e.perRound);
     const isBengalsInstant = (effectiveTeamId === 'bengals' && isCandidateInstant);
@@ -2564,7 +2934,43 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const isSteelersTarget = (effectiveTeamId === 'steelers');
   const isTexansTarget = (effectiveTeamId === 'texans' && ((card.position === 'QB' && card.id !== 'deshaun_watson') || (currentPlayer.psi || 47) <= 16));
   const isColtsTarget = (effectiveTeamId === 'colts');
-  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || isTexansTarget || isColtsTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
+  // Jaguars Foresight Cash Management
+  if (effectiveTeamId === 'jaguars') {
+    const jForesight = evaluateJaguarsEventForesight(G, currentPlayerId);
+    const jEffPsi = jForesight?.upcomingColdAirSoon ? Math.max(0, (currentPlayer.psi || 43) - 7) : (currentPlayer.psi || 43);
+    if (jEffPsi <= 14 || isSuperstar) {
+      savingsReserve = 0; // Closer mode: all-in on victory!
+    } else if (jForesight?.upcomingLegendReturnsNext || G.board.activeEvent?.category === 'legend_returns' || (G.board.round === 4 && jForesight?.upcomingLegendReturns)) {
+      // User Directive: "Maybe you have legend returns on round 4 so you can get a HOF player on round 5 out. Just make sure you are the richest player on round 5."
+      savingsReserve = Math.max(savingsReserve, 7);
+    } else if (jForesight?.upcomingDoubleDraft) {
+      // Rookie Class double draft: preserve funds to win 2 players
+      savingsReserve = Math.max(savingsReserve, 5);
+    } else if (jForesight?.upcomingFreeAgency) {
+      savingsReserve = Math.max(savingsReserve, 4);
+    }
+  }
+
+  const isJaguarsR1Anchor = (
+    effectiveTeamId === 'jaguars' &&
+    (G.board.round || 1) === 1 &&
+    (
+      card.id === 'brock_bowers' ||
+      card.id === 'george_kittle' ||
+      card.id === 'kirk_cousins' ||
+      card.effects?.some(e => (e.perRound || e.trigger === 'refresh') && ((e.type === 'coins' && e.amount >= 3) || (e.type === 'deflate' && e.amount >= 2)))
+    )
+  );
+  const cardRecDeflateInit = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+  const cardRecCoinsInit = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+  const isJaguarsTarget = (effectiveTeamId === 'jaguars' && (
+    currentEffPsiInit <= 16 || 
+    isSuperstar || 
+    isJaguarsR1Anchor || 
+    cardScore >= 16.0 ||
+    ((G.board.round || 1) <= 4 && (cardRecDeflateInit >= 2 || cardRecCoinsInit >= 2))
+  ));
+  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || isTexansTarget || isColtsTarget || isJaguarsTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
@@ -3240,11 +3646,56 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  // Jaguars Auction Strategy:
+  // - 1. Championship / Effective PSI Closer:
+  //      "Plan around by acting like you have 7 less PSI than you actually do"
+  //      If effectivePsi <= 14, bid aggressively on instant deflation nukes to reach <= 7 PSI (or <= 0)
+  // - 2. Foresight Multipliers:
+  //      * Upcoming Double All (Offensive Battle): value recurring engines heavily (+3-4 coins)
+  //      * Upcoming Double Phase 1 (Raw Talent): value Phase 1 cards heavily (+2-3 coins)
+  //      * Upcoming Hot Air: value recurring engines (+2-3 coins) because clock is extended
+  // - 3. Round 1 Anchor Conviction:
+  //      With 12 starting coins, bid up to 7-9 coins for elite anchors (Bowers, Kittle, Cousins, 3+ coins/rd)
+  // - 4. Legend Returns Cash Preservation:
+  //      If Legend Returns is upcoming and card is not superstar/closer, preserve purse to be richest!
+  if (effectiveTeamId === 'jaguars') {
+    const foresight = evaluateJaguarsEventForesight(G, currentPlayerId);
+    const effectivePsi = foresight?.upcomingColdAirSoon ? Math.max(0, (currentPlayer.psi || 43) - 7) : (currentPlayer.psi || 43);
+    const currentRound = G.board.round || 1;
+    const cardInstDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const cardRecDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const cardRecCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+
+    // 1. Closer Mode:
+    if (effectivePsi <= 14 && (cardInstDeflate >= 2 || cardRecDeflate >= 2)) {
+      const closerBonus = Math.max(cardInstDeflate * 3, cardRecDeflate * 2.5);
+      baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(spendableCoins, Math.max(card.minBid + closerBonus, 6))));
+    } else if (currentRound === 1 && isJaguarsR1Anchor) {
+      // Round 1 Anchor Conviction:
+      baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(spendableCoins, Math.min(9, Math.max(card.minBid + 5, 8)))));
+    } else {
+      // Foresight boosts:
+      if (foresight?.upcomingDoubleAll && (cardRecDeflate > 0 || cardRecCoins > 0)) {
+        baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(spendableCoins, card.minBid + (cardRecDeflate * 2) + cardRecCoins)));
+      }
+      if (foresight?.upcomingDoublePhase1 && card.phase === 1) {
+        baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(spendableCoins, card.minBid + 3)));
+      }
+      if (foresight?.upcomingHotAir && (cardRecDeflate > 0 || cardRecCoins > 0)) {
+        baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(spendableCoins, card.minBid + cardRecDeflate + cardRecCoins)));
+      }
+      if ((foresight?.upcomingLegendReturns || G.board.activeEvent?.category === 'legend_returns') && !isSuperstar && effectivePsi > 14) {
+        // Hoard cash: do not pay more than 3-4 coins for ordinary players
+        baseValuation = Math.min(baseValuation, Math.min(card.minBid + 1, 4));
+      }
+    }
+  }
+
   // Playtest 20 Tuning: Board Parity Principle (e.g. TJ Hockenson when all board cards are good)
   // When multiple cards remain on board and all are roughly equal high-tier strength,
   // the marginal value of winning THIS specific card over whoever is left is tiny (1-2 coins).
   const isHighBoardParity = otherScores.length >= 2 && floorScore >= 12 && (cardScore - floorScore) <= 3.5;
-  if (isHighBoardParity && !is4DeflateCard) {
+  if (isHighBoardParity && !is4DeflateCard && !isSuperstar && !isJaguarsR1Anchor && !isJaguarsTarget && !isRavensR1Star && !isPatriotsR1Premier) {
     baseValuation = Math.max(card.minBid, Math.min(3, card.minBid + 1));
   }
 
@@ -3283,7 +3734,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const jitter = 0.90 + Math.random() * 0.20;
   let valuation = Math.min(effMax, Math.round(baseValuation * archetypeMult * jitter));
 
-  if (isHighBoardParity && !is4DeflateCard) {
+  if (isHighBoardParity && !is4DeflateCard && !isSuperstar && !isJaguarsR1Anchor && !isJaguarsTarget && !isRavensR1Star && !isPatriotsR1Premier) {
     valuation = Math.min(valuation, 3);
   }
   if (betterCardsCount >= 1 && isMidTierPhase1) {
@@ -3295,7 +3746,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (effectiveTeamId === 'patriots' && (G.board.round || 1) === 1 && !isPatriotsR1Premier) {
     valuation = Math.min(valuation, 3);
   }
-  if (effectiveTeamId === 'browns' || effectiveTeamId === 'steelers' || effectiveTeamId === 'texans' || effectiveTeamId === 'colts') {
+  if (effectiveTeamId === 'browns' || effectiveTeamId === 'steelers' || effectiveTeamId === 'texans' || effectiveTeamId === 'colts' || effectiveTeamId === 'jaguars') {
     valuation = Math.min(effMax, Math.min(spendableCoins, baseValuation));
   }
 
@@ -3307,14 +3758,14 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   valuation = Math.min(valuation, spendableCoins);
-  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns' && effectiveTeamId !== 'steelers' && effectiveTeamId !== 'texans' && effectiveTeamId !== 'colts') {
+  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns' && effectiveTeamId !== 'steelers' && effectiveTeamId !== 'texans' && effectiveTeamId !== 'colts' && effectiveTeamId !== 'jaguars') {
     valuation = Math.min(valuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
   }
 
   if (isLionsFirstBonus || isPatriotsR1Premier) {
     valuation = Math.min(effMax, currentPlayer.coins);
   }
-  if (isRavensR1Star) {
+  if (isRavensR1Star || isJaguarsR1Anchor) {
     valuation = Math.min(effMax, Math.min(9, currentPlayer.coins));
   }
 
@@ -5496,15 +5947,15 @@ export const DeflategateGame = {
 
         // CPU Jaguars check: Reorder deck once per game BEFORE the upcoming round's event is drawn
         const jaguarsPlayerId = Object.keys(G.players).find(id => getEffectiveTeamId(G.players[id]) === 'jaguars');
-        if (jaguarsPlayerId && G.players[jaguarsPlayerId].isCpu && !G.board.jaguarsAbilityUsed && G.board.round >= 3) {
-          const sortedDeck = [...G.decks.event].sort((a, b) => {
-            if (a.category.includes('double') || a.category.includes('deflate')) return -1;
-            return 1;
-          });
-          G.decks.event = sortedDeck;
-          G.board.jaguarsAbilityUsed = true;
-          G.board.jaguarsPopupNotification = `🐆 Jaguars Ability Used! CPU Player ${parseInt(jaguarsPlayerId) + 1} (${G.players[jaguarsPlayerId].team.name}) has secretly reordered the Event Deck!`;
-          addLog(G, G.board.jaguarsPopupNotification);
+        if (jaguarsPlayerId && G.players[jaguarsPlayerId].isCpu && !G.board.jaguarsAbilityUsed) {
+          if (shouldJaguarsRearrangeNow(G, jaguarsPlayerId)) {
+            G.decks.event = buildJaguarsMasterDeckOrder(G, jaguarsPlayerId);
+            G.board.jaguarsAbilityUsed = true;
+            const displayId = parseInt(jaguarsPlayerId) + 1;
+            triggerAbilityNotification(G, jaguarsPlayerId, 'jaguars', 'Jaguars Foresight', `Masterfully reordered the Event Deck!`);
+            G.board.jaguarsPopupNotification = `🔮 Jaguars Ability Used! CPU Player ${displayId} (${G.players[jaguarsPlayerId].team.name}) has masterfully reordered the Event Deck!`;
+            addLog(G, G.board.jaguarsPopupNotification);
+          }
         }
 
         // Deck progression shuffles at the start of new eras
