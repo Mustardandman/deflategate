@@ -3171,21 +3171,52 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
       // E.g. 2 coins/round, 1 coin + 1 deflate/round, or 1-2 deflate/round with minBid <= 3
       const isCheapEngine = card.minBid <= 3 && card.maxBid <= 8 && (cardRecCoins <= 2 && cardRecDeflate <= 1);
       if (isCheapEngine) {
-        // User Directive: Try to get these guys for 1-2 coins, up to 3-4 coins max.
-        // "Once it gets to 5 coins I'd have to consider my other options."
-        const hasOtherOptions = otherCleanRecurring.length > 0 || otherAvailableCards.some(c => {
-          const sc = scoreCardForPlayer(G, currentPlayerId, c);
-          return sc >= 4.0 && currentPlayer.coins >= c.minBid;
-        });
+        // User Directive & Situational Board-State Awareness:
+        // "3-4 coin max is just a guide. You have it coded so that it depends on the board state and situation, right?"
+        // Target: Strive to secure these bargains for 1-2 coins.
+        // Ceiling dynamically adapts based on:
+        // 1. Alternative quality on the board (comparable clean engine vs weaker/no options).
+        // 2. Purse capital (spending 5 coins when holding 6+ coins vs 3 coins).
+        // 3. Early game compounding urgency (Rounds 1-3 lifetime value).
 
-        // If next bid is 5+ and we have other options on the board, PASS!
-        if (nextBid >= 5 && hasOtherOptions) {
-          return { shouldBid: false, bidAmount: 0 };
+        const cleanAlternatives = otherCleanRecurring.map(c => ({
+          card: c,
+          score: scoreCardForPlayer(G, currentPlayerId, c)
+        })).sort((a, b) => b.score - a.score);
+
+        const bestAlt = cleanAlternatives[0];
+        const hasComparableEngine = bestAlt && bestAlt.score >= (cardScore * 0.70);
+        const hasOtherOptions = otherAvailableCards.length > 0;
+
+        if (hasComparableEngine) {
+          // Situation A: Strong/comparable clean alternative exists on the board!
+          // We have a great fallback, so don't get baited into a bidding war.
+          // Target 1-2 coins, willing to bid up to 3 coins; fold at 4+ to claim the cheaper alternate.
+          baseValuation = Math.min(effMax, Math.min(currentPlayer.coins, 3));
+          if (nextBid >= 4) {
+            return { shouldBid: false, bidAmount: 0 };
+          }
+        } else if (cleanAlternatives.length > 0) {
+          // Situation B: Only weaker clean alternatives exist on the board.
+          // Willing to contest up to 4 coins. Once next bid reaches 5, consider options and pass.
+          baseValuation = Math.min(effMax, Math.min(currentPlayer.coins, 4));
+          if (nextBid >= 5) {
+            return { shouldBid: false, bidAmount: 0 };
+          }
+        } else {
+          // Situation C: NO other clean recurring engines exist on the board!
+          // If next bid is 5+ and other card options exist on the board, consider other options / pass.
+          if (nextBid >= 5 && hasOtherOptions) {
+            return { shouldBid: false, bidAmount: 0 };
+          }
+          // If strictly solitary (last card in auction) and holding funds in early game, willing to bid up to 5 coins
+          const hasCapital = currentPlayer.coins >= 5;
+          const maxSolitaryBid = (currentRound <= 3 && hasCapital && !hasOtherOptions) ? 5 : 4;
+          baseValuation = Math.min(effMax, Math.min(currentPlayer.coins, maxSolitaryBid));
+          if (nextBid > maxSolitaryBid) {
+            return { shouldBid: false, bidAmount: 0 };
+          }
         }
-
-        const maxBargainBid = hasOtherOptions ? 3 : 4;
-        const bargainCeiling = Math.min(effMax, Math.min(currentPlayer.coins, maxBargainBid));
-        baseValuation = Math.min(baseValuation, bargainCeiling);
         baseValuation = Math.max(card.minBid, baseValuation);
       } else {
         // High-end clean recurring engine (e.g. 3+ coins/round or 2+ deflate/round with NO drawbacks, like Bowers, Kittle, London)

@@ -195,6 +195,14 @@ console.log('\nTest 3: Bargain Hunter on Cheap Clean Recurring Engines (3-4 Coin
   G.board.auctionPlayers = [cheap2Coins, { id: 'alt_pure_inst', name: 'Alt Instant', minBid: 1, maxBid: 5, effects: [{ type: 'deflate', amount: 3, perRound: false }] }];
   const bid5Fold = evaluateCpuAuctionBid(G, '0');
   assert(!bid5Fold.shouldBid, `Colts passes at 5 coins: "once it gets to 5 coins I'd have to consider my other options"`);
+
+  // Case C: Situation where Colts has capital in early game and this is strictly the last engine with no options on board:
+  // Colts can adaptively bid 5 coins to secure the permanent compounding engine rather than leaving empty-handed!
+  G.board.auctionPlayers = [cheap2Coins];
+  G.players['0'].coins = 8;
+  G.board.highestBid = 4; // nextBid = 5
+  const bid5SolitaryLastCard = evaluateCpuAuctionBid(G, '0');
+  assert(bid5SolitaryLastCard.shouldBid && bid5SolitaryLastCard.bidAmount === 5, `Colts dynamically bids 5 coins on solitary engine when holding capital and no other cards exist`);
 }
 
 // -------------------------------------------------------------
