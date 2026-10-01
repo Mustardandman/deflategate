@@ -761,7 +761,7 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
     return card.effects?.some(e => e.type === 'inflate' || (e.type === 'coins' && e.amount < 0));
   }
   if (teamId === 'colts') {
-    const hasNegative = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && ((e.type === 'coins' && e.amount < 0) || e.type === 'inflate' || e.type === 'freeze'));
+    const hasNegative = card.effects?.some(e => ((e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && ((e.type === 'coins' && e.amount < 0) || e.type === 'inflate' || e.type === 'freeze')) || (!e.perRound && e.type === 'inflate'));
     const hasPositiveRecurring = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round' || e.type === 'deflate_every_round') && ((e.type === 'coins' && e.amount > 0) || (e.type === 'deflate' && e.amount > 0)));
     return !hasNegative && hasPositiveRecurring;
   }
@@ -1048,8 +1048,9 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   const hasBigRecurringDeflate = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3);
   const hasBigRecurringCoins = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount >= 3);
   const hasRecurringInflation = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
+  const hasInstantInflation = card.effects?.some(e => !e.perRound && e.type === 'inflate' && e.amount > 0);
   const isTier1Elite = (
-    !hasRecurringInflation && (
+    !hasRecurringInflation && !hasInstantInflation && (
       card.phase === 'hof' || 
       card.id === 'patrick_mahomes' || 
       card.id === 'travis_kelce' || 
@@ -1091,7 +1092,8 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     if (isPoison) {
       return -100.0;
     }
-    const hasCleanRecurring = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round' || e.type === 'deflate_every_round') && ((e.type === 'coins' && e.amount > 0) || (e.type === 'deflate' && e.amount > 0)));
+    const hasInstantInflation = card.effects?.some(e => !e.perRound && e.type === 'inflate');
+    const hasCleanRecurring = !hasInstantInflation && card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round' || e.type === 'deflate_every_round') && ((e.type === 'coins' && e.amount > 0) || (e.type === 'deflate' && e.amount > 0)));
     const isPureInstant = card.effects && card.effects.length > 0 && card.effects.every(e => !e.perRound && e.trigger !== 'refresh' && e.trigger !== 'end_round' && e.type !== 'every_round' && e.type !== 'deflate_every_round');
     const isCloser = (p.psi <= 16) || (card.effects?.some(e => !e.perRound && e.type === 'deflate' && (p.psi - e.amount <= 0)));
 
@@ -1102,8 +1104,16 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       const recCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
       const recDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
       if (card.minBid <= 3 && card.maxBid <= 8 && (recCoins <= 2 && recDeflate <= 1)) {
-        rawScore += 6.0;
+        rawScore += 4.0;
       }
+    } else if (hasInstantInflation) {
+      // User Directive: Cards with instant inflation (like Trevor Lawrence +8 inflate) are NOT poison like Zeke/Henry,
+      // but they are NOT high-priority stars either. Score realistically without the recurringMult boost on net output,
+      // accounting for the heavy upfront setback.
+      const instantInflateAmount = card.effects?.filter(e => !e.perRound && e.type === 'inflate').reduce((s, e) => s + e.amount, 0) || 0;
+      const recDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      const netLifetimeDeflate = (recDeflate * roundsLeft) - (instantInflateAmount * 1.25);
+      rawScore = Math.max(5.0, netLifetimeDeflate * deflateWeight * 0.75);
     } else if (isPureInstant && currentRound <= 5 && !isCloser) {
       // User Directive 2: Early game recurring focus - de-prioritize pure instants unless close to winning
       rawScore *= 0.25;
@@ -1882,7 +1892,8 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
   if (effectiveTeamId === 'colts') {
     const currentRound = G.board.round || 1;
     const isPoisonCard = (c) => c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && ((e.type === 'coins' && e.amount < 0) || e.type === 'inflate' || e.type === 'freeze'));
-    const cleanEligible = eligibleCards.filter(item => !isPoisonCard(item.card) && item.score >= 0);
+    const hasInstantDrawback = (c) => c.effects?.some(e => !e.perRound && ((e.type === 'inflate' && e.amount > 0) || (e.type === 'coins' && e.amount < 0)));
+    const cleanEligible = eligibleCards.filter(item => !isPoisonCard(item.card) && !hasInstantDrawback(item.card) && item.score >= 0);
 
     // 1. Endgame Closer
     if ((currentPlayer.psi || 36) <= 16 || currentRound >= 7) {
@@ -1926,6 +1937,10 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     if (cleanEligible.length > 0) {
       return cleanEligible[0].index;
     }
+
+    // Fallback: non-poison eligible (e.g. Trevor Lawrence or pure instant)
+    const fallbackEligible = eligibleCards.filter(item => !isPoisonCard(item.card) && item.score >= 0);
+    if (fallbackEligible.length > 0) return fallbackEligible[0].index;
   }
 
   // Packers: Prioritize nominating Phase 1 players to maintain Phase 1 purity
@@ -2446,11 +2461,11 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // Playtest 19 Note 9: Worst Card Outbid Protection
   // If the human or another team nominates the worst card on the board for 1 coin,
   // no CPU should outbid them for 2+ coins when better cards are available on the board!
-  if (otherAvailableCards.length > 0) {
+  if (otherAvailableCards.length > 0 && effectiveTeamId !== 'colts') {
     const betterAvailableCards = scoredOtherCards.filter(o => o.score > cardScore && o.card.minBid <= nextBid);
     const isLowestScoringOnBoard = scoredOtherCards.every(o => o.score >= cardScore);
     
-    if (isLowestScoringOnBoard && nextBid >= 2 && betterAvailableCards.length > 0) {
+    if (isLowestScoringOnBoard && nextBid >= 2 && betterAvailableCards.length > 0 && cardScore < 10.0) {
       return { shouldBid: false, bidAmount: 0 };
     }
   }
@@ -3118,7 +3133,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     const cardRecDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
     const cardRecCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
 
-    const isCleanRecurring = (cardRecDeflate > 0 || cardRecCoins > 0) && !isColtsPoison;
+    const hasInstantDrawback = card.effects?.some(e => !e.perRound && ((e.type === 'inflate' && e.amount > 0) || (e.type === 'coins' && e.amount < 0)));
+    const isCleanRecurring = (cardRecDeflate > 0 || cardRecCoins > 0) && !isColtsPoison && !hasInstantDrawback;
     const isPureInstant = card.effects && card.effects.length > 0 && card.effects.every(e => !e.perRound && e.trigger !== 'refresh' && e.trigger !== 'end_round' && e.type !== 'every_round' && e.type !== 'deflate_every_round');
 
     // 2. Championship Instant Win / Closer
@@ -3134,6 +3150,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     const otherCleanRecurring = otherAvailableCards.filter(c => {
       const isP = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && ((e.type === 'coins' && e.amount < 0) || e.type === 'inflate' || e.type === 'freeze'));
       if (isP) return false;
+      const hasDrawback = c.effects?.some(e => !e.perRound && ((e.type === 'inflate' && e.amount > 0) || (e.type === 'coins' && e.amount < 0)));
+      if (hasDrawback) return false;
       const recD = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate' && e.amount > 0);
       const recC = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount > 0);
       return (recD || recC) && currentPlayer.coins >= c.minBid;
@@ -3153,15 +3171,38 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
       // E.g. 2 coins/round, 1 coin + 1 deflate/round, or 1-2 deflate/round with minBid <= 3
       const isCheapEngine = card.minBid <= 3 && card.maxBid <= 8 && (cardRecCoins <= 2 && cardRecDeflate <= 1);
       if (isCheapEngine) {
-        // Other teams drop out around 1-2 coins because of roster limits.
-        // Colts can bid up to min(effMax, min(currentPlayer.coins, 4 to 5)) to easily secure the bargain!
-        const bargainCeiling = Math.min(effMax, Math.min(currentPlayer.coins, Math.max(card.minBid + 2, 4)));
-        baseValuation = Math.max(baseValuation, bargainCeiling);
+        // User Directive: Try to get these guys for 1-2 coins, up to 3-4 coins max.
+        // "Once it gets to 5 coins I'd have to consider my other options."
+        const hasOtherOptions = otherCleanRecurring.length > 0 || otherAvailableCards.some(c => {
+          const sc = scoreCardForPlayer(G, currentPlayerId, c);
+          return sc >= 4.0 && currentPlayer.coins >= c.minBid;
+        });
+
+        // If next bid is 5+ and we have other options on the board, PASS!
+        if (nextBid >= 5 && hasOtherOptions) {
+          return { shouldBid: false, bidAmount: 0 };
+        }
+
+        const maxBargainBid = hasOtherOptions ? 3 : 4;
+        const bargainCeiling = Math.min(effMax, Math.min(currentPlayer.coins, maxBargainBid));
+        baseValuation = Math.min(baseValuation, bargainCeiling);
+        baseValuation = Math.max(card.minBid, baseValuation);
       } else {
-        // High-end recurring engine (e.g. 3+ coins/round or 2+ deflate/round, Trevor Lawrence, etc.)
-        const premiumCeiling = Math.min(effMax, Math.min(currentPlayer.coins, Math.max(card.minBid + 3, Math.round(currentPlayer.coins * 0.85))));
+        // High-end clean recurring engine (e.g. 3+ coins/round or 2+ deflate/round with NO drawbacks, like Bowers, Kittle, London)
+        const premiumCeiling = Math.min(effMax, Math.min(currentPlayer.coins, Math.max(card.minBid + 3, Math.round(currentPlayer.coins * 0.80))));
         baseValuation = Math.max(baseValuation, premiumCeiling);
       }
+    } else if (hasInstantDrawback) {
+      // User Directive: Trevor Lawrence has instant inflate (+8 inflate). Not bad, but not a priority.
+      // Pick him up only if cheap (1-3 coins); never overpay or prioritize over clean engines.
+      const hasOtherOptions = otherCleanRecurring.length > 0 || otherAvailableCards.some(c => {
+        const sc = scoreCardForPlayer(G, currentPlayerId, c);
+        return sc >= 4.0 && currentPlayer.coins >= c.minBid;
+      });
+      if (nextBid >= 4 && hasOtherOptions) {
+        return { shouldBid: false, bidAmount: 0 };
+      }
+      baseValuation = Math.min(baseValuation, Math.max(card.minBid, Math.min(currentPlayer.coins, 3)));
     } else if (isPureInstant && currentRound <= 5 && !isEndgameCloser) {
       // Early pure instant card: cap at minBid or 1-2 coins max (do not waste purse)
       baseValuation = Math.min(baseValuation, Math.min(card.minBid, 2));
@@ -3223,7 +3264,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (effectiveTeamId === 'patriots' && (G.board.round || 1) === 1 && !isPatriotsR1Premier) {
     valuation = Math.min(valuation, 3);
   }
-  if (effectiveTeamId === 'browns' || effectiveTeamId === 'steelers' || effectiveTeamId === 'texans') {
+  if (effectiveTeamId === 'browns' || effectiveTeamId === 'steelers' || effectiveTeamId === 'texans' || effectiveTeamId === 'colts') {
     valuation = Math.min(effMax, Math.min(spendableCoins, baseValuation));
   }
 
@@ -3235,7 +3276,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   valuation = Math.min(valuation, spendableCoins);
-  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns' && effectiveTeamId !== 'steelers' && effectiveTeamId !== 'texans') {
+  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns' && effectiveTeamId !== 'steelers' && effectiveTeamId !== 'texans' && effectiveTeamId !== 'colts') {
     valuation = Math.min(valuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
   }
 

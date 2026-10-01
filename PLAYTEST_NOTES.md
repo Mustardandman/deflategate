@@ -1999,21 +1999,18 @@ The Indianapolis Colts possess one of the most distinctive abilities in Deflateg
 However, an audit of Colts gameplay revealed critical human playstyle directives that were previously unaddressed:
 1. **Zero-Tolerance for Poison**: Negative recurring cards (Deshaun Watson, Hunter Henry, Ezekiel Elliott) permanently damage an infinite board. Because Colts never replaces starters, negative recurring effects tick forever without a mechanism to discard or cycle them out. (*Crucial distinction*: Trevor Lawrence is NOT poison because his +8 inflate is a one-time instant effect, while his +3 per round deflate is recurring and massively positive over a full game).
 2. **Early-Game Recurring Engine Focus (R1–R5)**: In the early game, Colts should strictly focus on recurring engines. Instant cards should only be targeted if it is instant deflation and Colts is close to winning ($\le 16$ PSI or championship buyout).
-3. **Bargain Hunter on Cheap Clean Recurring Engines**: Cheap cards (minBid 1–3, maxBid $\le 8$) offering +2 coins/round, +1 coin/+1 deflate, or +1 deflate/round are usually low-priority for other teams because replacing a +1 Practice Squad only yields a +1 net delta. For Colts, they add directly to the roster for full permanent benefit. Colts can scoop them up for 3–5 coins, easily outbidding opponents who drop out at 1–2 coins.
-4. **Marginal Coin Prioritization Early (R1–R3)**: Every-round coins compound rapidly into Phase 2/HoF purchasing power. In early rounds, recurring coins should be marginally prioritized over deflate, but not by much (10% premium).
-5. **No Fear of Running Out of Coins / Zero Hoarding Reserve**: Colts generate at least 3 coins every round from their 3 Practice Squad players alone. Even with 0 coins, game engine rules guarantee the last remaining player in an auction can be acquired for 0 coins. Colts requires no reserve coins and can spend fearlessly down to 0.
-
----
-
-### 2. Architecture & Strategic Implementation
-
-#### A. Absolute Zero-Tolerance for Poison (`isColtsPoison`)
+3. **Bargain Hunter on Cheap Clean Recurring Engines**: Cheap cards (minBid 1–3, maxBid $\le 8$) offering +2 coins/round, +1 coin/+1 deflate, or +1 de#### A. Absolute Zero-Tolerance for Poison (`isColtsPoison`)
 - Defined unified poison filter:
   `card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && ((e.type === 'coins' && e.amount < 0) || e.type === 'inflate' || e.type === 'freeze'))`
 - In `scoreCardForPlayer`: Returns `-100.0` immediately for poison cards.
 - In `evaluateCpuAuctionBid`: Returns `{ shouldBid: false, bidAmount: 0 }` immediately.
 - In `chooseCpuNominationCard`: Filters out poison cards completely so Colts never nominates a card they could be stuck with.
-- Preserved Trevor Lawrence: Because Lawrence's inflate is `perRound: false` and his deflate is `perRound: true` (+3/rd), he is evaluated as a premier recurring deflater (+183.9 score in Round 1).
+- **Trevor Lawrence Realistic Calibration**:
+  - Because Lawrence's inflate is a one-time instant effect (`perRound: false`, +8 inflate) and his deflate is recurring (`perRound: true`, +3/round), he is NOT lethal poison like Zeke/Henry, but is NOT an elite priority either.
+  - Due to the steep upfront +8 PSI penalty, it takes 3 full rounds just to break even.
+  - `scoreCardForPlayer` evaluates Lawrence realistically without recurring multiplier or synergy bonus (`score ~ 21.2`, safely positive but ~7x below clean stars like Bowers at 147+).
+  - In `evaluateCpuAuctionBid`: Colts is willing to pick him up if cheap (1–3 coins), but passes at 4+ coins when clean alternative options exist.
+  - In `chooseCpuNominationCard`: Clean engines are prioritized ahead of Lawrence; Lawrence is only nominated as a fallback.
 
 #### B. 1-Win Constraint & Early-Game Recurring Discipline (Rounds 1–5)
 - Each round a player can only win 1 card (unless Double Draft).
@@ -2021,14 +2018,14 @@ However, an audit of Colts gameplay revealed critical human playstyle directives
   `if (currentRound <= 5 && !isEndgameCloser && isPureInstant && otherCleanRecurring.length > 0 && winsRemainingForMe <= 1) return { shouldBid: false, bidAmount: 0 };`
 - In `scoreCardForPlayer`, pure instant cards receive an early-game de-prioritization penalty (`rawScore *= 0.25`) unless closer criteria are met.
 
-#### C. Bargain Hunter on Cheap Clean Recurring Engines
+#### C. Bargain Hunter on Cheap Clean Recurring Engines (3–4 Coins Max, Passes at 5+)
 - In `scoreCardForPlayer`:
   - Clean recurring cards receive `rawScore += 8.0` for infinite lineup expansion.
-  - Cheap clean engines (`minBid <= 3`, `maxBid <= 8`, `recCoins <= 2`, `recDeflate <= 1`) receive an additional `+6.0` bonus.
+  - Cheap clean engines (`minBid <= 3`, `maxBid <= 8`, `recCoins <= 2`, `recDeflate <= 1`) receive an additional `+4.0` bargain bonus.
 - In `evaluateCpuAuctionBid`:
-  - Colts sets `baseValuation = Math.min(effMax, Math.min(currentPlayer.coins, Math.max(card.minBid + 2, 4)))`.
-  - While other teams drop out at 1–2 coins due to Practice Squad replacement math, Colts comfortably bids up to 4–5 coins to secure the bargain without overpaying.
-  - If the price escalates beyond 5 coins, Colts disciplines and folds.
+  - User Directive: *"Try to get these guys for 1-2 coins, up to 3-4 coins max. Once it gets to 5 coins I'd have to consider my other options."*
+  - If another clean recurring option exists on the board: Colts caps valuation at **3 coins**, passing at 4 coins to take the alternative option.
+  - If solitary cheap engine (no clean alternative): Colts bids up to **4 coins**, but passes at **5+ coins** when other options exist.
 
 #### D. Marginal Coin Prioritization Early (Rounds 1–3)
 - In `scoreCardForPlayer`:
@@ -2040,36 +2037,42 @@ However, an audit of Colts gameplay revealed critical human playstyle directives
 #### E. Hoarding Exemption & Fearless Spending
 - Added `effectiveTeamId === 'colts'` to `teamExemptFromHoarding`, eliminating artificial 35% early reserves.
 - Added `isColtsTarget` to `spendableCoins = currentPlayer.coins`.
-- Made `getEffectiveTeamId` robust to both object (`p.team.id`) and string (`p.team`) representations.
+- Exempted Colts from the early-game 65% purse cap on line 3277, preserving exact valuation ceilings.
 
 ---
 
-### 3. Tournament Validation (400 Matches)
+### 3. Systematic Genome Fine-Tuning Sweep & Benchmark Results
 
-Conducted 400 tournament matches across 7-Player and 10-Player tables comparing the baseline Colts AI to the new Playtest 46 engine:
+Ran an automated coordinate grid sweep across 20 candidate genome permutations and conducted a 400-match benchmark (200 matches on 7P and 200 matches on 10P):
+
+- **Optimal Genome**:
+  `deflateWeight: 2.4, coinWeight: 0.9, recurringMult: 2.0, aggression: 1.15, firstClaimAggression: 1.25, postClaimAggression: 0.9, synergyBonus: 1.6, reserveCoins: 0`
+  *Rationale*: Because the Colts start with +3 coins/round permanently from the Practice Squad and acquire cheap coin engines early, they naturally generate ample cash. Giving deflation higher weight (`deflateWeight: 2.4`) relative to coins (`coinWeight: 0.9`) accelerates converting their permanent economy into lethal deflation power and endgame closers.
 
 | Metric | Baseline (Pre-PT 46) | Playtest 46 Result | Delta / Improvement |
 |:-------|:--------------------:|:------------------:|:-------------------:|
-| **7-Player Win Rate** | 30.5% | **39.5%** | **+9.0% (Nearly 3x fair share!)** |
-| **7-Player Avg Final PSI** | 13.50 PSI | **10.45 PSI** | **-3.05 PSI** |
-| **7-Player Avg Lineup Size** | 7.47 cards | **7.44 cards** | Highly concentrated clean engines |
-| **10-Player Win Rate** | 22.5% | **28.0%** | **+5.5% (Nearly 3x fair share!)** |
-| **10-Player Avg Final PSI** | 15.30 PSI | **11.89 PSI** | **-3.41 PSI** |
-| **10-Player Avg Lineup Size** | 7.31 cards | **7.19 cards** | Elimination of toxic negative cards |
+| **7-Player Win Rate** | 30.5% | **40.0%** | **+9.5% (Nearly 3x fair share!)** |
+| **7-Player Avg Final PSI** | 13.50 PSI | **11.51 PSI** | **-1.99 PSI** |
+| **7-Player Avg Lineup Size** | 7.47 cards | **7.46 cards** | Highly concentrated clean engines |
+| **10-Player Win Rate** | 22.5% | **28.5%** | **+6.0% (Nearly 3x fair share!)** |
+| **10-Player Avg Final PSI** | 15.30 PSI | **11.70 PSI** | **-3.60 PSI** |
+| **10-Player Avg Lineup Size** | 7.31 cards | **7.25 cards** | Elimination of toxic negative cards |
+| **Composite Win Rate** | 26.5% | **34.25%** | **+7.75% across all tables** |
 
 ---
 
 ### 4. Automated Verification Suite
-- **`scratch/testPlaytest46Colts.mjs`**: 25/25 automated unit tests PASSED.
+- **`scratch/testPlaytest46Colts.mjs`**: 29/29 automated unit tests PASSED.
   - `Test 1: Absolute Zero-Tolerance for Poison Cards`: **PASS** (Watson, Hunter Henry, Zeke scored -100, zero bids submitted).
-  - `Test 2: Trevor Lawrence Evaluated as Viable Recurring Engine`: **PASS** (Scored +183.9, bid 6 on minBid 1).
-  - `Test 3: Bargain Hunter on Cheap Clean Recurring Engines`: **PASS** (Opening bid 1, outbid to 4 on 3-coin raise, passed when overpriced at 6+).
+  - `Test 2: Trevor Lawrence Evaluated as Viable Ordinary Engine`: **PASS** (Scored +21.2, ordinary vs Brock Bowers at 147.0; bids 1 coin opening, passes at 4+ with alternatives).
+  - `Test 3: Bargain Hunter on Cheap Clean Recurring Engines`: **PASS** (Bids 1-2 coins, outbids to 3, passes at 4 when alternatives exist, bids up to 4 when solitary, passes at 5+).
   - `Test 4: Early Game Recurring Priority & 1-Win Discipline`: **PASS** (Passed pure instant in R1 while recurring available; bids when solo).
   - `Test 5: Endgame Closer Pivot`: **PASS** (Aggressive closer bidding at 14 PSI; championship buyout verified).
   - `Test 6: Nomination Strategy`: **PASS** (Vetoes poison, nominates recurring coin card in R1).
   - `Test 7: Marginal Coin Priority Early`: **PASS** (Coin > deflate in R1, deflate > coin in R6).
-- **League Regression Suites**: Texans (PT 45), Steelers (PT 44), Browns (PT 43), Bengals (PT 42), Jets (PT 41), Ravens (PT 40) all verified 100% passing.
-- **Production Bundle**: `npm run build` executed cleanly in 4.58s with zero errors.
+- **League Regression Suites**: Texans (PT 45), Steelers (PT 44), Browns (PT 43), Bengals (PT 42), Jets (PT 41), Ravens (PT 40), Patriots (PT 39) all verified 100% passing.
+- **Production Bundle**: `npm run build` executed cleanly with zero errors.
+
 
 
 

@@ -107,28 +107,47 @@ console.log('Test 1: Absolute Zero-Tolerance for Poison Cards (Watson, Hunter He
 }
 
 // -------------------------------------------------------------
-// TEST 2: Trevor Lawrence is Not Bad
+// TEST 2: Trevor Lawrence is Not Bad (Not a High Priority Either)
 // -------------------------------------------------------------
-console.log('\nTest 2: Trevor Lawrence is Evaluated as Viable Recurring Engine');
+console.log('\nTest 2: Trevor Lawrence is Evaluated as Viable Ordinary Engine (Not Over-Prioritized)');
 {
   const G = createMockColtsState();
   const lawrence = ALL_PLAYERS.find(c => c.id === 'trevor_lawrence');
   assert(!!lawrence, `Trevor Lawrence found in ALL_PLAYERS`);
 
-  const scoreLawrence = scoreCardForPlayer(G, '0', lawrence);
-  assert(scoreLawrence > 0, `Colts scores Trevor Lawrence positively (${scoreLawrence.toFixed(1)} > 0)`);
+  const cleanStar = ALL_PLAYERS.find(c => c.id === 'brock_bowers') || {
+    id: 'brock_bowers', name: 'Brock Bowers', minBid: 1, maxBid: 15,
+    effects: [{ type: 'deflate', amount: 2, perRound: true }, { type: 'coins', amount: 2, perRound: true }]
+  };
 
-  G.board.auctionPlayers = [lawrence];
+  const scoreLawrence = scoreCardForPlayer(G, '0', lawrence);
+  const scoreStar = scoreCardForPlayer(G, '0', cleanStar);
+
+  assert(scoreLawrence > 0, `Colts scores Trevor Lawrence positively (${scoreLawrence.toFixed(1)} > 0, not lethal)`);
+  assert(scoreLawrence < 50, `Colts does NOT over-prioritize Trevor Lawrence (${scoreLawrence.toFixed(1)} < 50)`);
+  assert(scoreStar > scoreLawrence * 2, `Clean star Brock Bowers (${scoreStar.toFixed(1)}) is prioritized significantly over Trevor Lawrence (${scoreLawrence.toFixed(1)})`);
+
+  // Bidding on Lawrence: willing to pick him up if cheap (1-3 coins), but passes at 4+ when alternatives exist
+  const cheapCleanCard = { id: 'alt_rec', name: 'Clean Rec', minBid: 1, maxBid: 6, effects: [{ type: 'deflate', amount: 1, perRound: true }] };
+  G.board.auctionPlayers = [lawrence, cheapCleanCard];
   G.board.activeAuctionCardIndex = 0;
-  const bidLawrence = evaluateCpuAuctionBid(G, '0');
-  assert(bidLawrence.shouldBid, `Colts willing to bid on Trevor Lawrence`);
-  assert(bidLawrence.bidAmount >= lawrence.minBid, `Bid amount ${bidLawrence.bidAmount} >= minBid ${lawrence.minBid}`);
+
+  // Opening bid on Lawrence at 1 coin
+  const bidLawrenceOpen = evaluateCpuAuctionBid(G, '0');
+  assert(bidLawrenceOpen.shouldBid, `Colts willing to open bid on Trevor Lawrence for cheap (1 coin)`);
+  assert(bidLawrenceOpen.bidAmount === 1, `Opening bid is nextBid 1`);
+
+  // When outbid to 3 coins (nextBid 4) and clean alternatives exist, Colts passes on Lawrence!
+  G.board.highestBidder = '1';
+  G.board.highestBid = 3;
+  const bidLawrence4 = evaluateCpuAuctionBid(G, '0');
+  assert(!bidLawrence4.shouldBid, `Colts passes on Trevor Lawrence at 4+ coins when clean alternative is on the board`);
 }
 
 // -------------------------------------------------------------
-// TEST 3: Bargain Hunter on Cheap Clean Recurring Engines
+// TEST 3: Bargain Hunter on Cheap Clean Recurring Engines (3-4 Coins Max, Passes at 5)
 // -------------------------------------------------------------
-console.log('\nTest 3: Bargain Hunter on Cheap Clean Recurring Engines');
+console.log('\nTest 3: Bargain Hunter on Cheap Clean Recurring Engines (3-4 Coins Max)');
 {
   const G = createMockColtsState();
   const cheap2Coins = {
@@ -145,7 +164,8 @@ console.log('\nTest 3: Bargain Hunter on Cheap Clean Recurring Engines');
   assert(scoreCoins >= 20.0, `Colts heavily scores cheap 2 coins engine: ${scoreCoins.toFixed(1)}`);
   assert(scoreDual >= 20.0, `Colts heavily scores cheap 1 coin + 1 deflate engine: ${scoreDual.toFixed(1)}`);
 
-  G.board.auctionPlayers = [cheap2Coins];
+  // Case A: Another clean option exists on the board -> cap is 3 coins
+  G.board.auctionPlayers = [cheap2Coins, cheap1Coin1Deflate];
   G.board.activeAuctionCardIndex = 0;
   
   // Opening bid
@@ -153,17 +173,28 @@ console.log('\nTest 3: Bargain Hunter on Cheap Clean Recurring Engines');
   assert(bidOpening.shouldBid, `Colts bids on cheap recurring engine`);
   assert(bidOpening.bidAmount === 1, `Opening bid is nextBid (1)`);
 
-  // Opponent bids 3
+  // Opponent bids 2 -> Colts bids 3
   G.board.highestBidder = '1';
-  G.board.highestBid = 3;
-  const bidCounter = evaluateCpuAuctionBid(G, '0');
-  assert(bidCounter.shouldBid, `Colts outbids opponent at 3 coins`);
-  assert(bidCounter.bidAmount === 4, `Colts bids 4 coins to secure bargain`);
+  G.board.highestBid = 2;
+  const bid3 = evaluateCpuAuctionBid(G, '0');
+  assert(bid3.shouldBid && bid3.bidAmount === 3, `Colts outbids opponent up to 3 coins`);
 
-  // Opponent bids 6 (above bargain ceiling)
-  G.board.highestBid = 6;
-  const bidOverpriced = evaluateCpuAuctionBid(G, '0');
-  assert(!bidOverpriced.shouldBid, `Colts disciplines and passes when cheap engine becomes overpriced at 6+ coins`);
+  // Opponent bids 3 (nextBid = 4) with alternative on board -> Colts passes at 4 to take the other option!
+  G.board.highestBid = 3;
+  const bidPass4 = evaluateCpuAuctionBid(G, '0');
+  assert(!bidPass4.shouldBid, `Colts passes on 4-coin bid when another clean cheap option is on the board`);
+
+  // Case B: Solitary cheap engine (no other clean recurring on board) -> bids up to 4 coins, passes at 5!
+  G.board.auctionPlayers = [cheap2Coins];
+  G.board.highestBid = 3;
+  const bid4Solitary = evaluateCpuAuctionBid(G, '0');
+  assert(bid4Solitary.shouldBid && bid4Solitary.bidAmount === 4, `Colts bids up to 4 coins when solitary cheap engine`);
+
+  // At 5 coins: Colts considers other options / folds
+  G.board.highestBid = 4; // nextBid = 5
+  G.board.auctionPlayers = [cheap2Coins, { id: 'alt_pure_inst', name: 'Alt Instant', minBid: 1, maxBid: 5, effects: [{ type: 'deflate', amount: 3, perRound: false }] }];
+  const bid5Fold = evaluateCpuAuctionBid(G, '0');
+  assert(!bid5Fold.shouldBid, `Colts passes at 5 coins: "once it gets to 5 coins I'd have to consider my other options"`);
 }
 
 // -------------------------------------------------------------
