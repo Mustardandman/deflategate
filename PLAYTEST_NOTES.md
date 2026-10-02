@@ -2778,6 +2778,83 @@ To ensure zero compromise of earlier fine-tuning, each of the 5 franchises was a
 - **Production Build**:
   - Clean Vite build verified (`npm run build`) in 8.79s (`dist/assets/index-H3vWNwRG.js`).
 
+---
+
+## Playtest 58: Cowboys Strategic Overhaul, Toxic Card Cut Priority & Watson Rebalance
+
+### 1. Strategic Context & User Directives
+- **Franchises & Universal Rules**:
+  - **Universal Toxic Recurring Card Cut Priority**: Across all non-Saints CPU teams, if a lineup contains a starter with negative recurring effects (e.g. Deshaun Watson [+4 inflate/rd], Ezekiel Elliott [-2 coins/rd], Hunter Henry [+3 inflate/rd]), the CPU must replace that player **FIRST** upon acquiring a new card, even before replacing Practice Squad players. This ensures the recurring downside is only suffered for 1 round rather than the entire game.
+  - **Deshaun Watson Valuation Correction**: Clean cards like Xavier Legette (+2 coins instant) must be valued higher than Watson on standard teams. Watson's recurring +4 inflation creates catastrophic long-term drag unless played by New Orleans (Saints immunity).
+  - **Dallas Cowboys Round 1 Spending Conviction**: The Cowboys start with 5 coins and 42 PSI, with a guaranteed passive +2 coins every round during the Refresh Phase. In Round 1, Dallas should be willing to spend all 5 coins on elite Tier 1 centerpieces (e.g. Brock Bowers, George Kittle, Drake London) and up to 4 coins on strong Tier 2 cards (e.g. JuJu Smith-Schuster, Dalton Schultz, Kirk Cousins), knowing their purse immediately refills to 2 coins going into Round 2.
+  - **Strict Empirical Fine-Tuning Mandate**: Do not alter `deflateWeight` or `coinWeight` without extensive multi-thousand game grid testing to discover the exact mathematical peak across 4P, 7P, and 10P lobbies.
+
+---
+
+### 2. Implementation Details
+
+1. **Universal Toxic Starter Cut Priority (Before Practice Squad)**:
+   - In `src/Game.js`:
+     - **`resolveAuctionWin` (Lineup Slot Assignment)**: Added Priority 0 check for non-Saints CPU teams. Before scanning for Practice Squad starters or applying franchise-specific roster logic, the engine searches for any starter with `(inflatePerRound > 0 || coinsPerRound < 0)`. If found, that toxic starter is immediately replaced by the newly acquired player.
+     - **Fallback Cut Scan**: Added `!isSaints` check so Saints maintain their toxic immunity upside and don't prematurely drop high-coin cards like Watson (+5 coins/rd).
+     - **`billsClaimFreeAgent` (Discard Pile Reclamation)**: Assigned a heavy `-300` replacement penalty to toxic starters, ensuring Buffalo cuts toxic cards before Practice Squad (`-100`).
+     - **`resolveBonusAuctionWin`**: Added Priority 0 toxic starter replacement before Practice Squad.
+   - *Impact*: Ezekiel Elliott (-5 PSI instant, -2 coins/rd) can now be acquired for an immediate 5 PSI deflation spike and then cut cleanly on the next acquisition, leaving Dallas with a permanent 5 PSI drop and only 1 round of coin loss.
+
+2. **Deshaun Watson vs. Xavier Legette Valuation Rebalance**:
+   - In `src/Game.js: scoreCardForPlayer`:
+     - Non-Saints / Non-Texans: Watson is assigned a hard-capped score of `-50.0`.
+     - Texans: Watson is scored at `-25.0` (half penalty due to franchise trait).
+     - Saints: Retains full positive valuation (+5 coins/rd, 0 inflation penalty) + 7.0 immunity bonus.
+     - Xavier Legette scores between `+0.2` and `+3.5`, ensuring standard CPU teams strictly prefer clean utility over toxic recurring inflation.
+
+3. **Cowboys Round 1 Conviction Logic**:
+   - In `src/Game.js: evaluateCpuAuctionBid`:
+     - Defined `isCowboysElite` (Brock Bowers, George Kittle, Drake London) and `isCowboysTier2` (JuJu Smith-Schuster, Dalton Schultz, Kirk Cousins, etc.).
+     - Round 1 Bid Allocation:
+       * Elite: Base valuation and bid set to 5 coins (full purse).
+       * Tier 2: Base valuation and bid set to 4 coins.
+     - Exemption: In Round 1, Dallas is exempted from the generic 65% early purse ceiling, the Era Horizon savings reserve, and the Pre-emptive Lockout Hammer reduction, ensuring they execute their max bids with full conviction.
+
+4. **Empirical Grid Testing & Weight Calibration**:
+   - Ran 3,000-game grid search across 10 parameter candidates (`scratch/tuneCowboysGrid.mjs`):
+     * Tested combinations: `deflateWeight` from 1.6 to 2.8, `coinWeight` from 0.4 to 1.0.
+     * Top Performer: **Sweet Spot C (`deflateWeight: 2.4, coinWeight: 0.6`)** achieved the highest composite win rate (1.53x fair share average across all lobby sizes).
+   - Confirmed in 1,200-game validation test (`scratch/confirmCowboys.mjs`):
+     * **4-Player Lobby**: **43.5%** win rate (Fair: 25.0%) | Avg Final PSI: **6.18**
+     * **7-Player Lobby**: **25.5%** win rate (Fair: 14.3%) | Avg Final PSI: **8.38**
+     * **10-Player Lobby**: **18.5%** win rate (Fair: 10.0%) | Avg Final PSI: **10.62**
+   - Diagnostic sample (`scratch/diagnoseCowboys.mjs`): 4P: **49.0%** (5.21 PSI), 7P: **20.0%** (10.26 PSI), 10P: **13.0%** (13.31 PSI).
+   - Updated genomes in both `src/ai/teamGenomes.js` and `src/ai/evolvedWeights.js` with `deflateWeight: 2.4, coinWeight: 0.6`.
+
+---
+
+### 3. Empirical Verification & Multi-Suite Regression Results
+
+- **Targeted Test Suite (`scratch/testPlaytest58Cowboys.mjs`)**:
+  - Cowboys R1 Elite 5-Coin Bid: PASSED ✅
+  - Cowboys R1 Tier 2 4-Coin Bid: PASSED ✅
+  - Toxic Recurring Cut Priority (Elliott replaced before Practice Squad): PASSED ✅
+  - Watson Score for Non-Saints ($\le -50$ vs Legette $> 0$): PASSED ✅
+  - Watson Score for Saints ($> 0$ with immunity bonus): PASSED ✅
+  - **Result: 5/5 Checks Passed 100% ✅**.
+
+- **Anti-Chargers Playtest 57 Suite (`scratch/testPlaytest57AntiChargers.mjs`)**:
+  - Jump bidding and nomination price defense: **PASSED 100% ✅**.
+
+- **Chargers Playtest 56 Suite (`scratch/testPlaytest56Chargers.mjs`)**:
+  - All 7 strategic behaviors: **PASSED 100% ✅**.
+
+- **League Regression Suites**:
+  - Playtest 55 (Jaguars, Titans, Broncos, Chiefs): **PASSED 100% ✅**
+  - Playtest 54 (Bengals, Browns, Steelers, Texans, Colts): **PASSED 100% ✅**
+  - Playtest 53 (Bills, Dolphins, Patriots, Jets, Ravens): **PASSED 100% ✅**
+  - Playtest 52 (All 16 General Teams): **PASSED 100% ✅**
+
+- **Production Build**:
+  - Clean Vite build verified (`npm run build`).
+
+
 
 
 

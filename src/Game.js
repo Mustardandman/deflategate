@@ -452,9 +452,33 @@ export const resolveAuctionWin = (G, playerID, card) => {
 
       const isTexans = effectiveTeamId === 'texans';
       const isRavens = effectiveTeamId === 'ravens';
+      const isSaints = effectiveTeamId === 'saints';
       const hasPracticeSquad = p.lineup.some(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
 
-      if (isTexans) {
+      // Priority 0: Universal Negative Recurring Replacement
+      // If a non-Saints CPU team has any starter with negative recurring effects (e.g. Deshaun Watson [+4 inflate/rd],
+      // Ezekiel Elliott [-2 coins/rd], Hunter Henry [+3 inflate/rd]), replace that player FIRST
+      // (even before replacing Practice Squad players) so the penalty is only suffered for 1 turn not the entire game!
+      let toxicStarterIdx = -1;
+      if (!isSaints) {
+        let worstToxicPenalty = -Infinity;
+        p.lineup.forEach((c, idx) => {
+          if (!c || c.isPracticeSquad || c.uniqueId?.startsWith('ps_')) return;
+          const recInflate = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate').reduce((s, e) => s + e.amount, 0) || 0;
+          const recNegCoins = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0) || 0;
+          if (recInflate > 0 || recNegCoins > 0) {
+            const penalty = (recInflate * 3.0) + recNegCoins;
+            if (penalty > worstToxicPenalty) {
+              worstToxicPenalty = penalty;
+              toxicStarterIdx = idx;
+            }
+          }
+        });
+      }
+
+      if (toxicStarterIdx !== -1) {
+        replaceIdx = toxicStarterIdx;
+      } else if (isTexans) {
         // Priority 1: Always replace Practice Squad first
         const psIdx = p.lineup.findIndex(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
         if (psIdx !== -1) {
@@ -565,7 +589,7 @@ export const resolveAuctionWin = (G, playerID, card) => {
           const hasRecurringNegativeCoins = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0);
           const isPracticeSquad = c.isPracticeSquad || c.id === 'practice_squad' || c.uniqueId?.startsWith('ps_');
 
-          if (hasRecurringInflation || hasRecurringNegativeCoins) {
+          if (!isSaints && (hasRecurringInflation || hasRecurringNegativeCoins)) {
             score = -300; // Toxic recurring damage card: replace immediately!
           } else if (isPracticeSquad) {
             score = -200; // Practice Squad placeholder: replace as soon as real cards are acquired!
@@ -1238,18 +1262,25 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     }
   }
 
-  // Texans: Watson is not a good card, but it isn't as bad for Texans as it is for other teams.
-  // User directive: "Have the texans evaluation be half as bad as other teams' evaluation for watson."
-  if (effectiveTeamId === 'texans') {
-    if (card.id === 'deshaun_watson') {
-      // Calculate how a baseline/other team evaluates Watson without the Texans QB passive:
-      // Other teams face -4 inflate/turn and +5 coins/turn:
-      const otherDeflate = -4 * roundsLeft * recurringMult;
-      const otherCoins = 5 * roundsLeft * recurringMult;
-      const otherTeamEval = (otherDeflate * Math.max(2.2, deflateWeight)) + (otherCoins * coinWeight);
-      const watsonScore = otherTeamEval < 0 ? (otherTeamEval / 2) : otherTeamEval;
-      return Math.round(watsonScore * 10) / 10;
+  // Deshaun Watson & Recurring Inflation:
+  // For Saints: Saints is immune to inflation and negative coins, so Watson gives +5 coins/round with 0 penalty!
+  // For Texans: User directive: "Have the texans evaluation be half as bad as other teams' evaluation for watson."
+  // For all other teams: Watson's +4 inflate EVERY round is catastrophic (death sentence over 9 rounds).
+  // Clean players like Xavier Legette (+2 coins) are valued significantly higher than Watson.
+  if (card.id === 'deshaun_watson') {
+    if (effectiveTeamId === 'saints') {
+      // Saints gets full +5 coins/round benefit with zero inflation penalty
+      const saintsWatsonCoins = 5 * roundsLeft * recurringMult;
+      return Math.round((saintsWatsonCoins * coinWeight + 7.0) * 10) / 10;
+    } else if (effectiveTeamId === 'texans') {
+      return -25.0; // Half as bad as other teams (-50 / 2)
+    } else {
+      return -50.0; // Heavily negative: strictly de-prioritized behind Xavier Legette and clean cards!
     }
+  }
+
+  // Non-QB recurring inflation (e.g. Hunter Henry) avoidance for Texans:
+  if (effectiveTeamId === 'texans') {
     const hasRecurringInflation = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && e.type === 'inflate');
     if (hasRecurringInflation) {
       return -50; // Strictly avoid non-QB recurring inflation (e.g. Hunter Henry)
@@ -1270,8 +1301,18 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
         const isBengalsDiscardableNegative = (effectiveTeamId === 'bengals' && (eff.type === 'inflate' || (eff.type === 'coins' && amt < 0)) && card.effects?.some(e => !e.perRound));
         if (!isBengalsDiscardableNegative) {
           if (eff.type === 'deflate' || eff.type === 'deflate_every_round') totalDeflate += amt * roundsLeft * recurringMult;
-          if (eff.type === 'coins') totalCoins += amt * roundsLeft * recurringMult;
-          if (eff.type === 'inflate') totalDeflate -= amt * roundsLeft * recurringMult;
+          if (eff.type === 'coins') {
+            if (amt < 0 && effectiveTeamId === 'saints') {
+              // Saints ignores negative coins
+            } else {
+              totalCoins += amt * roundsLeft * recurringMult;
+            }
+          }
+          if (eff.type === 'inflate') {
+            if (effectiveTeamId !== 'saints') {
+              totalDeflate -= amt * roundsLeft * recurringMult;
+            }
+          }
         }
       } else {
         // Bengals Ability: +2 coins/deflate for instant abilities
@@ -1280,7 +1321,7 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
         }
         if (eff.type === 'deflate') totalDeflate += amt;
         if (eff.type === 'coins') totalCoins += amt;
-        if (eff.type === 'inflate') totalDeflate -= amt;
+        if (eff.type === 'inflate' && effectiveTeamId !== 'saints') totalDeflate -= amt;
       }
     });
   }
@@ -2687,13 +2728,7 @@ export const evaluateBillsDiscardClaim = (G, billsId) => {
 
   if (currentLineup.length >= maxLineup && billsEffTeam !== 'colts') {
     currentLineup.forEach((starter, idx) => {
-      if (starter.isPracticeSquad || starter.uniqueId?.startsWith('ps_')) {
-        weakestStarterIdx = idx;
-        minStarterLostValue = 0;
-        weakestStarterDeflateLoss = 0;
-        weakestStarterCoinLoss = 0;
-        return;
-      }
+      const isPS = starter.isPracticeSquad || starter.uniqueId?.startsWith('ps_');
       const sRecurringDeflate = starter.effects?.filter(e => e.perRound && e.type === 'deflate').reduce((sum, e) => sum + e.amount, 0) || 0;
       const sRecurringCoins = starter.effects?.filter(e => e.perRound && e.type === 'coins' && e.amount > 0).reduce((sum, e) => sum + e.amount, 0) || 0;
       const sRecurringInflate = starter.effects?.filter(e => e.perRound && e.type === 'inflate').reduce((sum, e) => sum + e.amount, 0) || 0;
@@ -2702,10 +2737,21 @@ export const evaluateBillsDiscardClaim = (G, billsId) => {
       const isToxic = sRecurringInflate > 0 || sRecurringNegCoins > 0;
       if (isToxic) hasToxicStarter = true;
 
-      // Net recurring loss if this card is removed
-      const sNetDeflate = (sRecurringDeflate - sRecurringInflate) * roundsLeft;
-      const sNetCoins = (sRecurringCoins - sRecurringNegCoins) * roundsLeft;
-      const sLostScore = (sNetDeflate * deflateWeight) + (sNetCoins * coinWeight);
+      let sLostScore = 0;
+      let sNetDeflate = 0;
+      let sNetCoins = 0;
+
+      if (isToxic) {
+        sNetDeflate = -sRecurringInflate * roundsLeft;
+        sNetCoins = -sRecurringNegCoins * roundsLeft;
+        sLostScore = -300; // Toxic recurring cards: replace first before Practice Squad!
+      } else if (isPS) {
+        sLostScore = -100; // Practice Squad placeholder: replace before good cards, but after toxic!
+      } else {
+        sNetDeflate = (sRecurringDeflate - sRecurringInflate) * roundsLeft;
+        sNetCoins = (sRecurringCoins - sRecurringNegCoins) * roundsLeft;
+        sLostScore = (sNetDeflate * deflateWeight) + (sNetCoins * coinWeight);
+      }
 
       if (sLostScore < minStarterLostValue) {
         minStarterLostValue = sLostScore;
@@ -2967,6 +3013,43 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     ravensPositionsInit.size === 2 && 
     !ravensPositionsInit.has(card.position)
   );
+
+  const isCowboys = effectiveTeamId === 'cowboys';
+  const cowboysRecInflate = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
+  const cowboysRecDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+  const cowboysRecCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount > 0).reduce((s, e) => s + e.amount, 0) || 0;
+  const cowboysInstDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+  const cowboysInstCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins' && e.amount > 0).reduce((s, e) => s + e.amount, 0) || 0;
+
+  const isCowboysElite = isCowboys && !cowboysRecInflate && (
+    isSuperstar ||
+    card.id === 'brock_bowers' ||
+    card.id === 'george_kittle' ||
+    card.id === 'drake_london' ||
+    card.id === 'tee_higgins' ||
+    card.id === 'greg_olsen' ||
+    card.id === 'josh_allen' ||
+    card.id === 'sam_laporta' ||
+    card.id === 'dallas_goedert' ||
+    card.id === 'mark_andrews' ||
+    card.id === 'zach_ertz' ||
+    card.id === 'tj_hockenson' ||
+    card.id === 'kyle_pitts' ||
+    cowboysRecDeflate >= 2 ||
+    cowboysRecCoins >= 3
+  );
+
+  const isCowboysTier2 = isCowboys && !cowboysRecInflate && !isCowboysElite && (
+    cowboysRecCoins >= 2 ||
+    cowboysRecDeflate >= 1 ||
+    cowboysInstDeflate >= 3 ||
+    cowboysInstCoins >= 4 ||
+    card.id === 'kirk_cousins' ||
+    card.id === 'jayden_daniels' ||
+    card.id === 'dalton_schultz'
+  );
+
+  const isCowboysTarget = isCowboys && (G.board.round || 1) === 1 && (isCowboysElite || isCowboysTier2);
 
   const otherAvailableCards = G.board.auctionPlayers.filter((c, idx) => c !== null && idx !== cardIndex);
   const scoredOtherCards = otherAvailableCards.map(c => ({
@@ -3311,7 +3394,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     ((G.board.round || 1) <= 2 && (cardRecDeflateInit >= 2 || cardRecCoinsInit >= 3 || card.id === 'brock_bowers' || card.id === 'kirk_cousins' || card.id === 'george_kittle')) ||
     (currentPlayer.psi || 40) <= 16
   ));
-  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || isTexansTarget || isColtsTarget || isJaguarsTarget || isTitansTarget || isTitansR1Anchor || isBroncosTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
+  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || isTexansTarget || isColtsTarget || isJaguarsTarget || isTitansTarget || isTitansR1Anchor || isBroncosTarget || isCowboysTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
@@ -3498,6 +3581,19 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
           baseValuation = Math.min(baseValuation, card.minBid);
         }
       }
+    }
+  }
+
+  // Cowboys Valuation Strategy:
+  // - Starts with 5 coins and guaranteed passive +2 coins at the end of every round.
+  // - Round 1:
+  //   * If an elite centerpiece is available, use all 5 coins!
+  //   * Even a Tier 2 starter is worth up to 4 coins (passive 2 coins/turn replenishes purse).
+  if (isCowboys && (G.board.round || 1) === 1) {
+    if (isCowboysElite) {
+      baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(5, currentPlayer.coins)));
+    } else if (isCowboysTier2) {
+      baseValuation = Math.max(baseValuation, Math.min(effMax, Math.min(4, currentPlayer.coins)));
     }
   }
 
@@ -4098,10 +4194,10 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const jitter = 0.90 + Math.random() * 0.20;
   let valuation = Math.min(effMax, Math.round(baseValuation * archetypeMult * jitter));
 
-  if (isHighBoardParity && !is4DeflateCard && !isSuperstar && !isJaguarsR1Anchor && !isJaguarsTarget && !isTitansR1Anchor && !isTitansTarget && !isBroncosTarget && !isRavensR1Star && !isPatriotsR1Premier) {
+  if (isHighBoardParity && !is4DeflateCard && !isSuperstar && !isJaguarsR1Anchor && !isJaguarsTarget && !isTitansR1Anchor && !isTitansTarget && !isBroncosTarget && !isRavensR1Star && !isPatriotsR1Premier && !isCowboysTarget) {
     valuation = Math.min(valuation, 3);
   }
-  if (betterCardsCount >= 1 && isMidTierPhase1) {
+  if (betterCardsCount >= 1 && isMidTierPhase1 && !isCowboysTarget) {
     valuation = Math.min(valuation, 4);
   }
   if (effectiveTeamId === 'ravens' && (G.board.round || 1) === 1 && !isRavensR1Star) {
@@ -4110,7 +4206,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (effectiveTeamId === 'patriots' && (G.board.round || 1) === 1 && !isPatriotsR1Premier) {
     valuation = Math.min(valuation, 3);
   }
-  if (effectiveTeamId === 'browns' || effectiveTeamId === 'steelers' || effectiveTeamId === 'texans' || effectiveTeamId === 'colts' || effectiveTeamId === 'jaguars' || effectiveTeamId === 'titans' || effectiveTeamId === 'broncos') {
+  if (effectiveTeamId === 'browns' || effectiveTeamId === 'steelers' || effectiveTeamId === 'texans' || effectiveTeamId === 'colts' || effectiveTeamId === 'jaguars' || effectiveTeamId === 'titans' || effectiveTeamId === 'broncos' || (isCowboys && (G.board.round || 1) === 1)) {
     valuation = Math.min(effMax, Math.min(spendableCoins, baseValuation));
   }
 
@@ -4122,7 +4218,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   valuation = Math.min(valuation, spendableCoins);
-  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns' && effectiveTeamId !== 'steelers' && effectiveTeamId !== 'texans' && effectiveTeamId !== 'colts' && effectiveTeamId !== 'jaguars' && effectiveTeamId !== 'titans' && effectiveTeamId !== 'broncos') {
+  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns' && effectiveTeamId !== 'steelers' && effectiveTeamId !== 'texans' && effectiveTeamId !== 'colts' && effectiveTeamId !== 'jaguars' && effectiveTeamId !== 'titans' && effectiveTeamId !== 'broncos' && effectiveTeamId !== 'cowboys') {
     valuation = Math.min(valuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
   }
 
@@ -4134,6 +4230,13 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
   if (effectiveTeamId === 'broncos' && (G.board.round || 1) <= 2 && isBroncosTarget) {
     valuation = Math.min(effMax, Math.min(14, currentPlayer.coins));
+  }
+  if (isCowboys && (G.board.round || 1) === 1) {
+    if (isCowboysElite) {
+      valuation = Math.min(effMax, Math.min(5, currentPlayer.coins));
+    } else if (isCowboysTier2) {
+      valuation = Math.min(effMax, Math.min(4, currentPlayer.coins));
+    }
   }
 
   // Jets Ability: Pay Maximum -> Deflate 4 PSI instantly
@@ -4421,6 +4524,19 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  // Cowboys Target Bid Refinements:
+  // - In Round 1: If an elite player is available, use all 5 coins to lock out rivals and secure the centerpiece!
+  // - Even a Tier 2 starter is worth up to 4 coins (passive +2 coins every turn guarantees quick recovery).
+  if (isCowboys && (G.board.round || 1) === 1) {
+    if (isCowboysElite && currentPlayer.coins >= nextBid) {
+      targetBid = Math.min(effMax, Math.min(5, currentPlayer.coins));
+      isJumpBid = (targetBid > nextBid);
+    } else if (isCowboysTier2 && currentPlayer.coins >= nextBid) {
+      targetBid = Math.min(effMax, Math.min(4, currentPlayer.coins));
+      isJumpBid = (targetBid > nextBid);
+    }
+  }
+
   // Broncos Target Bid Refinements:
   if (effectiveTeamId === 'broncos') {
     const currentRound = G.board.round || 1;
@@ -4459,7 +4575,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
       effMax > richestContenderCoins
     );
 
-    if (!isChargersRichestFarm) {
+    if (!isChargersRichestFarm && !(isCowboys && (G.board.round || 1) === 1)) {
       const rivalTargets = activeContenders.map(id => ({
         id,
         coins: G.players[id].coins,
@@ -4791,15 +4907,38 @@ export const resolveBonusAuctionWin = (G, winnerId) => {
     winner.lineup.push(card);
   } else {
     if (winner.isCpu) {
+      const winnerEffTeam = getEffectiveTeamId(winner);
+      const isWinnerSaints = winnerEffTeam === 'saints';
+      let toxicIdx = -1;
+      if (!isWinnerSaints) {
+        let worstToxicPenalty = -Infinity;
+        winner.lineup.forEach((c, idx) => {
+          if (!c || c.isPracticeSquad || c.uniqueId?.startsWith('ps_')) return;
+          const recInflate = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate').reduce((s, e) => s + e.amount, 0) || 0;
+          const recNegCoins = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0) || 0;
+          if (recInflate > 0 || recNegCoins > 0) {
+            const penalty = (recInflate * 3.0) + recNegCoins;
+            if (penalty > worstToxicPenalty) {
+              worstToxicPenalty = penalty;
+              toxicIdx = idx;
+            }
+          }
+        });
+      }
       let replaceIdx = 0;
-      let worstScore = Infinity;
-      winner.lineup.forEach((c, idx) => {
-        let score = c.isPracticeSquad ? -5 : (c.effects ? c.effects.reduce((a, e) => a + e.amount, 0) : 0);
-        if (score < worstScore) {
-          worstScore = score;
-          replaceIdx = idx;
-        }
-      });
+      if (toxicIdx !== -1) {
+        replaceIdx = toxicIdx;
+      } else {
+        let worstScore = Infinity;
+        winner.lineup.forEach((c, idx) => {
+          const isPracticeSquad = c.isPracticeSquad || c.id === 'practice_squad' || c.uniqueId?.startsWith('ps_');
+          let score = isPracticeSquad ? -200 : (c.effects ? c.effects.reduce((a, e) => a + e.amount, 0) : 0);
+          if (score < worstScore) {
+            worstScore = score;
+            replaceIdx = idx;
+          }
+        });
+      }
       const discarded = winner.lineup[replaceIdx];
       winner.lineup[replaceIdx] = card;
       if (!G.decks.discard) G.decks.discard = [];

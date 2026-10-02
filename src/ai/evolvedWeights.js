@@ -478,8 +478,8 @@ export const EVOLVED_TEAM_GENOMES = {
     "superstarPriorityMult": 1.5
   },
   "cowboys": {
-    "deflateWeight": 1.8,
-    "coinWeight": 0.7,
+    "deflateWeight": 2.4,
+    "coinWeight": 0.6,
     "recurringMult": 1.1,
     "aggression": 1.2,
     "reserveCoins": 0,
