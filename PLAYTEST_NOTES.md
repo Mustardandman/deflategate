@@ -2749,7 +2749,7 @@ To ensure zero compromise of earlier fine-tuning, each of the 5 franchises was a
    - Normally, opponents might bid `nextBid` (e.g. 1 or 2) and increment gradually. But against the Chargers, slow increments allow the Chargers to repeatedly interleave +1 outbids.
    - *Opponent Counter-Play*: Opponents calculate the maximum willingness among all active rivals (`maxRivalWilling`). If the opponent's valuation meets or exceeds `maxRivalWilling`, the opponent calculates the winning price:
      $$\text{winTarget} = \min(\text{valuation}, \min(\text{spendableCoins}, \max(\text{nextBid}, \text{maxRivalWilling})))$$
-   - Opponents are **40% more likely than normal** (~0.50 $\to$ 0.90) to jump directly to `winTarget` on turn 1. If an opponent projects they can win a card for 4 coins and no one will outbid them, they bid 4 immediately!
+   - *User-Calibrated Jump Probability*: Opponents use a balanced **0.50 probability** to jump directly to `winTarget` on turn 1. If an opponent projects they can win a card for 4 coins and no one will outbid them, they bid 4 immediately, providing strong anti-Chargers counter-play while retaining human draft variance.
 
 2. **Anti-Chargers Opening Nomination Start Price**:
    - In `executeCpuMoveInternal`, when an opponent of the Chargers nominates a card they desire:

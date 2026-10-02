@@ -29,9 +29,13 @@ export function testPlaytest57AntiChargers() {
     const bowersCard = { id: 'brock_bowers', minBid: 2, maxBid: 14, phase: 1, effects: [{ type: 'deflate', amount: 2, perRound: true }, { type: 'deflate', amount: 2, perRound: false }] };
     G.board.auctionPlayers = [bowersCard];
 
+    const origRand = Math.random;
+    Math.random = () => 0.25; // Under 0.50 threshold
     const decOpponent = evaluateCpuAuctionBid(G, '1');
+    Math.random = origRand;
+
     const jumpPassed = decOpponent.shouldBid && decOpponent.bidAmount === 4 && decOpponent.isJumpBid;
-    console.log(`Opponent Jump Bid against Chargers (jumps to 4 instead of 2): ${jumpPassed ? 'PASSED ✅' : 'FAILED ❌'} (bid: ${decOpponent.bidAmount}, isJumpBid: ${decOpponent.isJumpBid})`);
+    console.log(`Opponent Jump Bid against Chargers (jumps to 4 instead of 2 at 0.50 prob): ${jumpPassed ? 'PASSED ✅' : 'FAILED ❌'} (bid: ${decOpponent.bidAmount}, isJumpBid: ${decOpponent.isJumpBid})`);
     if (!jumpPassed) allPassed = false;
   }
 

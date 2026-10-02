@@ -4304,8 +4304,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     const winTarget = Math.min(effMax, Math.min(valuation, Math.min(spendableCoins, Math.max(nextBid, maxRivalWilling))));
 
     if (winTarget > nextBid && (valuation >= maxRivalWilling || cardScore >= 4.0)) {
-      // 40% more likely than normal to jump to the winning bid (normal ~0.50 -> now ~0.90)
-      const antiChargersJumpProb = 0.90;
+      // Balanced anti-Chargers jump probability (calibrated at 0.50)
+      const antiChargersJumpProb = 0.50;
       if (Math.random() < antiChargersJumpProb) {
         targetBid = winTarget;
         isJumpBid = true;
