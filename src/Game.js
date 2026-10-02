@@ -638,6 +638,14 @@ export const resolveAuctionWin = (G, playerID, card) => {
 
 export const CPU_ARCHETYPES = ['rusher', 'tycoon', 'opportunist', 'bully', 'wildcard'];
 
+export const GENERAL_HUMAN_HEURISTIC_TEAMS = new Set([
+  'raiders',
+  'chargers', 'cowboys', 'eagles', 'commanders',
+  'bears', 'lions', 'packers', 'vikings',
+  'falcons', 'saints', 'panthers', 'buccaneers',
+  'cardinals', 'rams', '49ers', 'seahawks'
+]);
+
 export const getCpuArchetype = (player, playerId) => {
   if (player && player.personality) return player.personality;
   const hash = Math.abs((playerId ? parseInt(playerId) : 0) * 31 + (player?.team?.id?.charCodeAt(0) || 0));
@@ -778,7 +786,7 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
     return (player?.coins || 0) >= 5 && ((player?.coins || 0) - card.minBid < 5);
   }
   if (teamId === 'saints') {
-    return card.effects?.some(e => e.type === 'inflate' || (e.type === 'coins' && e.amount < 0));
+    return card.effects?.some(e => e.type === 'inflate' || (e.type === 'coins' && e.amount < 0) || e.type === 'deflate' || e.type === 'coins');
   }
   if (teamId === 'colts') {
     const hasNegative = card.effects?.some(e => ((e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && ((e.type === 'coins' && e.amount < 0) || e.type === 'inflate' || e.type === 'freeze')) || (!e.perRound && e.type === 'inflate'));
@@ -820,7 +828,7 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
     return card.effects?.some(e => e.type === 'coins' || e.type === 'deflate');
   }
   if (teamId === 'cowboys') {
-    return card.effects?.some(e => e.type === 'deflate' && e.amount >= 2);
+    return card.effects?.some(e => e.type === 'deflate' || e.type === 'coins');
   }
   if (teamId === 'panthers') {
     return card.effects?.some(e => (e.type === 'coins' && e.amount >= 2) || (e.type === 'deflate' && e.amount >= 2));
@@ -1643,10 +1651,10 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       rawScore += 6.0;
     }
   }
-  if (effectiveTeamId === 'raiders') {
+  if (GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId)) {
     // Roster Complementarity & Engine Deficit Check:
-    // If Raiders lacks a recurring coin engine in Round 2+, heavily boost coin engines (+1.4x equivalent).
-    // If Raiders lacks a recurring deflation engine, heavily boost deflation!
+    // If team lacks a recurring coin engine in Round 2+, heavily boost coin engines (+1.4x equivalent).
+    // If team lacks a recurring deflation engine, heavily boost deflation!
     const realStarters = (p.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
     const recCoinsInLineup = realStarters.reduce((sum, c) => sum + (c.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0), 0);
     const recDeflateInLineup = realStarters.reduce((sum, c) => sum + (c.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0), 0);
@@ -1929,11 +1937,11 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       }
       if (isCandidatePerRound && currentLineup.length >= targetEngineQuota) {
         // If team already has 2+ engines, a mediocre redundant recurring filler is inferior to cycling instant cards:
-        const isRaidersComplementaryEngine = (effectiveTeamId === 'raiders' && (
+        const isComplementaryEngine = (GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId) && (
           (cleanRecurringEngines.every(c => !c.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate')) && card.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate')) ||
           (cleanRecurringEngines.every(c => !c.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins')) && card.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins'))
         ));
-        if (!isSuperstar && rawScore < 22 && !isRaidersComplementaryEngine) {
+        if (!isSuperstar && rawScore < 22 && !isComplementaryEngine) {
           rawScore *= (effectiveTeamId === 'bengals' ? 0.70 : 0.65);
         }
       }
@@ -2540,11 +2548,11 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     if (sub5Target) return sub5Target.index;
   }
 
-  // Raiders Tactical Nomination:
+  // Tactical Nomination Engine for General Human Heuristic Franchises:
   // - Extraction Bait: If top card is an expensive superstar dominated by a richer opponent, nominate to drain them!
   // - Greed Standoff Sneak: If top card is dominated, sneak a high-utility Tier 2 card while leaders hesitate.
   // - Primary Target: If we can contest or lead, nominate our top target directly.
-  if (effectiveTeamId === 'raiders' && eligibleCards.length > 0) {
+  if (GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId) && eligibleCards.length > 0) {
     const topCard = eligibleCards[0];
     const canContestTop = (currentPlayer.coins >= Math.min(topCard?.card.maxBid || 8, 8) && currentPlayer.coins >= richestOpponentCoins - 1);
 
@@ -3017,11 +3025,12 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
-  // Raiders Rule 2: Dynamic Poison-Pill Taxing
+  // Dynamic Poison-Pill Taxing
   // If card is toxic (cardScore <= 0.5 or gives inflate >= 2), but an immune rival (Saints or score >= 15) is bidding/active:
   // Safely price-tax up to 2 coins (nextBid <= 2) knowing they will outbid, but NEVER bid >= 3!
-  const isToxicForMe = cardScore <= 0.5 || card.effects?.some(e => e.type === 'inflate' && e.amount >= 2);
-  if (isToxicForMe && effectiveTeamId === 'raiders') {
+  // Note: Saints ignores inflation, so cards with inflation are NOT toxic for Saints.
+  const isToxicForMe = effectiveTeamId !== 'saints' && (cardScore <= 0.5 || card.effects?.some(e => e.type === 'inflate' && e.amount >= 2));
+  if (isToxicForMe && GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId)) {
     const immuneOpponent = Object.keys(G.players).some(oppId => {
       if (oppId === currentPlayerId) return false;
       const opp = G.players[oppId];
@@ -3155,12 +3164,17 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     savingsReserve = Math.max(savingsReserve, earlyReserve);
   }
 
-  // Raiders Era Horizon Cap (Rounds 3 & 6 Spending Cap):
+  // Era Horizon Cap (Rounds 3 & 6 Spending Cap):
   // Preserve funds for Phase 2 explosion (Round 3) and HOF era (Round 6) on non-superstars.
-  if (effectiveTeamId === 'raiders' && !isSuperstar) {
-    if (G.board.round === 3) savingsReserve = Math.max(savingsReserve, 5);
-    else if (G.board.round === 6) savingsReserve = Math.max(savingsReserve, 6);
-    else if (G.board.round <= 2) savingsReserve = Math.max(savingsReserve, 2);
+  if (GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId) && !isSuperstar) {
+    const is49ersDroppingBelow5 = (effectiveTeamId === '49ers' && currentPlayer.coins >= 5 && (currentPlayer.lineup || []).some(c => c.effects?.some(e => e.perRound && e.type === 'deflate')));
+    const isPackersPhase1Pursuit = (effectiveTeamId === 'packers' && card.phase === 1 && (currentPlayer.lineup || []).every(c => c.phase === 1 || c.isPracticeSquad));
+
+    if (!is49ersDroppingBelow5 && !isPackersPhase1Pursuit) {
+      if (G.board.round === 3) savingsReserve = Math.max(savingsReserve, 5);
+      else if (G.board.round === 6) savingsReserve = Math.max(savingsReserve, 6);
+      else if (G.board.round <= 2) savingsReserve = Math.max(savingsReserve, 2);
+    }
   }
 
   // #4 Rams Ability: Gain Double Token. In Rounds 1-3, Rams preserve >= 7 coins for Phase 2 / HOF centerpiece!
@@ -3354,11 +3368,11 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
-  // Raiders Valuation Strategy:
+  // General Human Valuation Strategy:
   // VORP / Board Quality Spread Scaling:
   // - High spread (e.g. Bowers vs bad scrubs): pay up for the top player!
   // - Flat board (multiple comparable players): do not overpay; let rivals fight while securing good value.
-  if (effectiveTeamId === 'raiders') {
+  if (GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId)) {
     const boardCards = (G.board.auctionPlayers || []).filter(c => c !== null);
     const allScores = boardCards.map(c => scoreCardForPlayer(G, currentPlayerId, c)).sort((a, b) => b - a);
     const topScore = allScores[0] || cardScore;
@@ -4322,10 +4336,10 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
-  // Raiders Target Bid Refinements:
+  // Target Bid Refinements for General Human Heuristic Franchises:
   // Pre-emptive Lockout Hammer: Jump to rival's maximum willing bid (min(rival purse, rival valuation)),
   // locking them out immediately without needlessly overspending to our own ceiling.
-  if (effectiveTeamId === 'raiders' && cardScore >= 8.0 && valuation > nextBid) {
+  if (GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId) && cardScore >= 8.0 && valuation > nextBid) {
     const rivalTargets = activeContenders.map(id => ({
       id,
       coins: G.players[id].coins,

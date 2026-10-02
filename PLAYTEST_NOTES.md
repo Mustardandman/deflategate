@@ -2464,6 +2464,66 @@ In Playtest 51, the Las Vegas Raiders CPU logic was comprehensively overhauled f
 3. **Production Validation**:
    - Clean Vite production build verified (`dist/assets/index-2kSshrYv.js`).
 
+---
+
+## Playtest 52: League-Wide Expansion of Phase 1 & 2 Human Auction Heuristics Across 16 General Franchises
+
+### 1. Executive Summary & Architecture
+In Playtest 52, the human-like auction drafter engine established in Playtest 51 was systematically expanded across all 16 franchises scheduled for future fine-tuning:
+**Chargers, Cowboys, Eagles, Commanders, Bears, Lions, Packers, Vikings, Falcons, Saints, Panthers, Buccaneers, Cardinals, Rams, 49ers, Seahawks.**
+
+To protect existing strategic work, the 15 previously fine-tuned teams (**Bills, Dolphins, Patriots, Jets, Ravens, Bengals, Browns, Steelers, Texans, Colts, Jaguars, Titans, Broncos, Chiefs, Raiders**) retain 100% of their bespoke abilities, custom valuations, and tuned genomes without regression.
+
+---
+
+### 2. Comprehensive Feature Deployment
+
+1. **Strategic Nomination Tactics (`chooseCpuNominationCard`)**:
+   - **Extraction Bait**: When an un-winnable superstar is dominated by a richer opponent, CPU nominates it to drain the leader's purse before affordable cards appear.
+   - **Greed Standoff Sneak**: When leaders are fixated on an expensive card, CPU nominates an attainable Tier-2 card to steal it cheaply.
+   - **Primary Conviction**: Directly nominates their top target when in contention.
+
+2. **Pre-Emptive Lockout Hammer (`evaluateCpuAuctionBid`)**:
+   - Calibrates jump bids to the rival's maximum willingness ($\min(\text{wallet}, \text{valuation})$) rather than overbidding to the CPU's own ceiling.
+
+3. **Dynamic Poison-Pill Taxing (`evaluateCpuAuctionBid`)**:
+   - Safely price-taxes toxic cards (inflation or negative effects) up to 2 coins when an immune rival (Saints) or high-desire bidder is active.
+   - **Hard Fail-Safe**: Strictly NEVER bids $\ge 3$ on toxic cards.
+   - **Saints Immunity**: Saints ignores inflation and negative coins, so inflation cards are never treated as toxic for Saints.
+
+4. **VORP / Board Quality Spread Scaling (`evaluateCpuAuctionBid`)**:
+   - Scales willingness based on the difference between the top card and median alternative (`spread = topScore - medianScore`).
+   - Caps spending at minBid or 3 on flat boards to avoid overpriced bidding wars.
+
+5. **Era Horizon Cap (`evaluateCpuAuctionBid`)**:
+   - Preserves bankroll (at least 5 coins in Round 3, 6 coins in Round 6) on non-superstars to prepare for Phase 2 and Hall of Fame talent.
+   - **Franchise Awareness**:
+     - *49ers*: Exempt if coins $\ge 5$ with active deflation in lineup, allowing them to drop under 5 coins to trigger double deflation.
+     - *Packers*: Exempt when pursuing Phase 1 players to maintain the Phase 1 streak bonus.
+
+6. **Roster Complementarity & Engine Deficit Check (`scoreCardForPlayer`)**:
+   - Inspects active starters in Round 2+:
+     - If lacking recurring coins, boosts coin engines (`+cardRecCoins * 3.5`).
+     - If lacking recurring deflation, boosts deflation engines (`+cardRecDeflate * 3.5`).
+     - Saturated engines ($\ge 5$ coins or $\ge 6$ deflate) dampened by $0.75\times$.
+     - Missing complementary engines are exempt from the redundant filler penalty.
+
+7. **Flexible Strategy Synergy (`doesCardFitTeamStrategy`)**:
+   - Expanded Cowboys and Saints to recognize both coins and deflation as strategically fitting, ensuring clean synergy multipliers.
+
+---
+
+### 3. Verification & Testing
+
+- **Automated 16-Team Test Suite (`scratch/testPlaytest52GeneralTeams.mjs`)**:
+  - All 16 teams verified: Era Horizon Cap, Dynamic Poison Taxing, Roster Complementarity, Lockout Hammer, and VORP scaling.
+  - **16/16 Teams Passed 100% ✅**.
+- **Multi-Format League Benchmarks (4P, 7P, 10P)**:
+  - Both previously fine-tuned teams and newly upgraded general teams competed cleanly and vigorously across all formats.
+- **Production Build**:
+  - Clean Vite build verified (`npm run build`) in 4.64s (`dist/assets/index-CD18jXGT.js`).
+
+
 
 
 
