@@ -2157,6 +2157,93 @@ Ran an automated coordinate grid sweep across 20 candidate genome permutations a
   - Colts (Playtest 46: 30/30), Texans (Playtest 45: 11/11), Steelers (Playtest 44: 7/7), Browns (Playtest 43: 6/6), Ravens (Playtest 40: 4/4), Patriots (Playtest 39: 5/5) all pass with zero regressions.
 - **Production Build**: Verified clean Vite production build in 5.64s with zero errors.
 
+---
+
+## Playtest 48: Tennessee Titans Strategic Overhaul & League-Wide Universal Cycle Strategy
+
+### 1. Overview & Franchise Profile
+- **Franchise**: Tennessee Titans ⚔️
+- **Starting Stats**: **44 PSI** and **7 Coins** (tied for lowest starting bankroll).
+- **Franchise Ability**:
+  > *"At the beginning of the game, look at the top three cards of the players deck. Acquire one for free. Shuffle the Player Deck"*
+- **Context & Motivation**:
+  In baseline diagnostics, Titans suffered from a **11.0% win rate** (well below 14.3% fair share) in 7-player tables. An investigation revealed 4 critical root causes:
+  1. **The Poison Trap**: In `advanceTitansDraftQueue`, cards were scored with a naive formula `(deflate * 2) + coins`. Hunter Henry (+8 instant deflate, +3 recurring inflate) scored 16 and was **drafted in 13% of all games (#1 drafted card)**! Zeke Elliott was drafted in 6% of games. Nearly 20% of Titans games began with severe self-inflicted recurring inflation or negative coins.
+  2. **Instant Effects Never Applied on Opening Draft**: When `advanceTitansDraftQueue` or `titansPickCard` drafted a player, instant coins and deflation were never applied to the player's bankroll or PSI.
+  3. **Practice Squad Scrub Retention Bug**: In `resolveAuctionWin`, Practice Squad cards were evaluated as recurring coins (`score ~ +11`), while used instant cards were evaluated at `-100`. Teams with a used instant card would continuously cycle that card while keeping a 1-coin Practice Squad scrub on the roster indefinitely.
+  4. **The Round 1 65% Bankroll Clamp**: Titans was subjected to the generic early-game 65% purse cap and 2-coin reserve, capping their maximum bid at 5 coins and preventing them from winning an anchor engine to complete their 2-engine setup.
+
+---
+
+### 2. Human Strategic Blueprint (User Directives)
+
+1. **Default Clean Playstyle (No Idiosyncratic Rankings)**:
+   - Titans plays standard, disciplined Deflategate without overcomplicated team restrictions. Their advantage is being **one step ahead** in roster development from Turn 0.
+2. **Opening Draft Pick (Best Player Available with Recurring Priority)**:
+   - Target every-round deflation or coin engines first.
+   - Pick the true Best Player Available (BPA) with full 10-round lifetime valuation.
+   - Absolutely eliminate toxic drawback cards (Hunter Henry, Deshaun Watson, Zeke) as keepers.
+   - Properly credit all instant effects (coins/deflation) immediately upon drafting.
+3. **The Universal 2-Engine Core + 1-Slot Cycle Strategy**:
+   - The optimal roster meta across Deflategate: **2 every-turn recurring engines + 1 revolving cycle card**.
+   - **When holding 1 recurring engine (Titans in Round 1)**: Primary goal is hunting for a 2nd recurring engine. However, if forced to go instant in Round 1, it isn't as bad as for other teams because Titans already has 1 good recurring starter cooking from Turn 0.
+   - **When holding $\ge 2$ recurring engines (All Teams)**: The permanent core is established! The 3rd slot is the designated cycle spot. Instant deflation nukes (Aaron Jones, Kyren Williams, Kenneth Walker, Gibbs, Swift) and instant coin bursts (Odunze, Nabers, Deebo) become prime targets to cycle that 3rd spot and sprint to 0 PSI.
+4. **Universal Lineup Replacement Hierarchy**:
+   - Practice Squad cards must be replaced (`score = -200`) before used cycle cards (`score = -100`), ensuring all scrubs are cleared out.
+   - Used cycle cards (`score = -100`) are replaced before active recurring engines (`score > 0`), permanently protecting the 2 core engines from being cut.
+5. **Round 1 Bankroll Conviction**:
+   - Exempt Titans from the 65% purse cap and savings reserve when bidding on an anchor engine in Round 1, allowing them to bid up to 6–7 coins to secure their 2-engine core.
+
+---
+
+### 3. Core Engine Implementations (`src/Game.js`)
+
+1. **Titans Opening Draft Overhaul (`advanceTitansDraftQueue` & `titansPickCard`)**:
+   - CPU evaluates candidates using full `scoreCardForPlayer(G, currentId, card)`.
+   - Filters out toxic recurring cards (`score = -100`).
+   - Every-round deflation/coin players receive BPA bonus: `+(recDeflate * 5.0) + (recCoins * 3.0)`.
+   - Fires `applyCoinsGained`, `applyPsiDeflated`, and `applyPsiInflated` immediately upon acquisition in both CPU and move handlers.
+2. **Universal 3-Slot Rotation Cycle Strategy (`scoreCardForPlayer`) for ALL Teams**:
+   - Tracks `cleanRecurringEngines` (excluding toxic cards) against `targetEngineQuota` (2 for standard teams, 3 for Seahawks).
+   - If `recurringCount < targetEngineQuota`: recurring engines get early round priority (+5.0). For Titans in R1 with 1 engine, instant cards get a +4.0 bonus.
+   - If `recurringCount >= targetEngineQuota`:
+     - Instant deflation receives **Cycle Deflation Bonus**: `(instDeflate * deflateW * 1.5) + (instDeflate >= 4 ? 5.0 : 2.5)`.
+     - Instant coins receives **Cycle Coin Bonus**: `(instCoins * coinW * 1.2) + (instCoins >= 4 ? 2.5 : 1.0)`. Both bonuses apply if a card has dual effects.
+     - Redundant, mediocre recurring fillers receive a 0.65x penalty (0.70x for Bengals) so teams favor high-burst cycle cards.
+     - Opportunity cost in full lineups is 0 for any consumed instant card or toxic card, enabling seamless cycling.
+     - Titans receives an additional +3.0 bonus on instant deflation to aggressively close games.
+3. **Universal Lineup Replacement Hierarchy (`resolveAuctionWin`) Across Every Franchise**:
+   - Priority 1 (`score = -300`): Toxic cards (Hunter Henry, Deshaun Watson, Zeke) $\to$ Cut immediately across all teams (including Texans & Ravens).
+   - Priority 2 (`score = -200`): Practice Squad scrubs $\to$ Replaced before cycle cards.
+   - Priority 3 (`score = -100`): Consumed instant / cycle cards $\to$ Revolving cycle spot (consistently replaced across all teams).
+   - Priority 4 (`score > 0`): Active recurring engines $\to$ Permanently protected.
+4. **Universal Auction Freedom on High-Value Cycle Targets (`evaluateCpuAuctionBid`)**:
+   - Added `isHighValueCycleTarget` (`cardScore >= 8.0` or $\ge 3$ instant deflate / $\ge 4$ instant coins), exempting teams from conservative downgrade caps when pivoting into cycle cards.
+5. **Titans Round 1 Conviction & Genome Calibration**:
+   - Added `isTitansR1Anchor` to `spendableCoins`, valuation overrides, and early-game cap exemptions.
+   - Calibrated Titans genome: `{ deflateWeight: 2.1, coinWeight: 1.05, recurringMult: 1.15, aggression: 1.15, reserveCoins: 1, priceBumpProb: 0.2, synergyBonus: 1.3, firstClaimAggression: 1.15, postClaimAggression: 0.9, sub5UrgencyBonus: 2.2, richestBuffer: 1, instantMaxBidAggression: 1.0, boardStrengthWeight: 1.1, threatDefenseWeight: 1.05, superstarPriorityMult: 1.35 }`.
+
+---
+
+### 4. Benchmark Validation & Results
+
+- **Automated Unit Test Suite (`scratch/testPlaytest48Titans.mjs`)**: 15/15 PASSED.
+  - `Test 1`: Titans Opening Draft BPA selection (picks Bowers, rejects Hunter Henry; applies -2 deflation).
+  - `Test 2`: Instant Coins application on opening draft (Odunze grants +5 coins).
+  - `Test 3`: Universal Cycle Strategy in `scoreCardForPlayer` (Kyren Williams scores 27.1 with 2 engines vs 8.4 without; favored over redundant 1-deflate filler).
+  - `Test 4`: Universal Lineup Replacement Hierarchy (Practice Squad cut first at -200; Aaron Jones cycle card cut second at -100; Bowers & Kittle engines preserved).
+  - `Test 5`: Titans Round 1 Anchor Bidding (bids 6 coins on Goedert, exempt from 5-coin clamp).
+  - `Test 6`: Titans Round 1 Instant Card Viability (scores 10.7 vs 8.0 for generic team).
+- **Competitive Tournament Results (`scratch/testTitansBenchmark.mjs`)**:
+  - **7-Player Win Rate**: Jumped from **11.0% $\to$ 17.0%** (above 14.3% fair share).
+  - **10-Player Win Rate**: Reached **16.0%** (1.6x fair share of 10.0%).
+  - **Top Drafted Cards**: Tee Higgins (11%), DeVonta Smith (7%), Brock Bowers (7%), Drake London (7%), Greg Olsen (6%), Trevor Lawrence (6%), Amari Cooper (4%).
+  - **Toxic Drawback Elimination**: Hunter Henry and Ezekiel Elliott plummeted from 19% combined down to **0%**!
+- **League Regression Verification**:
+  - Jaguars (Playtest 47: 17/17), Colts (Playtest 46: 30/30), Texans (Playtest 45: 11/11), Steelers (Playtest 44: 7/7), Browns (Playtest 43: 6/6), Ravens (Playtest 40: 4/4), Patriots (Playtest 39: 5/5) all pass 100%.
+- **Production Build**: Verified clean Vite production build in 4.12s with zero errors.
+
+
 
 
 
