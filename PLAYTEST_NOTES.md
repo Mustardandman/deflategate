@@ -2660,6 +2660,76 @@ To ensure zero compromise of earlier fine-tuning, each of the 5 franchises was a
 - **Production Build**:
   - Clean Vite build verified (`npm run build`) in 17.32s (`dist/assets/index-DeQfHeTM.js`).
 
+---
+
+## Playtest 56: Los Angeles Chargers Strategic Overhaul — Outbid Farming Synergy, Richest Increment Farm, and Deflation Dominance
+
+### 1. Franchise Overview & Strategic Context
+- **Franchise**: Los Angeles Chargers ⚡
+- **Starting Stats**: **50 PSI** (the steepest burden in the NFL) and **6 Starting Coins** (lowest starting bankroll).
+- **Franchise Ability**: *"Each time you outbid a player, gain 1 coin at the end of the round"*
+- **Baseline Bottleneck**:
+  Baseline diagnostics revealed the Chargers generated ~26 bonus coins per game from outbidding, but suffered an **11.0% win rate** in 7P tables and finished with a dismal **17.17 average final PSI**. The root cause was drafting low-impact coin engines (Amari Cooper, DeAndre Hopkins, Michael Pittman) while ignoring high-output deflation, leaving them with insufficient velocity to clear 50 PSI.
+
+---
+
+### 2. User Strategic Innovations & Implementation Details
+
+1. **User Rule 1: Deflate Weight Over Coins with Active Outbid Farming**:
+   - Calibrated genome weights in `src/ai/teamGenomes.js` and `src/ai/evolvedWeights.js`:
+     - `deflateWeight: 1.6 -> 2.5`
+     - `coinWeight: 1.0 -> 0.6`
+     - `aggression: 0.9 -> 1.15`
+     - `reserveCoins: 3 -> 1`
+   - *Outbid Farming on Coin Cards*: In `evaluateCpuAuctionBid`, when `nextBid > valuation` on a clean player card, the Chargers inspects active opponents. If a rival is projected to outbid (`oppWilling >= nextBid + 1 && opp.coins >= nextBid + 1`), the Chargers places a `nextBid` bump to extract the +1 outbid bonus coin. If no rival will outbid, the Chargers safely folds, completely eliminating the trap of accidentally winning junk early.
+
+2. **User Rule 2: Richest Increment Farm (Lockout Hammer Tactic)**:
+   - In `evaluateCpuAuctionBid`, when the Lockout Hammer evaluates a jump:
+     $$\text{isChargersRichestFarm} = (\text{effectiveTeamId} = \text{'chargers'} \land \text{coins} > \text{richestOpponentCoins} \land \text{effMax} > \text{richestOpponentCoins})$$
+   - If the Chargers is strictly the richest player and the card's maximum bid exceeds all rivals' wallets, **no opponent can lock out the Chargers**. Instead of jumping, the Chargers bids `currentBid + 1`, enticing rivals to place higher bids so the Chargers can outbid them back and milk multiple bonus coins on the same card!
+   - When rivals can contest the ceiling or the Chargers is not richest, the Lockout Hammer executes normally to shut out opponents.
+
+3. **Crown Jewel Deflation Nomination**:
+   - In `chooseCpuNominationCard`, if an elite deflation centerpiece is on the board (Brock Bowers, Travis Kelce, Patrick Mahomes, HOF legends, or 4+ deflation nukes), the Chargers nominates it directly to seize it with their outbid war chest.
+   - Otherwise, the Chargers nominates bait cards that rivals crave most, ensuring an opponent immediately outbids them for a guaranteed +1 bonus coin.
+
+---
+
+### 3. Empirical Verification & Multi-Format Benchmarks
+
+- **Targeted Test Suite (`scratch/testPlaytest56Chargers.mjs`)**:
+  - Chargers in `GENERAL_HUMAN_HEURISTIC_TEAMS`: PASSED ✅
+  - Richest Farm: bids `currentBid + 1` (3) without jumping on Kelce: PASSED ✅
+  - Lockout Hammer when ceiling contested: jumps to 5: PASSED ✅
+  - Outbid Farming on Coin Card: bids 4 when 10-coin rival will outbid: PASSED ✅
+  - Safety Fold: folds when 2-coin rival cannot outbid: PASSED ✅
+  - Crown Jewel Nomination: nominates Bowers when available: PASSED ✅
+  - Bait Nomination: nominates rival favorite when no crown jewel: PASSED ✅
+  - **Result: 7/7 Checks Passed 100% ✅**.
+
+- **300-Game Simulation Comparison (Baseline vs. Playtest 56)**:
+  - **7-Player Lobby**:
+    - Win Rate: **11.0% $\to$ 23.0%** (+12.0%, >1.6x fair share of 14.3%)!
+    - Avg Final PSI: **17.17 $\to$ 13.73** (-3.44 PSI improvement).
+    - Top Acquired Cards: Patrick Mahomes, Christian McCaffrey, Marshawn Lynch, Brock Bowers!
+  - **10-Player Lobby**:
+    - Win Rate: **20.0% $\to$ 24.0%** (2.4x fair share of 10.0%)!
+    - Avg Final PSI: **16.01 $\to$ 14.12**.
+    - Top Acquired Card: Travis Kelce (#1 most acquired card).
+  - **4-Player Lobby**:
+    - Win Rate: **34.0%** (fair share: 25.0%).
+    - Avg Final PSI: **10.03**.
+
+- **League Regression Suites**:
+  - Playtest 55 (Jaguars, Titans, Broncos, Chiefs): PASSED 100% ✅
+  - Playtest 54 (Bengals, Browns, Steelers, Texans, Colts): PASSED 100% ✅
+  - Playtest 53 (Bills, Dolphins, Patriots, Jets, Ravens): PASSED 100% ✅
+  - Playtest 52 (16 General Teams): PASSED 100% ✅
+
+- **Production Build**:
+  - Clean Vite build verified (`npm run build`) in 5.56s (`dist/assets/index-4pxCHmbx.js`).
+
+
 
 
 

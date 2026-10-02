@@ -2046,11 +2046,21 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     return eliteChiefsSuperstar.index;
   }
 
-  // Chargers Strategic Bait Nomination:
-  // Instead of nominating cards opponents might pass on, Chargers find cards that rivals CRAVE!
-  // When an opponent outbids Chargers, Chargers safely gain +1 coin without getting stuck with dead weight!
+  // Chargers Strategic Nomination:
+  // 1. If an elite deflation centerpiece is available (Bowers, Kelce, Mahomes, HOF legends), Chargers nominates it directly!
+  // 2. Otherwise, Chargers finds cards that rivals CRAVE to farm outbid bonus coins!
   const effectiveTeamId = getEffectiveTeamId(currentPlayer);
-  if (effectiveTeamId === 'chargers' && G.board.round >= 2) {
+  if (effectiveTeamId === 'chargers') {
+    const crownJewel = eligibleCards.find(item => {
+      const isAnchor = item.card.id === 'brock_bowers' || item.card.id === 'travis_kelce' || item.card.id === 'patrick_mahomes' || item.card.phase === 'hof';
+      const isHugeDeflate = item.card.effects?.some(e => (e.perRound && e.type === 'deflate' && e.amount >= 2) || (!e.perRound && e.type === 'deflate' && e.amount >= 4));
+      return (isAnchor || isHugeDeflate) && item.score >= 16.0 && currentPlayer.coins >= item.card.minBid;
+    });
+
+    if (crownJewel) {
+      return crownJewel.index;
+    }
+
     let bestBait = null;
     let maxOppScore = -Infinity;
 
@@ -4178,6 +4188,31 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
   // Playtest 19 Note 15 & Playtest 34: Strategic Price Bumping on Opponent Preferences & Threat Levels
   if (nextBid > valuation) {
+    // Chargers Outbid Farming on Coin/Player Cards:
+    // If Chargers' own valuation is lower than nextBid, BUT Chargers projects that an active rival
+    // will outbid them (rival willingness >= nextBid + 1 and rival has coins):
+    // Chargers bids nextBid to extract a +1 outbid bonus coin at the end of the round!
+    if (effectiveTeamId === 'chargers' && !isSuperstar) {
+      const isCleanCard = !card.effects?.some(e => e.perRound && e.type === 'inflate');
+      if (isCleanCard && nextBid <= 5 && currentPlayer.coins >= nextBid + 1) {
+        const activeRivals = Object.keys(G.players).filter(
+          id => id !== currentPlayerId && !G.players[id].hasWonAuction && !G.board.passedAuctionPlayers?.includes(id)
+        );
+
+        const rivalWillOutbid = activeRivals.some(oppId => {
+          const opp = G.players[oppId];
+          const oppScore = scoreCardForPlayer(G, oppId, card);
+          const oppEffMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
+          const oppWilling = Math.min(opp.coins, Math.min(oppEffMax, Math.round(oppScore * 0.75)));
+          return (oppWilling >= nextBid + 1 && opp.coins >= nextBid + 1);
+        });
+
+        if (rivalWillOutbid) {
+          return { shouldBid: true, bidAmount: nextBid, isPriceBump: true };
+        }
+      }
+    }
+
     const oppTeamId = highestTeamId;
     const oppLovesCard = doesCardFitTeamStrategy(oppTeamId, card, highestBidderPlayer, G);
     const opponentCanAffordRaise = highestBidderPlayer && highestBidderPlayer.coins >= nextBid + bidStep;
@@ -4238,7 +4273,14 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   let targetBid = nextBid;
   let isJumpBid = false;
 
-  if (richestContenderCoins >= nextBid && 
+  const isChargersRichestFarm = (
+    effectiveTeamId === 'chargers' && 
+    currentPlayer.coins > richestContenderCoins && 
+    effMax > richestContenderCoins
+  );
+
+  if (!isChargersRichestFarm &&
+      richestContenderCoins >= nextBid && 
       richestContenderCoins <= valuation && 
       richestContenderCoins <= effMax && 
       currentPlayer.coins >= richestContenderCoins) {
@@ -4375,20 +4417,32 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // Pre-emptive Lockout Hammer: Jump to rival's maximum willing bid (min(rival purse, rival valuation)),
   // locking them out immediately without needlessly overspending to our own ceiling.
   if (GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId) && cardScore >= 8.0 && valuation > nextBid) {
-    const rivalTargets = activeContenders.map(id => ({
-      id,
-      coins: G.players[id].coins,
-      score: scoreCardForPlayer(G, id, card)
-    })).filter(o => o.score >= 4.0 && o.coins < currentPlayer.coins).sort((a, b) => b.coins - a.coins);
+    // Chargers Custom Lockout Hammer Rule:
+    // If Chargers is strictly the richest player, and effMax > richestContenderCoins:
+    // Chargers is in no danger of being locked out by anyone!
+    // Chargers bids nextBid (currentBid + 1) instead of jumping, letting rivals outbid so Chargers can outbid back and farm extra coins!
+    const isChargersRichestFarm = (
+      effectiveTeamId === 'chargers' && 
+      currentPlayer.coins > richestContenderCoins && 
+      effMax > richestContenderCoins
+    );
 
-    if (rivalTargets.length > 0) {
-      const topRival = rivalTargets[0];
-      const rivalEffMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
-      const rivalWilling = Math.min(topRival.coins, Math.min(rivalEffMax, Math.round(topRival.score * 0.75)));
-      const lockoutTarget = Math.max(nextBid, rivalWilling);
-      if (lockoutTarget >= nextBid && lockoutTarget <= valuation && lockoutTarget <= spendableCoins && currentPlayer.coins >= lockoutTarget) {
-        targetBid = lockoutTarget;
-        isJumpBid = (targetBid > nextBid);
+    if (!isChargersRichestFarm) {
+      const rivalTargets = activeContenders.map(id => ({
+        id,
+        coins: G.players[id].coins,
+        score: scoreCardForPlayer(G, id, card)
+      })).filter(o => o.score >= 4.0 && o.coins < currentPlayer.coins).sort((a, b) => b.coins - a.coins);
+
+      if (rivalTargets.length > 0) {
+        const topRival = rivalTargets[0];
+        const rivalEffMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
+        const rivalWilling = Math.min(topRival.coins, Math.min(rivalEffMax, Math.round(topRival.score * 0.75)));
+        const lockoutTarget = Math.max(nextBid, rivalWilling);
+        if (lockoutTarget >= nextBid && lockoutTarget <= valuation && lockoutTarget <= spendableCoins && currentPlayer.coins >= lockoutTarget) {
+          targetBid = lockoutTarget;
+          isJumpBid = (targetBid > nextBid);
+        }
       }
     }
   }

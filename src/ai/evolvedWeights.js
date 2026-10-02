@@ -290,21 +290,21 @@ export const EVOLVED_TEAM_GENOMES = {
     "superstarPriorityMult": 1
   },
   "chargers": {
-    "deflateWeight": 1.6,
-    "coinWeight": 0.43,
-    "recurringMult": 1.13,
-    "aggression": 0.93,
-    "reserveCoins": 3,
-    "priceBumpProb": 0.45,
-    "synergyBonus": 1.2,
-    "firstClaimAggression": 0.8,
-    "postClaimAggression": 0.9,
-    "sub5UrgencyBonus": 2,
+    "deflateWeight": 2.5,
+    "coinWeight": 0.6,
+    "recurringMult": 1.2,
+    "aggression": 1.15,
+    "reserveCoins": 1,
+    "priceBumpProb": 0.5,
+    "synergyBonus": 1.3,
+    "firstClaimAggression": 1.1,
+    "postClaimAggression": 1.0,
+    "sub5UrgencyBonus": 2.2,
     "richestBuffer": 1,
-    "instantMaxBidAggression": 1,
+    "instantMaxBidAggression": 1.2,
     "boardStrengthWeight": 1,
     "threatDefenseWeight": 1.2,
-    "superstarPriorityMult": 1.2
+    "superstarPriorityMult": 1.4
   },
   "packers": {
     "deflateWeight": 1.6,
