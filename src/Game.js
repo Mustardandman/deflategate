@@ -3316,7 +3316,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
   const activeOpponents = Object.keys(G.players).filter(
-    id => id !== currentPlayerId && !G.players[id].hasWonAuction && !G.board.passedAuctionPlayers.includes(id)
+    id => id !== currentPlayerId && !G.players[id].hasWonAuction && !G.board.passedAuctionPlayers?.includes(id)
   );
   const richestOpponentCoins = activeOpponents.length > 0
     ? Math.max(0, ...activeOpponents.map(id => G.players[id]?.coins || 0))
@@ -4279,7 +4279,39 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     effMax > richestContenderCoins
   );
 
-  if (!isChargersRichestFarm &&
+  const isChargersInGame = Object.values(G.players || {}).some(
+    p => getEffectiveTeamId(p) === 'chargers'
+  );
+
+  // Anti-Chargers Opponent Bidding Strategy:
+  // When Chargers are in the game, opponents want to DENY Chargers free outbid farming!
+  // Instead of starting at 1 and slowly incrementing (which lets Chargers farm +1 outbids over and over),
+  // opponents are 40% more likely than normal to bid the max they think they can win a player for!
+  // If they think they can win the player for 4 and no one will outbid them, they start at 4.
+  if (isChargersInGame && effectiveTeamId !== 'chargers' && valuation >= nextBid && spendableCoins >= nextBid) {
+    const rivalContenders = activeContenders.map(id => {
+      const opp = G.players[id];
+      const oppScore = scoreCardForPlayer(G, id, card);
+      const oppEffMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
+      const oppWilling = Math.min(opp.coins, Math.min(oppEffMax, Math.round(oppScore * 0.75)));
+      return { id, willing: oppWilling, score: oppScore };
+    });
+
+    const maxRivalWilling = rivalContenders.length > 0
+      ? Math.max(0, ...rivalContenders.map(r => r.willing))
+      : 0;
+
+    const winTarget = Math.min(effMax, Math.min(valuation, Math.min(spendableCoins, Math.max(nextBid, maxRivalWilling))));
+
+    if (winTarget > nextBid && (valuation >= maxRivalWilling || cardScore >= 4.0)) {
+      // 40% more likely than normal to jump to the winning bid (normal ~0.50 -> now ~0.90)
+      const antiChargersJumpProb = 0.90;
+      if (Math.random() < antiChargersJumpProb) {
+        targetBid = winTarget;
+        isJumpBid = true;
+      }
+    }
+  } else if (!isChargersRichestFarm &&
       richestContenderCoins >= nextBid && 
       richestContenderCoins <= valuation && 
       richestContenderCoins <= effMax && 
@@ -4525,6 +4557,8 @@ const executeCpuMoveInternal = (G, ctx, events) => {
       const isLionsFirstBonus = isFirstPlayerOfRound && effectiveTeamId === 'lions';
       const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
 
+      const isChargersInGame = Object.values(G.players || {}).some(p => getEffectiveTeamId(p) === 'chargers');
+
       if (isLionsFirstBonus) {
         const activeOpponents = Object.keys(G.players).filter(id => id !== currentPlayerId && !G.players[id].hasWonAuction);
         const richestOpponentCoins = Math.max(0, ...activeOpponents.map(id => G.players[id]?.coins || 0));
@@ -4538,6 +4572,16 @@ const executeCpuMoveInternal = (G, ctx, events) => {
           G.board.highestBid = Math.min(currentPlayer.coins, lockoutBid);
         } else {
           G.board.highestBid = card.minBid;
+        }
+      } else if (isChargersInGame && effectiveTeamId !== 'chargers') {
+        // Anti-Chargers Opponent Nomination Strategy:
+        // When Chargers are in the game, opponents don't start at minBid (e.g. 1) and increase by 1 each time.
+        // If they think they can win the player for 4 and no one will outbid them, they start at 4!
+        const nomDecision = evaluateCpuAuctionBid(G, currentPlayerId);
+        if (nomDecision && nomDecision.shouldBid && nomDecision.bidAmount > card.minBid) {
+          G.board.highestBid = Math.min(currentPlayer.coins, Math.min(effMax, nomDecision.bidAmount));
+        } else {
+          G.board.highestBid = (isSoleRemainingBidder && currentPlayer.coins === 0) ? 0 : card.minBid;
         }
       } else {
         G.board.highestBid = (isSoleRemainingBidder && currentPlayer.coins === 0) ? 0 : card.minBid;

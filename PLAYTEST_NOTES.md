@@ -2729,6 +2729,56 @@ To ensure zero compromise of earlier fine-tuning, each of the 5 franchises was a
 - **Production Build**:
   - Clean Vite build verified (`npm run build`) in 5.56s (`dist/assets/index-4pxCHmbx.js`).
 
+---
+
+## Playtest 57: Anti-Chargers Opponent Counter-Play — Lockout Opening Bids & Outbid Denials
+
+### 1. Strategic Context & Mechanical Clarifications
+- **Franchise**: Los Angeles Chargers ⚡ vs. The Rest of the League
+- **Core Rules Clarification**:
+  - When the Chargers nominates a player, the Chargers opens the bidding at the opening price (`minBid` or higher). If an opponent outbids them, the *opponent* is the bidder; the Chargers receives **no ability trigger** for being outbid.
+  - The Chargers' ability (*"Each time you outbid a player, gain 1 coin at the end of the round"*) only triggers when the **Chargers actively places a bid higher than an opponent**.
+  - Often, the cards opponents crave most are premier deflation anchors (such as Brock Bowers, Travis Kelce, or Patrick Mahomes). When the Chargers nominates these studs, opponents willingly bid, giving the Chargers opportunities to outbid them back and earn coins while contesting elite players.
+
+---
+
+### 2. User Strategic Innovations & Implementation Details
+
+1. **Anti-Chargers Jump Bidding (Denying Incremental Farming)**:
+   - When the Chargers is in the game (`isChargersInGame`), opponents actively adapt to shut down the Chargers' free cash engine.
+   - Normally, opponents might bid `nextBid` (e.g. 1 or 2) and increment gradually. But against the Chargers, slow increments allow the Chargers to repeatedly interleave +1 outbids.
+   - *Opponent Counter-Play*: Opponents calculate the maximum willingness among all active rivals (`maxRivalWilling`). If the opponent's valuation meets or exceeds `maxRivalWilling`, the opponent calculates the winning price:
+     $$\text{winTarget} = \min(\text{valuation}, \min(\text{spendableCoins}, \max(\text{nextBid}, \text{maxRivalWilling})))$$
+   - Opponents are **40% more likely than normal** (~0.50 $\to$ 0.90) to jump directly to `winTarget` on turn 1. If an opponent projects they can win a card for 4 coins and no one will outbid them, they bid 4 immediately!
+
+2. **Anti-Chargers Opening Nomination Start Price**:
+   - In `executeCpuMoveInternal`, when an opponent of the Chargers nominates a card they desire:
+   - Instead of starting at `card.minBid` (e.g. 1 coin) and letting the Chargers farm incremental bids, the nominator evaluates `nomDecision = evaluateCpuAuctionBid(G, currentPlayerId)`.
+   - If `nomDecision.bidAmount > card.minBid` (e.g. 4 coins), the opponent **starts the nomination directly at 4 coins**!
+   - This immediately locks out cheap bids and prevents the Chargers from extracting free coins at levels 1, 2, and 3.
+
+---
+
+### 3. Empirical Verification & Multi-Format Benchmarks
+
+- **Targeted Test Suite (`scratch/testPlaytest57AntiChargers.mjs`)**:
+  - Opponent Jump Bid against Chargers: jumps to 4 instead of 2 **PASSED ✅**
+  - Opponent Opening Nomination: starts at 4 instead of 1 **PASSED ✅**
+  - **Result: All Checks Passed 100% ✅**.
+
+- **Chargers Playtest 56 Verification Suite (`scratch/testPlaytest56Chargers.mjs`)**:
+  - All 7 checks (Richest Farm, contested Lockout Hammer, Outbid Farming on coin cards, Safety Fold, Crown Jewel Nomination) **PASSED 100% ✅**.
+
+- **League Regression Suites**:
+  - Playtest 55 (Jaguars, Titans, Broncos, Chiefs): PASSED 100% ✅
+  - Playtest 54 (Bengals, Browns, Steelers, Texans, Colts): PASSED 100% ✅
+  - Playtest 53 (Bills, Dolphins, Patriots, Jets, Ravens): PASSED 100% ✅
+  - Playtest 52 (16 General Teams): PASSED 100% ✅
+
+- **Production Build**:
+  - Clean Vite build verified (`npm run build`) in 8.79s (`dist/assets/index-H3vWNwRG.js`).
+
+
 
 
 
