@@ -2332,6 +2332,69 @@ A core inquiry addressed in Playtest 49 is whether `reserveCoins` should exist i
   - Titans (Playtest 48: 15/15), Jaguars (Playtest 47: 17/17), Colts (Playtest 46: 30/30), Texans (Playtest 45: 11/11), Steelers (Playtest 44: 7/7), Browns (Playtest 43: 6/6), Bengals (Playtest 42: 5/5), Jets (Playtest 41: 5/5), Ravens (Playtest 40: 4/4), Patriots (Playtest 39: 5/5) all pass 100%.
 - **Frontend Build**: Verified clean Vite build in 4.29s with zero errors.
 
+---
+
+## Playtest 50: Kansas City Chiefs AI Fine-Tuning & Card Balancing
+
+### 1. Card Balance Adjustments
+- **CeeDee Lamb**: Updated `maxBid` from 8 to **17** (`src/GameData.js`). Accurately reflects elite 5-coin recurring engine valuation.
+- **Kirk Cousins**: Converted 4 deflation effect from `perRound: true` to `perRound: false` (**4 Deflate Instant** + **1 Coin / turn**). Fixes early-game recurring deflation runaway while preserving strong anchor value.
+
+---
+
+### 2. Diagnosis & Core Bottlenecks
+- **Board Duplicate Bug**: When the Chiefs claimed a card via their ability (`preAuctionPhase.onBegin` or human `chiefsClaimCard`), `G.board.auctionPlayers[chosenIndex]` was not set to `null` because `G.board.activeAuctionCardIndex` was `null` prior to the auction phase. The card remained on the board, allowing another player to bid on and win a duplicate copy.
+- **Naive Round 1 Ability Burn**: `best.score >= 15` triggered 100% of the time in Round 1 on mediocre scraps (Tee Higgins, Drake London, 2-deflate tight ends), completely locking Chiefs out of claiming Patrick Mahomes, Travis Kelce, or Hall of Fame legends for 2 coins in Phase 2/3.
+- **Missing Custom Valuation**: Despite starting with 46 PSI, Chiefs had zero custom evaluation rules in `scoreCardForPlayer`.
+
+---
+
+### 3. Comprehensive Implementation Details
+
+1. **Board Integrity Bug Fix (`src/Game.js`)**:
+   - In both CPU `preAuctionPhase.onBegin` and human `moves.chiefsClaimCard`, explicitly nullify `G.board.auctionPlayers[index] = null` immediately upon claim.
+
+2. **Phase-Specific Targeting Hierarchy (`src/Game.js: preAuctionPhase.onBegin`)**:
+   - **Phase 1 (Round 1 only)**: Only claim if one of the 6 approved cornerstone targets is present:
+     - London (`drake_london`, 4 coins/turn)
+     - Higgins (`tee_higgins`, 4 coins/turn)
+     - Bowers (`brock_bowers`, 2 deflate/turn + 2 instant)
+     - Kittle (`george_kittle`, 2 deflate/turn + 2 instant)
+     - Olsen (`greg_olsen`, 2 deflate/turn + 2 instant)
+     - Allen (`josh_allen`, 2 deflate/turn + 4 instant coins)
+   - **Rounds 2–3 Restraint**: If no approved target appeared in Round 1, Chiefs holds their ability with patience for Phase 2 (Rounds 4–5).
+   - **Phase 2 (Rounds 4–5)**:
+     - **Primary Superstars**: Kelce (`travis_kelce`), Mahomes (`patrick_mahomes`), Peterson (`adrian_peterson`), Lynch (`marshawn_lynch`), McCaffrey (`christian_mccaffrey`), Henry (`derrick_henry`), Barkley (`saquon_barkley`), DJ Moore (`dj_moore`), Jackson (`lamar_jackson`), or any HOF legend (`card.phase === 'hof'`).
+     - **Instant Closers when Close to Winning ($\le 18$ PSI or 2 rounds from end)**: Jones (`aaron_jones`), Gibbs (`jahmyr_gibbs`), Walker (`kenneth_walker`), Brees (`drew_brees`), Newton (`cam_newton`).
+     - **Conditional Coin Engines**: Lamb (`ceedee_lamb`), Jefferson (`justin_jefferson`), Chase (`jamarr_chase`) if low on coins ($\le 8$) or roster has empty/practice squad slots.
+     - Dynamically selects the highest scored candidate via `scoreCardForPlayer(G, chiefsId, card)`.
+   - **Dynamic Fail-Safe**: Triggers when `currentRound >= (calculateEstimatedGameEndRound(G) - 1)` (1 round before projected game end), guaranteeing 100% ability utilization without premature usage.
+
+3. **Custom Valuation (`src/Game.js: scoreCardForPlayer`)**:
+   - Franchise Icons: Mahomes (`+20.0`), Kelce (`+18.0`), Tony Gonzalez (`+18.0`).
+   - Endgame Closers ($\le 18$ PSI): Instant deflation $\ge 4$ boosted by `instDef * 3.5`.
+   - Cash Replenishment: CeeDee Lamb, Justin Jefferson, Ja'Marr Chase gain `+6.0` when purse $\le 6$.
+
+4. **Genome Optimization (`src/ai/teamGenomes.js`)**:
+   - `deflateWeight: 1.6`, `coinWeight: 1.0` (normal balanced weights with no artificial bias).
+   - `reserveCoins: 2` (safeguards minBid for Phase 2 ability claim).
+   - `superstarPriorityMult: 1.5`.
+
+---
+
+### 4. Verification & Testing
+
+- **Automated Test Suite (`scratch/testPlaytest50Chiefs.mjs`)**:
+  - `Kirk Cousins`: Verified 4 deflate instant + 1 coin/round.
+  - `CeeDee Lamb`: Verified maxBid = 17.
+  - `Board Integrity`: 0 duplicate card errors across 100 simulated games.
+  - `Ability Timing`: 0 claims in Rounds 2 or 3; 100% utilization (0 unused abilities).
+  - `Win Rate`: 28.5% in 7P (2x fair share), ending PSI 9.3.
+- **Full League Regression Suite**:
+  - Playtests 39 through 50 (Patriots, Ravens, Jets, Bengals, Browns, Steelers, Texans, Colts, Jaguars, Titans, Broncos, Chiefs) all pass 100% with zero errors.
+- **Production Build**: Verified clean Vite build (`npm run build`) in 5.25s.
+
+
 
 
 

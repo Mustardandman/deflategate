@@ -1579,6 +1579,7 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       if (recDeflate > 0 || recCoins > 0) {
         rawScore -= (recDeflate * deflateWeight) + (recCoins * coinWeight);
         // Late-game recurring penalty (Rounds 4+): with games ending ~R6-7 and 1 refresh skipped, recurring cards have low ROI
+        const isSuperstar = card.phase === 'hof' || card.id === 'patrick_mahomes' || card.id === 'travis_kelce' || recDeflate >= 3;
         if (currentRound >= 4 && !isSuperstar) {
           rawScore *= 0.65;
         }
@@ -1617,6 +1618,29 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       if (instDef >= 3) {
         rawScore += instDef * 3.5;
       }
+    }
+  }
+  if (effectiveTeamId === 'chiefs') {
+    // 1. Franchise Icons: Patrick Mahomes, Travis Kelce, Tony Gonzalez
+    if (card.id === 'patrick_mahomes') {
+      rawScore += 20.0;
+    } else if (card.id === 'travis_kelce') {
+      rawScore += 18.0;
+    } else if (card.id === 'tony_gonzalez') {
+      rawScore += 18.0;
+    }
+
+    // 2. Phase 2 Instant Closers if close to winning soon (<= 18 PSI)
+    if ((p.psi || 46) <= 18) {
+      const instDef = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      if (instDef >= 4) {
+        rawScore += instDef * 3.5;
+      }
+    }
+
+    // 3. Conditional Coin Engines (CeeDee Lamb, Justin Jefferson, Ja'Marr Chase)
+    if ((card.id === 'ceedee_lamb' || card.id === 'justin_jefferson' || card.id === 'jamarr_chase') && (p.coins || 9) <= 6) {
+      rawScore += 6.0;
     }
   }
   if (effectiveTeamId === 'vikings') {
@@ -6594,16 +6618,86 @@ export const DeflategateGame = {
                   item.score = scoreCardForPlayer(G, chiefsId, item.card);
                 });
                 affordableCards.sort((a, b) => b.score - a.score);
-                const best = affordableCards[0];
-                const card = best.card;
 
-                const isSuperstarCard = best.score >= 15 || card.effects?.some(e => e.type === 'deflate' && e.amount >= 3);
-                const isRound4Target = G.board.round >= 4 && (best.score >= 11 || card.effects?.some(e => e.type === 'deflate' && e.amount >= 2));
-                const isRound5Target = G.board.round >= 5 && best.score >= 7;
+                const currentRound = G.board.round || 1;
+                const estimatedEnd = calculateEstimatedGameEndRound(G);
+                const isNearGameEnd = currentRound >= (estimatedEnd - 1);
+                const isCloseToWinningSoon = (chiefsPlayer.psi <= 18) || (currentRound >= (estimatedEnd - 2));
 
-                if (isSuperstarCard || isRound4Target || isRound5Target) {
+                let chosenItem = null;
+
+                if (currentRound === 1) {
+                  // Phase 1 (Round 1 only): target London, Higgins, Bowers, Kittle, Olsen, Allen if available
+                  const r1Targets = affordableCards.filter(item =>
+                    item.card.id === 'drake_london' ||
+                    item.card.id === 'tee_higgins' ||
+                    item.card.id === 'brock_bowers' ||
+                    item.card.id === 'george_kittle' ||
+                    item.card.id === 'greg_olsen' ||
+                    item.card.id === 'josh_allen'
+                  );
+                  if (r1Targets.length > 0) {
+                    chosenItem = r1Targets[0]; // Highest dynamic score among approved targets
+                  }
+                } else if (currentRound === 2 || currentRound === 3) {
+                  // If no big ability present in Round 1 (round 2 is too late), save for rounds 4-5
+                  chosenItem = null;
+                } else if (currentRound >= 4 && currentRound <= 5) {
+                  // Phase 2 Primary Targets: Kelce, Mahomes, Peterson, Lynch, McCaffrey, Henry, Barkley, DJ Moore, Jackson, HOF
+                  const p2PrimaryTargets = affordableCards.filter(item =>
+                    item.card.id === 'travis_kelce' ||
+                    item.card.id === 'patrick_mahomes' ||
+                    item.card.id === 'adrian_peterson' ||
+                    item.card.id === 'marshawn_lynch' ||
+                    item.card.id === 'christian_mccaffrey' ||
+                    item.card.id === 'derrick_henry' ||
+                    item.card.id === 'saquon_barkley' ||
+                    item.card.id === 'dj_moore' ||
+                    item.card.id === 'lamar_jackson' ||
+                    item.card.phase === 'hof'
+                  );
+
+                  // Phase 2 Instant Targets if close to winning soon: Jones, Gibbs, Walker, Brees, Newton
+                  const p2InstantClosers = affordableCards.filter(item =>
+                    item.card.id === 'aaron_jones' ||
+                    item.card.id === 'jahmyr_gibbs' ||
+                    item.card.id === 'kenneth_walker' ||
+                    item.card.id === 'drew_brees' ||
+                    item.card.id === 'cam_newton'
+                  );
+
+                  // Phase 2 Conditional Coin Targets: Lamb, Jefferson, Chase
+                  const p2CoinEngines = affordableCards.filter(item =>
+                    item.card.id === 'ceedee_lamb' ||
+                    item.card.id === 'justin_jefferson' ||
+                    item.card.id === 'jamarr_chase'
+                  );
+
+                  if (isCloseToWinningSoon && p2InstantClosers.length > 0) {
+                    chosenItem = p2InstantClosers[0];
+                  } else if (p2PrimaryTargets.length > 0) {
+                    chosenItem = p2PrimaryTargets[0];
+                  } else if (p2CoinEngines.length > 0) {
+                    const realLineupDeflate = (chiefsPlayer.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_')).reduce((s, c) => s + (c.effects?.filter(e => e.perRound && e.type === 'deflate').reduce((sum, e) => sum + e.amount, 0) || 0), 0);
+                    const hasPracticeSquad = (chiefsPlayer.lineup || []).some(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
+                    if (chiefsPlayer.coins <= 8 || hasPracticeSquad || realLineupDeflate >= 3) {
+                      chosenItem = p2CoinEngines[0];
+                    }
+                  } else if (p2InstantClosers.length > 0 && chiefsPlayer.psi <= 25) {
+                    chosenItem = p2InstantClosers[0];
+                  }
+                } else if (currentRound >= 6) {
+                  // Fail-safe: 1 round away from game end
+                  if (isNearGameEnd || currentRound >= 7) {
+                    chosenItem = affordableCards[0];
+                  }
+                }
+
+                if (chosenItem) {
+                  const card = chosenItem.card;
                   chiefsPlayer.coins -= card.minBid;
                   chiefsPlayer.hasUsedChiefsAbility = true;
+                  G.board.auctionPlayers[chosenItem.index] = null;
                   resolveAuctionWin(G, chiefsId, card);
                   triggerAbilityNotification(G, chiefsId, 'chiefs', 'Chiefs Instant Claim', `Claimed ${card.name} for ${card.minBid} coins without bidding!`);
                   addLog(G, `Chiefs Ability: CPU Player ${parseInt(chiefsId) + 1} claimed ${card.name} for ${card.minBid} coins without bidding!`);
@@ -6731,6 +6825,7 @@ export const DeflategateGame = {
 
           chiefsPlayer.coins -= card.minBid;
           chiefsPlayer.hasUsedChiefsAbility = true;
+          G.board.auctionPlayers[auctionCardIndex] = null;
           G.board.highestBid = 0;
           resolveAuctionWin(G, chiefsId, card);
 
