@@ -2377,6 +2377,7 @@ A core inquiry addressed in Playtest 49 is whether `reserveCoins` should exist i
 
 4. **Genome Optimization (`src/ai/teamGenomes.js`)**:
    - `deflateWeight: 1.6`, `coinWeight: 1.0` (normal balanced weights with no artificial bias).
+   - `aggression: 1.1` (fine-tuned down from 1.2 to eliminate wasteful overbidding and preserve cash).
    - `reserveCoins: 2` (safeguards minBid for Phase 2 ability claim).
    - `superstarPriorityMult: 1.5`.
 
