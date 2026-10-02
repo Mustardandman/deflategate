@@ -644,7 +644,8 @@ export const GENERAL_HUMAN_HEURISTIC_TEAMS = new Set([
   'bears', 'lions', 'packers', 'vikings',
   'falcons', 'saints', 'panthers', 'buccaneers',
   'cardinals', 'rams', '49ers', 'seahawks',
-  'bills', 'dolphins', 'patriots', 'jets', 'ravens'
+  'bills', 'dolphins', 'patriots', 'jets', 'ravens',
+  'bengals', 'browns', 'steelers', 'texans', 'colts'
 ]);
 
 export const getCpuArchetype = (player, playerId) => {
@@ -1664,7 +1665,7 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     const cardRecDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
 
     const currentRound = G.board?.round || 1;
-    if (recCoinsInLineup === 0 && currentRound >= 2 && cardRecCoins >= 2) {
+    if (recCoinsInLineup === 0 && currentRound >= 2 && cardRecCoins >= 2 && effectiveTeamId !== 'browns') {
       rawScore += cardRecCoins * 3.5;
     } else if (recDeflateInLineup === 0 && currentRound >= 2 && cardRecDeflate >= 2) {
       rawScore += cardRecDeflate * 3.5;
@@ -2802,7 +2803,7 @@ export const evaluateBillsDiscardClaim = (G, billsId) => {
 };
 
 // Predicts opponents' projected coin purses at the start of next round
-export const predictRivalsNextRoundPurse = (G, currentPlayerId, card, currentHighBid, currentBidderId) => {
+export const predictRivalsNextRoundPurse = (G, currentPlayerId, card, currentHighBid, currentBidderId, ifPlayerWins = false) => {
   const activeOpponents = Object.keys(G.players).filter(id => id !== currentPlayerId);
   const oppPurses = {};
 
@@ -2852,14 +2853,14 @@ export const predictRivalsNextRoundPurse = (G, currentPlayerId, card, currentHig
     if (hasWon) {
       // Opponent already finished bidding
       oppPurses[id] = coins;
-    } else if (currentBidderId === id) {
+    } else if (!ifPlayerWins && currentBidderId === id) {
       // Opponent is currently winning the active card!
       coins = Math.max(0, coins - currentHighBid);
       const cardRec = card?.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
       coins += cardRec;
       oppPurses[id] = coins;
     } else {
-      // Opponent has not won yet and is not currently high bidder
+      // Opponent has not won yet and is not currently high bidder (or player wins this card)
       // They will likely spend at least 1-2 coins to win a card
       coins = Math.max(0, coins - 2);
       oppPurses[id] = coins;
@@ -3030,8 +3031,18 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // If card is toxic (cardScore <= 0.5 or gives inflate >= 2), but an immune rival (Saints or score >= 15) is bidding/active:
   // Safely price-tax up to 2 coins (nextBid <= 2) knowing they will outbid, but NEVER bid >= 3!
   // Note: Saints ignores inflation, so cards with inflation are NOT toxic for Saints.
-  const isToxicForMe = effectiveTeamId !== 'saints' && (cardScore <= 0.5 || card.effects?.some(e => e.type === 'inflate' && e.amount >= 2));
+  // Note: Colts has unlimited roster and zero tolerance for poison - Colts NEVER buys or taxes poison cards!
+  // Note: Browns cannot receive coins, so pure coin cards are not taxed by Browns.
+  // Note: Steelers strictly protects its richest title and never bumps unwanted cards.
+  // Note: Texans 1-win discipline passes on non-QBs when an affordable QB is waiting.
+  const isToxicTaxingTeamExempt = (effectiveTeamId === 'colts' || effectiveTeamId === 'browns' || effectiveTeamId === 'steelers');
+  const isTexansWaitingQb = (effectiveTeamId === 'texans' && otherAvailableCards.some(c => c && c.position === 'QB' && c.id !== 'deshaun_watson' && currentPlayer.coins >= c.minBid));
+  const isBengalsInstantDiscard = (effectiveTeamId === 'bengals' && card.effects?.some(e => !e.perRound));
+  const isToxicForMe = effectiveTeamId !== 'saints' && !isBengalsInstantDiscard && (cardScore <= 0.5 || card.effects?.some(e => e.type === 'inflate' && e.amount >= 2));
   if (isToxicForMe && GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId)) {
+    if (isToxicTaxingTeamExempt || isTexansWaitingQb) {
+      return { shouldBid: false, bidAmount: 0 };
+    }
     const immuneOpponent = Object.keys(G.players).some(oppId => {
       if (oppId === currentPlayerId) return false;
       const opp = G.players[oppId];
@@ -3174,8 +3185,18 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     const isPatriotsR1PremierCard = (effectiveTeamId === 'patriots' && isPatriotsR1Premier);
     const isRavensEngineCard = (effectiveTeamId === 'ravens' && (isRavensR1Star || isRavensCompletingEngine));
     const isJetsMaxBuyout = (effectiveTeamId === 'jets' && (effMax <= 5 || currentPlayer.coins >= effMax));
+    const isBengalsInstantBuyout = (effectiveTeamId === 'bengals' && (card.effects?.some(e => !e.perRound) || cardScore >= 12.0));
+    const isBrownsDeflateCard = (effectiveTeamId === 'browns' && ((G.board?.round || 1) >= 4 || (card.effects?.filter(e => e.type === 'deflate').reduce((s, e) => s + e.amount, 0) >= 3) || (card.effects?.some(e => e.perRound && e.type === 'deflate' && e.amount >= 2))));
+    const isTexansQbCard = (effectiveTeamId === 'texans' && ((card.position === 'QB' && card.id !== 'deshaun_watson') || (currentPlayer.psi || 47) <= 16));
+    const isColtsCleanEngine = (effectiveTeamId === 'colts');
+    const isSteelersSafeSpend = (effectiveTeamId === 'steelers');
 
-    if (!isDolphinsBailout && !is49ersDroppingBelow5 && !isPackersPhase1Pursuit && !isPatriotsR1PremierCard && !isRavensEngineCard && !isJetsMaxBuyout) {
+    const isExemptFromHorizonCap = isDolphinsBailout || is49ersDroppingBelow5 || isPackersPhase1Pursuit ||
+      isPatriotsR1PremierCard || isRavensEngineCard || isJetsMaxBuyout ||
+      isBengalsInstantBuyout || isBrownsDeflateCard || isTexansQbCard ||
+      isColtsCleanEngine || isSteelersSafeSpend;
+
+    if (!isExemptFromHorizonCap) {
       if (G.board.round === 3) savingsReserve = Math.max(savingsReserve, 5);
       else if (G.board.round === 6) savingsReserve = Math.max(savingsReserve, 6);
       else if (G.board.round <= 2) savingsReserve = Math.max(savingsReserve, 2);
@@ -3667,16 +3688,18 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
       }
     }
 
-    // 2. Predict opponent end-of-round purses
-    const oppPurses = predictRivalsNextRoundPurse(G, currentPlayerId, card, currentHighBid, currentBidderId);
-    const maxPredictedOppCoins = Math.max(0, ...Object.values(oppPurses));
+    // 2. Predict opponent end-of-round purses (evaluating both pass and win scenarios)
+    const oppPursesIfPass = predictRivalsNextRoundPurse(G, currentPlayerId, card, currentHighBid, currentBidderId, false);
+    const oppPursesIfWin = predictRivalsNextRoundPurse(G, currentPlayerId, card, currentHighBid, currentBidderId, true);
+    const maxOppCoinsIfPass = Math.max(0, ...Object.values(oppPursesIfPass));
+    const maxOppCoinsIfWin = Math.max(0, ...Object.values(oppPursesIfWin));
 
     // 3. Projected Steelers Purses
     const projectedWinCoins = currentPlayer.coins - nextBid + myLineupCoins + cardRecCoins + cardInstCoins;
     const projectedPassCoins = currentPlayer.coins - 1 + myLineupCoins;
 
-    const staysRichestIfWin = (projectedWinCoins > maxPredictedOppCoins);
-    const isRichestIfPass = (projectedPassCoins > maxPredictedOppCoins);
+    const staysRichestIfWin = (projectedWinCoins > maxOppCoinsIfWin);
+    const isRichestIfPass = (projectedPassCoins > maxOppCoinsIfPass);
 
     // Scan remaining cards on the board
     const otherCards = (G.board.auctionPlayers || []).filter((c, idx) => c !== null && idx !== cardIndex);
@@ -3691,7 +3714,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
     // 5. If we stay richest with this bid:
     if (staysRichestIfWin) {
-      const safeSurplus = (currentPlayer.coins + myLineupCoins + cardRecCoins + cardInstCoins) - (maxPredictedOppCoins + 1);
+      const safeSurplus = (currentPlayer.coins + myLineupCoins + cardRecCoins + cardInstCoins) - (maxOppCoinsIfWin + 1);
       let bidLimit = Math.min(currentPlayer.coins, nextBid + safeSurplus);
 
       if (otherHasCoins || otherHasDeflate) {

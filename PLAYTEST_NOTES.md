@@ -2562,6 +2562,48 @@ To satisfy the user requirement (*"verify if the new rules would alter, or anywa
 - **Production Build**:
   - Clean Vite build verified (`npm run build`) in 6.66s (`dist/assets/index-C7V0oMMo.js`).
 
+---
+
+## Playtest 54: Expansion of Human Auction Heuristics Across Bengals, Browns, Steelers, Texans, and Colts
+
+### 1. Architectural Audit & Delicate Rule Protection
+To ensure zero compromise of earlier fine-tuning, each of the 5 franchises was audited and safeguarded:
+
+1. **Cincinnati Bengals (Playtest 42)**:
+   - *Previous Fine-Tuning*: Instant discard churn (+2 to instants, right to discard on acquisition), buying Hunter Henry/Zeke as free nukes (10 and 7 instant deflation) without negative recurring drawbacks.
+   - *Harmonization*: Fixed a critical vulnerability where generic `isToxicForMe` flagged Hunter Henry as toxic due to recurring inflation. Added `!isBengalsInstantDiscard` so Bengals evaluates Henry and Zeke as premier free nukes. Gained **Pre-Emptive Lockout Hammer**, **VORP Spread Scaling**, and **Strategic Nomination fallback**.
+2. **Cleveland Browns (Playtest 43)**:
+   - *Previous Fine-Tuning*: Deflation purity (players cannot give coins), 30-coin grant at start of Round 5, Phase 1 dual-threat priority (Bowers, Kittle, Olsen), Phase 2 30-coin bully purchasing.
+   - *Harmonization*: Added `effectiveTeamId !== 'browns'` to the coin deficit check in Roster Complementarity, preventing Browns from ever boosting coin engines. Exempted from poison-pill price bumping (`isToxicTaxingTeamExempt`) so Browns never squanders capital on unwanted cards. Gained **Pre-Emptive Lockout Hammer** on top deflaters.
+3. **Pittsburgh Steelers (Playtest 44)**:
+   - *Previous Fine-Tuning*: Richest hegemony (-6 to -9 PSI transfer to opponents every round), `predictRivalsNextRoundPurse`, Austerity vs. Investment trade-off.
+   - *Harmonization*: Upgraded `predictRivalsNextRoundPurse` with an explicit `ifPlayerWins` parameter, cleanly separating opponent purse projections when Steelers wins vs. when Steelers passes. Steelers folds when bidding sacrifices the richest title, and its Lockout Hammer strictly respects `safeSurplus`. Exempted from poison-pill price bumping.
+4. **Houston Texans (Playtest 45)**:
+   - *Previous Fine-Tuning*: QB engine hegemony (+2 coins, +2 deflate per QB), 1-win turn discipline, active QB lineup protection.
+   - *Harmonization*: 1-win turn discipline strictly preserved in poison taxing and auction bidding: if an affordable QB is waiting in the auction row, Texans strictly passes on non-QBs. Active QBs are never replaced by non-QBs. Gained **Pre-Emptive Lockout Hammer** on QBs.
+5. **Indianapolis Colts (Playtest 46)**:
+   - *Previous Fine-Tuning*: Unlimited permanent roster, absolute zero tolerance for poison (never cut starters), bargain hunter cap (3–4 coins max on clean engines, passes at 5+).
+   - *Harmonization*: **Critical Safeguard Applied**: Colts is explicitly exempt from Dynamic Poison-Pill Taxing (`isToxicTaxingTeamExempt`), guaranteeing Colts never risks being saddled with permanent poison. Bargain hunter cap and early recurring discipline preserved 100%.
+
+---
+
+### 2. Verification & Regression Benchmarks
+
+- **Targeted 5-Team Test Suite (`scratch/testPlaytest54FiveTeams.mjs`)**:
+  - Bengals: Lockout Hammer on Hunter Henry (bids 4 vs 4-coin rival: PASSED ✅), Instant Discard Churn (PASSED ✅).
+  - Browns: Deflation Purity (score -100 on pure coin card: PASSED ✅), Lockout Hammer on Bowers (bids 6: PASSED ✅).
+  - Steelers: Austerity (folds when bidding sacrifices richest title: PASSED ✅), Safe Lockout Hammer on Coin Engine (bids 6 within surplus: PASSED ✅).
+  - Texans: 1-Win Discipline (passes on non-QB when QB is waiting: PASSED ✅), Lockout Hammer on Cousins (bids 4: PASSED ✅), QB lineup protection (PASSED ✅).
+  - Colts: Unlimited roster expansion to 4 starters (PASSED ✅), Poison rejection on Watson (PASSED ✅), Bargain hunter cap (passes at 5 coins: PASSED ✅).
+  - **Result: 5/5 Teams Passed with ZERO Regressions ✅**.
+- **Playtest 53 Regression Suite (`scratch/testPlaytest53FiveTeams.mjs`)**:
+  - Bills, Dolphins, Patriots, Jets, Ravens all verified passing 100% ✅.
+- **16-Team League Suite (`scratch/testPlaytest52GeneralTeams.mjs`)**:
+  - All 16 general franchises verified passing 100% ✅.
+- **Production Build**:
+  - Clean Vite build verified (`npm run build`) in 14.46s (`dist/assets/index-CNMMS5Tc.js`).
+
+
 
 
 
