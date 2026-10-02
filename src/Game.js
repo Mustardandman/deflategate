@@ -857,7 +857,14 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
     return card.effects?.some(e => e.type === 'deflate' || e.type === 'coins');
   }
   if (teamId === 'broncos') {
-    return card.effects?.some(e => !e.perRound) || card.phase === 2 || card.phase === 'hof';
+    return card.effects?.some(e => !e.perRound) || 
+           card.phase === 2 || 
+           card.phase === 'hof' || 
+           card.id === 'hunter_henry' || 
+           card.id === 'ezekiel_elliott' ||
+           card.id === 'brock_bowers' ||
+           card.id === 'kirk_cousins' ||
+           card.id === 'george_kittle';
   }
   if (teamId === 'buccaneers') {
     const copiedTeam = player?.buccaneersCopiedTeamId || player?.team?.id;
@@ -1553,6 +1560,65 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       }
     }
   }
+  if (effectiveTeamId === 'broncos') {
+    // 1. Pump & Dump Tactical Exploitation:
+    // Hunter Henry deflates 8, and the +3 inflation is completely IGNORED during the first refresh!
+    // Ezekiel Elliott deflates 5, and the -2 coins is completely IGNORED during the first refresh!
+    // When cycled out in subsequent rounds, Broncos captures massive instant deflation with zero ongoing penalty!
+    const r12Penalty = (currentRound <= 2) ? 3.0 : 0;
+    if (card.id === 'hunter_henry') {
+      rawScore = (6.0 * deflateWeight) + 5.0 - r12Penalty;
+    } else if (card.id === 'ezekiel_elliott') {
+      rawScore = (5.0 * deflateWeight) - (1.0 * coinWeight) + 4.0 - r12Penalty;
+    } else {
+      // 2. The 1-Round Onboarding Delay on Recurring Engines:
+      // The first refresh after purchase skips every-turn abilities.
+      // Therefore, recurring cards only produce for (roundsLeft - 1) rounds instead of roundsLeft!
+      const recDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'deflate_every_round' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      const recCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+      if (recDeflate > 0 || recCoins > 0) {
+        rawScore -= (recDeflate * deflateWeight) + (recCoins * coinWeight);
+        // Late-game recurring penalty (Rounds 4+): with games ending ~R6-7 and 1 refresh skipped, recurring cards have low ROI
+        if (currentRound >= 4 && !isSuperstar) {
+          rawScore *= 0.65;
+        }
+      }
+
+      // 3. Instant Cards Suffer ZERO Delay:
+      // Instant deflation directly attacks Broncos' 40 starting PSI without missing a beat!
+      const instDef = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      const instCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+      if (instDef > 0) {
+        rawScore += (instDef * deflateWeight * 1.35) + 4.0;
+      }
+      if (instCoins >= 4 && (p.coins || 20) <= 8) {
+        rawScore += 4.0;
+      }
+    }
+
+    // 4. Round 1-2 20-Coin Bully Centerpiece Conviction:
+    // Starting with 20 coins and 40 PSI, fearlessly secure elite deflation anchors early!
+    if (currentRound <= 2) {
+      const isAnchor = (
+        card.id === 'brock_bowers' ||
+        card.id === 'kirk_cousins' ||
+        card.id === 'george_kittle' ||
+        card.phase === 'hof' ||
+        card.effects?.some(e => e.perRound && e.type === 'deflate' && e.amount >= 2)
+      );
+      if (isAnchor) {
+        rawScore += 10.0;
+      }
+    }
+
+    // 5. Distance-to-Zero Endgame Closer Acceleration (40 PSI baseline):
+    if ((p.psi || 40) <= 16) {
+      const instDef = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      if (instDef >= 3) {
+        rawScore += instDef * 3.5;
+      }
+    }
+  }
   if (effectiveTeamId === 'vikings') {
     if ((p.psi || 44) >= 27 && card.effects?.some(e => e.type === 'deflate')) rawScore += 5.5;
     else if ((p.psi || 44) < 27 && card.effects?.some(e => e.type === 'coins')) rawScore += 5.0;
@@ -2012,6 +2078,46 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
       item.card.effects?.some(e => !e.perRound)
     );
     if (cheapInstant) return cheapInstant.index;
+  }
+
+  // Broncos Nomination Strategy:
+  // 1. Endgame Closer (PSI <= 16): Nominate high-impact instant deflation nuke
+  // 2. Tactical Drawback Exploitation: Hunter Henry / Ezekiel Elliott (free instant deflation with 0 refresh drawback)
+  // 3. Rounds 1-2 Anchor Bully: Nominate premier recurring anchors (Bowers, Cousins, Kittle, London)
+  // 4. Instant Deflation Nukes (Kyren Williams, D'Andre Swift, Bijan Robinson, etc.)
+  if (effectiveTeamId === 'broncos') {
+    const currentRound = G.board.round || 1;
+    if ((currentPlayer.psi || 40) <= 16) {
+      const closerNuke = eligibleCards.find(item =>
+        item.card.minBid <= currentPlayer.coins &&
+        item.card.effects?.some(e => !e.perRound && e.type === 'deflate' && e.amount >= 3)
+      );
+      if (closerNuke) return closerNuke.index;
+    }
+
+    const exploitCard = eligibleCards.find(item => 
+      (item.card.id === 'hunter_henry' || item.card.id === 'ezekiel_elliott') &&
+      currentPlayer.coins >= item.card.minBid
+    );
+    if (exploitCard) return exploitCard.index;
+
+    if (currentRound <= 2) {
+      const premierCenterpiece = eligibleCards.find(item =>
+        item.card.minBid <= currentPlayer.coins &&
+        (item.card.id === 'brock_bowers' || 
+         item.card.id === 'kirk_cousins' || 
+         item.card.id === 'george_kittle' ||
+         item.card.phase === 'hof' ||
+         item.card.effects?.some(e => e.perRound && ((e.type === 'coins' && e.amount >= 3) || (e.type === 'deflate' && e.amount >= 2))))
+      );
+      if (premierCenterpiece) return premierCenterpiece.index;
+    }
+
+    const instantNuke = eligibleCards.find(item =>
+      item.card.minBid <= currentPlayer.coins &&
+      item.card.effects?.some(e => !e.perRound && e.type === 'deflate' && e.amount >= 3)
+    );
+    if (instantNuke) return instantNuke.index;
   }
 
   // Jets Nomination Strategy:
@@ -2929,7 +3035,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   let savingsReserve = teamGenome.reserveCoins !== undefined ? teamGenome.reserveCoins : 0;
   const isApproachingPhase2 = (G.board.round === 3);
   const isApproachingHoF = (G.board.round === 6);
-  const teamExemptFromHoarding = (effectiveTeamId === 'packers' || effectiveTeamId === 'browns' || effectiveTeamId === 'dolphins' || effectiveTeamId === 'colts');
+  const teamExemptFromHoarding = (effectiveTeamId === 'packers' || effectiveTeamId === 'browns' || effectiveTeamId === 'dolphins' || effectiveTeamId === 'colts' || effectiveTeamId === 'broncos');
 
   if ((isApproachingPhase2 || isApproachingHoF) && !teamExemptFromHoarding) {
     const remainingBoardCards = (G.board.auctionPlayers || []).filter(c => c !== null);
@@ -3039,7 +3145,15 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     isSuperstar ||
     (currentPlayer.psi || 44) <= 16
   ));
-  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || isTexansTarget || isColtsTarget || isJaguarsTarget || isTitansTarget || isTitansR1Anchor || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
+  const isBroncosTarget = (effectiveTeamId === 'broncos' && (
+    isSuperstar ||
+    cardScore >= 12.0 ||
+    card.id === 'hunter_henry' ||
+    card.id === 'ezekiel_elliott' ||
+    ((G.board.round || 1) <= 2 && (cardRecDeflateInit >= 2 || cardRecCoinsInit >= 3 || card.id === 'brock_bowers' || card.id === 'kirk_cousins' || card.id === 'george_kittle')) ||
+    (currentPlayer.psi || 40) <= 16
+  ));
+  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || isTexansTarget || isColtsTarget || isJaguarsTarget || isTitansTarget || isTitansR1Anchor || isBroncosTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
@@ -3803,7 +3917,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const jitter = 0.90 + Math.random() * 0.20;
   let valuation = Math.min(effMax, Math.round(baseValuation * archetypeMult * jitter));
 
-  if (isHighBoardParity && !is4DeflateCard && !isSuperstar && !isJaguarsR1Anchor && !isJaguarsTarget && !isTitansR1Anchor && !isTitansTarget && !isRavensR1Star && !isPatriotsR1Premier) {
+  if (isHighBoardParity && !is4DeflateCard && !isSuperstar && !isJaguarsR1Anchor && !isJaguarsTarget && !isTitansR1Anchor && !isTitansTarget && !isBroncosTarget && !isRavensR1Star && !isPatriotsR1Premier) {
     valuation = Math.min(valuation, 3);
   }
   if (betterCardsCount >= 1 && isMidTierPhase1) {
@@ -3815,7 +3929,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (effectiveTeamId === 'patriots' && (G.board.round || 1) === 1 && !isPatriotsR1Premier) {
     valuation = Math.min(valuation, 3);
   }
-  if (effectiveTeamId === 'browns' || effectiveTeamId === 'steelers' || effectiveTeamId === 'texans' || effectiveTeamId === 'colts' || effectiveTeamId === 'jaguars' || effectiveTeamId === 'titans') {
+  if (effectiveTeamId === 'browns' || effectiveTeamId === 'steelers' || effectiveTeamId === 'texans' || effectiveTeamId === 'colts' || effectiveTeamId === 'jaguars' || effectiveTeamId === 'titans' || effectiveTeamId === 'broncos') {
     valuation = Math.min(effMax, Math.min(spendableCoins, baseValuation));
   }
 
@@ -3827,7 +3941,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   valuation = Math.min(valuation, spendableCoins);
-  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns' && effectiveTeamId !== 'steelers' && effectiveTeamId !== 'texans' && effectiveTeamId !== 'colts' && effectiveTeamId !== 'jaguars' && effectiveTeamId !== 'titans') {
+  if (isEarlyGame && !isSuperstar && !isLionsFirstBonus && !isPatriotsR1Premier && !isRavensR1Star && !isRavensCompletingEngine && effectiveTeamId !== 'dolphins' && effectiveTeamId !== 'jets' && effectiveTeamId !== 'bengals' && effectiveTeamId !== 'browns' && effectiveTeamId !== 'steelers' && effectiveTeamId !== 'texans' && effectiveTeamId !== 'colts' && effectiveTeamId !== 'jaguars' && effectiveTeamId !== 'titans' && effectiveTeamId !== 'broncos') {
     valuation = Math.min(valuation, Math.max(card.minBid, Math.round(currentPlayer.coins * 0.65)));
   }
 
@@ -3836,6 +3950,9 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
   if (isRavensR1Star || isJaguarsR1Anchor || isTitansR1Anchor) {
     valuation = Math.min(effMax, Math.min(9, currentPlayer.coins));
+  }
+  if (effectiveTeamId === 'broncos' && (G.board.round || 1) <= 2 && isBroncosTarget) {
+    valuation = Math.min(effMax, Math.min(14, currentPlayer.coins));
   }
 
   // Jets Ability: Pay Maximum -> Deflate 4 PSI instantly
@@ -4055,6 +4172,30 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
       // If this card completes the 3 distinct positions engine, ensure bid meets nextBid up to valuation
       if (isMissingPos && ravensPositions.size === 2 && valuation >= nextBid && currentPlayer.coins >= nextBid) {
         targetBid = Math.max(targetBid, nextBid);
+      }
+    }
+  }
+
+  // Broncos Target Bid Refinements:
+  if (effectiveTeamId === 'broncos') {
+    const currentRound = G.board.round || 1;
+    if (currentRound <= 2 && isBroncosTarget && currentPlayer.coins >= nextBid) {
+      const bullyBidTarget = Math.min(effMax, Math.min(valuation, currentPlayer.coins));
+      if (bullyBidTarget >= nextBid) {
+        if (richestContenderCoins >= nextBid && richestContenderCoins <= bullyBidTarget) {
+          targetBid = Math.max(targetBid, richestContenderCoins);
+          isJumpBid = true;
+        } else {
+          targetBid = Math.max(targetBid, Math.min(nextBid + 1, bullyBidTarget));
+        }
+      }
+    } else if ((currentPlayer.psi || 40) <= 16) {
+      const instantDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      if (instantDeflate >= 3 && currentPlayer.coins >= nextBid) {
+        const closerTarget = Math.min(effMax, Math.min(valuation, currentPlayer.coins));
+        if (closerTarget >= nextBid) {
+          targetBid = Math.max(targetBid, Math.min(nextBid + 2, closerTarget));
+        }
       }
     }
   }

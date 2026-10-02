@@ -2243,6 +2243,96 @@ Ran an automated coordinate grid sweep across 20 candidate genome permutations a
   - Jaguars (Playtest 47: 17/17), Colts (Playtest 46: 30/30), Texans (Playtest 45: 11/11), Steelers (Playtest 44: 7/7), Browns (Playtest 43: 6/6), Ravens (Playtest 40: 4/4), Patriots (Playtest 39: 5/5) all pass 100%.
 - **Production Build**: Verified clean Vite production build in 4.12s with zero errors.
 
+---
+
+## Playtest 49: Denver Broncos Strategic AI Overhaul & Reserve Coins Mechanical Audit
+
+### 1. Executive Summary & Franchise Profile
+The Denver Broncos feature a unique, polarizing profile:
+- **Starting Stats**: **40 PSI** (tied with Commanders for the lowest starting PSI among rich teams) and **20 Starting Coins** (the highest starting coin treasury in the entire game).
+- **Franchise Ability**: *"The first Refresh Phase after you buy a player, ignore their every turn abilities."*
+
+While the 20-coin bankroll offers immense purchasing power, the 1-round onboarding delay acts as a persistent speed-bump on every recurring card acquired. Naive CPU behavior struggled because it hoarded coins early, bought expensive recurring engines in late rounds (Rounds 4–6) that only produced for 1–2 turns before game end, and failed to capitalize on the fact that **instant cards suffer zero delay**!
+
+Playtest 49 unlocks the full potential of the Broncos:
+1. **Unleashing the 20-Coin Treasury**: Set `reserveCoins: 0`, completely exempt Broncos from early-game 65% purse clamps, and permit knockout bully bids up to 14 coins in Rounds 1–2.
+2. **Recurring Delay Accounting**: Evaluates recurring production over $(roundsLeft - 1)$ rounds, and penalizes expensive late-game recurring engines that have almost zero lifetime ROI.
+3. **Instant Card Priority**: Instant deflation nukes bypass the 1-turn delay entirely, attacking Broncos' 40 PSI without missing a beat.
+4. **Tactical Pump-and-Dump Exploitation**: Hunter Henry (+8 deflate, +3 recurring inflate) and Ezekiel Elliott (+5 deflate, -2 recurring coins) ignore their recurring penalties during their first refresh. When cycled out in the following round, Broncos captures massive burst deflation with zero ongoing penalty!
+5. **Drawback Lineup Replacement**: Ensures drawback cards in lineup are replaced immediately (`score = -300`) upon winning the next auction.
+
+---
+
+### 2. Detailed Technical Breakdown: "Why Does Reserve Coins Exist?"
+
+A core inquiry addressed in Playtest 49 is whether `reserveCoins` should exist in the game or be removed across all teams:
+
+#### Why Reserve Coins is Mechanically Essential for Specific Teams:
+1. **Philadelphia Eagles (*Tush Push*)**:
+   - The Eagles' signature ability allows them to spend **3 or 6 coins** after the auction to inflate all opponents by +3 or +6 PSI.
+   - If the Eagles CPU bids down to 0 coins on an ordinary player in the auction, their ability is completely disabled during the post-auction phase. A `reserveCoins` of 6–7 ensures the Eagles always preserve the ammunition needed to fire their Tush Push.
+2. **Pittsburgh Steelers (*The Steel Curtain Richest Condition*)**:
+   - The Steelers transfer 1 PSI to every opponent (-6 PSI total swing) during every refresh phase, but **only if they are strictly the richest player on the board**.
+   - If the Steelers spend down to 0 or 1 coin to win a player, they lose the richest title to rivals with 3–4 coins, forfeiting a massive 6-PSI deflation swing. Their reserve guarantees they maintain their bankroll lead.
+3. **Cleveland Browns (*Zero Coin Earnings Penalty*)**:
+   - The Browns cannot earn coins from cards or abilities throughout the entire game until their Round 5 cash injection (+30 coins).
+   - If the Browns spend all 20 coins in Round 1, they are completely penniless for Rounds 2, 3, and 4, unable to place even a 1-coin minimum bid on any card. Their reserve protects their ability to participate in middle-round auctions.
+4. **Jacksonville Jaguars (*Event Foresight Cash Sinks*)**:
+   - When the Jaguars foresee an upcoming *Double Draft (Rookie Class)* or *Team Legend Returns*, they need cash reserves to win two players or buy out a Hall of Fame superstar.
+
+#### Why the User is Right for Standard Teams:
+- For standard teams without ability-triggered coin costs (Broncos, Dolphins, Packers, Cowboys, Colts, etc.), hard purse caps and static coin hoarding artificially hamstring the CPU.
+- When an elite superstar or game-winning closer appears, capping bids based on an arbitrary reserve causes the CPU to pass on game-winning opportunities even when the card's valuation far exceeds its cost.
+- **Resolution**: `reserveCoins` is set to **0** for the Broncos (and other all-in teams like Dolphins, Packers, Colts, and Cowboys), and high-conviction targets dynamically override hoarding constraints.
+
+---
+
+### 3. Core Engine Implementations for the Broncos
+
+1. **Card Scoring Calibration (`src/Game.js: scoreCardForPlayer`)**:
+   - **Pump & Dump Exploitation**:
+     - Hunter Henry: Scored as `(6.0 * deflateWeight) + 5.0 - r12Penalty`.
+     - Ezekiel Elliott: Scored as `(5.0 * deflateWeight) - (1.0 * coinWeight) + 4.0 - r12Penalty`.
+   - **1-Round Recurring Delay**: Subtracts 1 round of recurring output (`-(recDeflate * deflateWeight) - (recCoins * coinWeight)`).
+   - **Late-Game Recurring Penalty**: In Rounds 4+, recurring cards are multiplied by `0.65` to prevent wasting coins on engines that only trigger 1–2 times.
+   - **Instant Card Priority**: Boosted instant deflation `(instDef * deflateWeight * 1.35) + 4.0`.
+   - **Round 1–2 Anchor Centerpieces**: `+10.0` anchor bonus on Bowers, Cousins, Kittle, HOF legends, and 2+ recurring deflation engines.
+   - **Endgame Closer Acceleration**: When $\text{PSI} \le 16$, instant deflation $\ge 3$ gains `+3.5` per point.
+
+2. **Strategic Nomination (`src/Game.js: chooseCpuNominationCard`)**:
+   - Priority 1: Endgame closer instant deflation nukes when $\text{PSI} \le 16$.
+   - Priority 2: Hunter Henry and Ezekiel Elliott for pump-and-dump burst deflation.
+   - Priority 3: Round 1–2 premier anchors (Bowers, Cousins, Kittle, HOF, 2+ recurring deflation).
+   - Priority 4: Instant deflation nukes (Kyren Williams, D'Andre Swift, Bijan Robinson, etc.).
+
+3. **Purse Unleash & Auction Bidding (`src/Game.js: evaluateCpuAuctionBid`)**:
+   - Added `isBroncosTarget` to `spendableCoins` and `teamExemptFromHoarding`.
+   - Exempted from board parity clamp and early-game 65% purse clamp.
+   - Bully bidding ceiling up to 14 coins in Rounds 1–2 on premier targets.
+   - Added Broncos target bid refinements: decisive jump bidding to richest contender coins on premier anchors and endgame closers.
+
+4. **Lineup Replacement Hierarchy (`src/Game.js: resolveAuctionWin`)**:
+   - Toxic drawback cards (recurring inflation / negative coins like Hunter Henry and Zeke) score `-300` in lineup replacement, guaranteeing they are cut first on the next auction win to finalize the pump-and-dump cycle.
+
+5. **Franchise Genome Calibration (`src/ai/teamGenomes.js`)**:
+   - `deflateWeight: 3.2`, `coinWeight: 0.65`, `recurringMult: 1.05`, `aggression: 1.25`, `reserveCoins: 0`, `priceBumpProb: 0.15`, `synergyBonus: 1.4`, `firstClaimAggression: 1.3`, `postClaimAggression: 0.9`, `sub5UrgencyBonus: 2.5`, `richestBuffer: 1`, `instantMaxBidAggression: 1.25`, `boardStrengthWeight: 1.1`, `threatDefenseWeight: 1.1`, `superstarPriorityMult: 1.5`.
+
+---
+
+### 4. Verification & Testing
+
+- **Automated Test Suite (`scratch/testPlaytest49Broncos.mjs`)**: 22/22 Tests PASSED.
+  - `Test 1`: Card scoring (Henry 16.1, Zeke 11.2, Bowers 62.8, Kyren 26.3).
+  - `Test 2`: First refresh delay mechanics (`broncosRoundAcquired` correctly set and cleared).
+  - `Test 3`: Hunter Henry pump-and-dump (+8 instant deflate applied; +3 recurring inflate skipped).
+  - `Test 4`: Lineup replacement hierarchy (Henry cut at -300 score; Bowers and Cousins retained).
+  - `Test 5`: Bully bidding up to 14 coins on premier targets in Rounds 1–2.
+  - `Test 6`: Strategic nomination priorities (endgame closer, pump-and-dump, R1–2 anchor).
+- **Full League Regression Suite**:
+  - Titans (Playtest 48: 15/15), Jaguars (Playtest 47: 17/17), Colts (Playtest 46: 30/30), Texans (Playtest 45: 11/11), Steelers (Playtest 44: 7/7), Browns (Playtest 43: 6/6), Bengals (Playtest 42: 5/5), Jets (Playtest 41: 5/5), Ravens (Playtest 40: 4/4), Patriots (Playtest 39: 5/5) all pass 100%.
+- **Frontend Build**: Verified clean Vite build in 4.29s with zero errors.
+
+
 
 
 
