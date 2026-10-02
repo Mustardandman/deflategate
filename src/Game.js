@@ -643,7 +643,8 @@ export const GENERAL_HUMAN_HEURISTIC_TEAMS = new Set([
   'chargers', 'cowboys', 'eagles', 'commanders',
   'bears', 'lions', 'packers', 'vikings',
   'falcons', 'saints', 'panthers', 'buccaneers',
-  'cardinals', 'rams', '49ers', 'seahawks'
+  'cardinals', 'rams', '49ers', 'seahawks',
+  'bills', 'dolphins', 'patriots', 'jets', 'ravens'
 ]);
 
 export const getCpuArchetype = (player, playerId) => {
@@ -3167,10 +3168,14 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // Era Horizon Cap (Rounds 3 & 6 Spending Cap):
   // Preserve funds for Phase 2 explosion (Round 3) and HOF era (Round 6) on non-superstars.
   if (GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId) && !isSuperstar) {
+    const isDolphinsBailout = (effectiveTeamId === 'dolphins');
     const is49ersDroppingBelow5 = (effectiveTeamId === '49ers' && currentPlayer.coins >= 5 && (currentPlayer.lineup || []).some(c => c.effects?.some(e => e.perRound && e.type === 'deflate')));
     const isPackersPhase1Pursuit = (effectiveTeamId === 'packers' && card.phase === 1 && (currentPlayer.lineup || []).every(c => c.phase === 1 || c.isPracticeSquad));
+    const isPatriotsR1PremierCard = (effectiveTeamId === 'patriots' && isPatriotsR1Premier);
+    const isRavensEngineCard = (effectiveTeamId === 'ravens' && (isRavensR1Star || isRavensCompletingEngine));
+    const isJetsMaxBuyout = (effectiveTeamId === 'jets' && (effMax <= 5 || currentPlayer.coins >= effMax));
 
-    if (!is49ersDroppingBelow5 && !isPackersPhase1Pursuit) {
+    if (!isDolphinsBailout && !is49ersDroppingBelow5 && !isPackersPhase1Pursuit && !isPatriotsR1PremierCard && !isRavensEngineCard && !isJetsMaxBuyout) {
       if (G.board.round === 3) savingsReserve = Math.max(savingsReserve, 5);
       else if (G.board.round === 6) savingsReserve = Math.max(savingsReserve, 6);
       else if (G.board.round <= 2) savingsReserve = Math.max(savingsReserve, 2);
@@ -3282,7 +3287,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const isCoinLeader = currentPlayer.coins > richestOpponentCoins;
 
   // Bills Discard Coordination: If a viable discard claim exists, reserve its minBid so Bills does not get locked out
-  if (effectiveTeamId === 'bills' && !currentPlayer.hasUsedBillsAbility && G.decks.discard && G.decks.discard.length > 0) {
+  if (effectiveTeamId === 'bills' && !currentPlayer.hasUsedBillsAbility && G.decks?.discard && G.decks.discard.length > 0) {
     const discardTarget = evaluateBillsDiscardClaim(G, currentPlayerId);
     if (discardTarget && discardTarget.card) {
       savingsReserve = Math.max(savingsReserve, discardTarget.card.minBid);
@@ -3372,7 +3377,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // VORP / Board Quality Spread Scaling:
   // - High spread (e.g. Bowers vs bad scrubs): pay up for the top player!
   // - Flat board (multiple comparable players): do not overpay; let rivals fight while securing good value.
-  if (GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId)) {
+  if (GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId) && effectiveTeamId !== 'dolphins') {
     const boardCards = (G.board.auctionPlayers || []).filter(c => c !== null);
     const allScores = boardCards.map(c => scoreCardForPlayer(G, currentPlayerId, c)).sort((a, b) => b - a);
     const topScore = allScores[0] || cardScore;
@@ -4029,7 +4034,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
   // Bills Guaranteed Discard Target: If a major nuke or golden engine is already waiting in discard,
   // do not get dragged into an overpriced auction bidding war for board cards.
-  if (effectiveTeamId === 'bills' && !currentPlayer.hasUsedBillsAbility && !isSuperstar && G.decks.discard && G.decks.discard.length > 0) {
+  if (effectiveTeamId === 'bills' && !currentPlayer.hasUsedBillsAbility && !isSuperstar && G.decks?.discard && G.decks.discard.length > 0) {
     const discardTarget = evaluateBillsDiscardClaim(G, currentPlayerId);
     if (discardTarget && discardTarget.card && (discardTarget.reason?.includes('Nuke') || discardTarget.reason?.includes('Engine'))) {
       const fallbackCap = Math.max(card.minBid, Math.min(Math.round(effMax * 0.70), Math.round(cardScore * 0.70)));

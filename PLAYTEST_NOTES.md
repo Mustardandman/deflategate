@@ -2523,6 +2523,46 @@ To protect existing strategic work, the 15 previously fine-tuned teams (**Bills,
 - **Production Build**:
   - Clean Vite build verified (`npm run build`) in 4.64s (`dist/assets/index-CD18jXGT.js`).
 
+---
+
+## Playtest 53: Harmonious Expansion of Human Heuristics Across Bills, Dolphins, Patriots, Jets, and Ravens
+
+### 1. Architectural Audit & Rule Protection
+To satisfy the user requirement (*"verify if the new rules would alter, or anyway affect the finetuning and prioritization we did earlier. Look at what was implemented before, I don't want that to change, I just want them to be smarter now"*), a comprehensive audit of each team's prior fine-tuning was performed:
+
+1. **Buffalo Bills (Playtest 36)**:
+   - *Previous Fine-Tuning*: Discard option-pricing model in `postAuctionPhase` (`billsBuyDiscard`), toxic cleanse, cash-gated opportunism.
+   - *Harmonization*: Bills had zero bespoke auction bidding/nomination logic. Implementing the Lockout Hammer, Dynamic Poison Taxing, VORP spread scaling, Era Horizon Cap (R3/R6), Roster Complementarity, and Strategic Nomination elevates Bills from naive bidding to human-level drafter while preserving their post-auction discard engine 100%.
+2. **Miami Dolphins (Playtest 37 & 38)**:
+   - *Previous Fine-Tuning*: 0-coin bailout (+3 coins), fearless all-in up to 14 coins, spending down to 0 coins when holding $\le 3$ coins.
+   - *Harmonization*: **Critical Exemption Applied!** Dolphins is explicitly exempt from the Era Horizon Cap (`savingsReserve` is not forced to 5/6) and exempt from generic VORP overwriting. This guarantees Dolphins can always spend down to 0 coins to trigger their +3 bailout. Dolphins gains the Pre-Emptive Lockout Hammer, Dynamic Poison Taxing, Roster Complementarity, and Strategic Nomination fallback.
+3. **New England Patriots (Playtest 39)**:
+   - *Previous Fine-Tuning*: Round 1 all-in on Bowers/Kittle/Cousins (7 coins), strict cheap discipline on ordinary cards ($\le 3$ coins), pump & dump on Hunter Henry/Zeke, endgame closer at $\le 18$ PSI.
+   - *Harmonization*: Patriots retains their Round 1 centerpiece exemption (`isPatriotsR1Premier`) and pump & dump priority. In Round 3/6 on ordinary cards, they preserve 5–6 coins (aligning with the tournament-winning Capitalist archetype). They gain the Lockout Hammer, Poison Taxing, Roster Complementarity, and Strategic Nomination fallback.
+4. **New York Jets (Playtest 41)**:
+   - *Previous Fine-Tuning*: Small max buyout priority (`effMax <= 5` for +4 deflation) and 2–4 coin valuation gap rule.
+   - *Harmonization*: The max buyout check executes first and immediately returns `isMaxBid: true`. When not paying max, Jets uses the Pre-Emptive Lockout Hammer, Dynamic Poison Taxing, and Roster Complementarity.
+5. **Baltimore Ravens (Playtest 40)**:
+   - *Previous Fine-Tuning*: Round 1 star anchor spend (~9 coins), Rounds 2–3 missing position completion, and dynamic total lineup evaluation.
+   - *Harmonization*: Star anchor purchase (`isRavensR1Star`) and engine completion (`isRavensCompletingEngine`) are exempt from Era Horizon hoarding. When drafting ordinary cards, they preserve funds for Phase 2/HOF and use the Lockout Hammer and Poison Taxing.
+
+---
+
+### 2. Verification & Regression Benchmark
+
+- **Targeted 5-Team Test Suite (`scratch/testPlaytest53FiveTeams.mjs`)**:
+  - Bills: Era Horizon Cap (R3 bid $\le 3$ with 8 coins: PASSED ✅), Lockout Hammer (PASSED ✅).
+  - Dolphins: 0-coin bailout spend preserved (PASSED ✅), Lockout Hammer (PASSED ✅).
+  - Patriots: R1 all-in on Bowers (PASSED ✅), R1 cheap discipline on ordinary card (PASSED ✅), Pump & Dump on Hunter Henry (PASSED ✅).
+  - Jets: Small max buyout on Odunze (PASSED ✅), Lockout Hammer when not maxing (PASSED ✅).
+  - Ravens: R1 star anchor spend on Kittle (PASSED ✅), 3-position engine completion on WR (PASSED ✅).
+  - **Result: 5/5 Teams Passed with ZERO Regressions ✅**.
+- **16-Team Regression Suite (`scratch/testPlaytest52GeneralTeams.mjs`)**:
+  - All 16 previously updated teams verified passing 100%.
+- **Production Build**:
+  - Clean Vite build verified (`npm run build`) in 6.66s (`dist/assets/index-C7V0oMMo.js`).
+
+
 
 
 
