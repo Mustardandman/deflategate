@@ -2854,6 +2854,119 @@ To ensure zero compromise of earlier fine-tuning, each of the 5 franchises was a
 - **Production Build**:
   - Clean Vite build verified (`npm run build`).
 
+---
+
+## Playtest 59: Universal "Cycle Strategy" Across All 32 Franchises, Philadelphia Eagles Strategic Engine Calibration & Washington Commanders Smart Mark Overhaul
+
+### 1. Executive Summary & User Strategic Vision
+Playtest 59 implements three major architectural refinements directed by user playtesting:
+1. **The Universal "Cycle Strategy" Across the NFL**:
+   - Codifies the universal roster construction principle: *"Every turn [recurring engine] is better until you get 2, and then use the third spot to cycle."*
+   - Applicable to all 32 franchises: Spots 1 & 2 focus on locking in sustainable recurring engines (+4.5 priority bonus when `< 2` recurring cards). Spot 3 becomes the designated "Cycle Spot" (+2.5 bonus on pure instant cards once 2 engines are established), rotating high-impact 1-shot deflation nukes and burst coin cash-ins without disturbing the core engine.
+2. **Philadelphia Eagles Strategic Engine Calibration**:
+   - **Early Game Prudence (Rounds 1–2)**: Holds coins strictly for the auction draft; does not burn coins on Tush Push during early foundation building.
+   - **1-Deflate / 1-Coin Lineup Balance**: Prioritizes acquiring at least 1 recurring deflation engine and 1 recurring coin engine, actively seeking whichever half is missing.
+   - **Coin Priority**: Values coins over deflation (`coinWeight: 1.7` > `deflateWeight: 1.4`, `reserveCoins: 6`) because every coin fuels Tush Push deflation.
+   - **Endgame Suffocation (Rounds 3+)**: Aggressively executes Tush Push (double shove when coins $\ge 8$, single shove when $\ge 5$), retaining a 2–3 coin operational buffer so Philadelphia never goes broke.
+   - **Anti-Saints Tactical Pivot**: When the Saints are in the game AND are the top contender (lowest or tied for lowest PSI), Philadelphia switches to normal play and avoids burning coins on immune targets. When Saints are NOT the top contender, Tush Push fires against non-Saints leaders.
+3. **Washington Commanders Smart Mark Overhaul**:
+   - **Poison Avoidance**: Severe penalty on self-inflation poison (Trevor Lawrence `+8 instant inflate`, Hunter Henry `+3 recurring inflate`), protecting Washington's 43 starting PSI.
+   - **Normal Prioritization**: Drops artificial 2-coin card favoritism; prioritizes like a normal franchise under the Universal Cycle Strategy (`deflateWeight: 2.2, coinWeight: 1.0, reserveCoins: 1, aggression: 1.15`).
+   - **Affordability Guard**: Guarantees Commanders never wastes their mark on cards the First Player cannot afford (`minBid > firstPlayer.coins`).
+   - **Dual-Mode Marking**:
+     - *Shield / Dibs (Offensive)*: Locks out the First Player from contested elite targets that Commanders wants and can afford.
+     - *Embargo (Defensive)*: Denies the First Player their highest-value card when dangerous ($\le 18$ PSI) or when no shield target exists.
+   - **Nomination & Bidding Synergy**: When unlocked, Commanders prioritizes nominating their shielded target and bids with conviction up to 5 coins in early rounds.
+
+---
+
+### 2. Implementation Details
+
+#### A. Universal Cycle Strategy (`src/Game.js`)
+- In `scoreCardForPlayer`:
+  ```javascript
+  const recurringCardsInLineup = (p.lineup || []).filter(c =>
+    !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_') &&
+    c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round') &&
+      ((e.type === 'deflate' && e.amount > 0) || (e.type === 'coins' && e.amount > 0)))
+  ).length;
+
+  const cardHasPositiveRecurring = card.effects?.some(e =>
+    (e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round') &&
+    ((e.type === 'deflate' && e.amount > 0) || (e.type === 'coins' && e.amount > 0))
+  );
+
+  const cardIsPureInstant = card.effects?.length > 0 && card.effects?.every(e => !e.perRound && e.trigger !== 'refresh' && e.type !== 'every_round');
+
+  if (recurringCardsInLineup < 2) {
+    if (cardHasPositiveRecurring) {
+      rawScore += 4.5; // Foundation building priority
+    }
+  } else {
+    if (cardIsPureInstant) {
+      rawScore += 2.5; // Designated Cycle Spot weapon
+    }
+  }
+  ```
+
+#### B. Philadelphia Eagles Tuning (`src/Game.js`, `src/ai/teamGenomes.js`, `src/ai/evolvedWeights.js`)
+- **Active Genomes**:
+  - `deflateWeight: 1.4`, `coinWeight: 1.7`, `reserveCoins: 6`, `threatDefenseWeight: 1.3`, `superstarPriorityMult: 1.2`.
+- **Roster Balance**:
+  - If missing recurring deflation: `+5.5` urgency bonus.
+  - If missing recurring coins: `+6.0` urgency bonus.
+  - General coin valuation bonus: `cardCoinsTotal * 1.5`.
+- **Post-Auction Tush Push**:
+  - Suppressed in Rounds 1–2 (Early Game Prudence).
+  - Suppressed if Saints is in the game and is the top contender ($\le \text{minPsi} + 1$).
+  - In Rounds 3+, fires double shove if `coins >= 8` (costs 6, keeps 2+ buffer), single shove if `coins >= 5` (costs 3, keeps 2+ buffer). Opponents inflated by `+3` or `+6` PSI (Saints exempt).
+
+#### C. Washington Commanders Overhaul (`src/Game.js`, `src/ai/teamGenomes.js`, `src/ai/evolvedWeights.js`)
+- **Active Genomes**:
+  - `deflateWeight: 2.2`, `coinWeight: 1.0`, `reserveCoins: 1`, `aggression: 1.15`, `threatDefenseWeight: 1.2`.
+- **Poison Avoidance**:
+  - Instant inflate: `-(instInflate * 30.0 + 100.0)` penalty.
+  - Recurring inflate: `-(recInflate * 40.0 + 100.0)` penalty.
+- **Smart Mark (`chooseCpuCommandersMarkCard`)**:
+  - Affordability check: `firstPlayer.coins >= card.minBid`.
+  - Shield / Dibs: `commCanAfford && scoreComm >= 16 && scoreFirst >= 12`.
+  - Defensive Embargo: `isFirstDangerous || scoreFirst` maximized.
+- **Nomination & Conviction**:
+  - Unlocked shielded card stored in `G.board.commandersShieldedCardId`.
+  - Nominated preferentially if affordable and `score >= 12`.
+  - Evaluated with conviction up to 5 coins in early rounds with 0-reserve exemption.
+
+---
+
+### 3. Verification Suite & Test Results
+- **Playtest 59 Suite (`scratch/testPlaytest59.mjs`)**:
+  - Test 1.1: Core Recurring Engine (< 2 recurring) favors recurring: **PASSED ✅**
+  - Test 1.2: Cycle Spot (>= 2 recurring) values instant rotation cards: **PASSED ✅**
+  - Test 2.1: Eagles genome active weights match specification: **PASSED ✅**
+  - Test 2.2: Eagles lineup balance prioritizes missing coin half: **PASSED ✅**
+  - Test 2.3: Eagles Early Game Prudence preserves coins during R1–2: **PASSED ✅**
+  - Test 2.4: Eagles Endgame Suffocation uses Tush Push in R4: **PASSED ✅**
+  - Test 2.5: Eagles Anti-Saints tactics hold Tush Push when Saints is leader: **PASSED ✅**
+  - Test 3.1: Commanders severely penalizes self-inflation poison: **PASSED ✅**
+  - Test 3.2: Commanders Affordability Guard prevents marking unaffordable cards: **PASSED ✅**
+  - Test 3.3: Commanders Shield/Dibs mode protects elite target: **PASSED ✅**
+  - Test 3.4: Commanders nominates unlocked shielded card: **PASSED ✅**
+  - Test 3.5: Commanders bids with conviction on shielded target: **PASSED ✅**
+  - **Result: 12/12 Checks Passed 100% ✅**.
+
+- **League Regression Suites**:
+  - Playtest 58 (Cowboys): **PASSED 100% ✅**
+  - Playtest 57 (Anti-Chargers): **PASSED 100% ✅**
+  - Playtest 56 (Chargers): **PASSED 100% ✅**
+  - Playtest 55 (Jaguars, Titans, Broncos, Chiefs): **PASSED 100% ✅**
+  - Playtest 54 (Bengals, Browns, Steelers, Texans, Colts): **PASSED 100% ✅**
+  - Playtest 53 (Bills, Dolphins, Patriots, Jets, Ravens): **PASSED 100% ✅**
+  - Playtest 52 (All 16 General Teams): **PASSED 100% ✅**
+
+- **Production Build**:
+  - `npm run build` compiled cleanly with 0 errors.
+
+
 
 
 

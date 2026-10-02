@@ -1345,6 +1345,33 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
 
   let rawScore = (totalDeflate * deflateWeight) + (totalCoins * coinWeight);
 
+  // Universal Cycle Strategy across ALL teams:
+  // "Every turn [recurring] is better until you get 2 and then use the third spot to cycle."
+  const recurringCardsInLineup = (p.lineup || []).filter(c =>
+    !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_') &&
+    c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round') &&
+      ((e.type === 'deflate' && e.amount > 0) || (e.type === 'coins' && e.amount > 0)))
+  ).length;
+
+  const cardHasPositiveRecurring = card.effects?.some(e =>
+    (e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round') &&
+    ((e.type === 'deflate' && e.amount > 0) || (e.type === 'coins' && e.amount > 0))
+  );
+
+  const cardIsPureInstant = card.effects?.length > 0 && card.effects?.every(e => !e.perRound && e.trigger !== 'refresh' && e.type !== 'every_round');
+
+  if (recurringCardsInLineup < 2) {
+    // Stage 1 of Cycle Strategy: Lock in the 2 recurring engine anchors
+    if (cardHasPositiveRecurring) {
+      rawScore += 4.5;
+    } 
+  } else {
+    // Stage 2 of Cycle Strategy: 2 core engines active -> 3rd spot is the Cycle Spot!
+    if (cardIsPureInstant) {
+      rawScore += 2.5; // Valued properly as an active cycle weapon
+    }
+  }
+
   // Playtest 20: Isaiah Pacheco Expected Value (Draws fresh card from active era deck)
   if (card.id === 'isaiah_pacheco') {
     if (currentRound >= 7) {
@@ -1722,8 +1749,51 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     else if ((p.psi || 44) < 27 && card.effects?.some(e => e.type === 'coins')) rawScore += 5.0;
   }
   if (effectiveTeamId === 'eagles') {
-    const cardCoins = card.effects?.filter(e => e.type === 'coins').reduce((sum, e) => sum + e.amount, 0) || 0;
-    if (cardCoins >= 2) rawScore += cardCoins * 1.8;
+    // Check if Saints is in the game and is top contender
+    const saintsPlayer = G?.players ? Object.values(G.players).find(pl => getEffectiveTeamId(pl) === 'saints') : null;
+    let isSaintsTopContender = false;
+    if (saintsPlayer && G?.players) {
+      const allPsi = Object.values(G.players).map(pl => pl.psi || 40);
+      const minPsi = Math.min(...allPsi);
+      if ((saintsPlayer.psi || 40) <= minPsi + 1) {
+        isSaintsTopContender = true;
+      }
+    }
+
+    if (isSaintsTopContender) {
+      // Play like a normal team: focus directly on deflation
+      const recDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      if (recDeflate >= 2) rawScore += 5.0;
+    } else {
+      // Normal Eagles doctrine: Need 1 deflation card, 1 coin card. Balance is key. Value coins over deflation.
+      const realStarters = (p.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+      const hasLineupRecDeflate = realStarters.some(c => c.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate' && e.amount > 0));
+      const hasLineupRecCoins = realStarters.some(c => c.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins' && e.amount > 0));
+
+      const cardRecDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      const cardRecCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+      const cardCoinsTotal = card.effects?.filter(e => e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+
+      if (!hasLineupRecDeflate && cardRecDeflate >= 2) {
+        rawScore += 5.5; // High urgency: must secure at least 1 deflation anchor!
+      }
+      if (!hasLineupRecCoins && cardRecCoins >= 2) {
+        rawScore += 6.0; // High urgency: must secure at least 1 coin engine!
+      }
+
+      // Value coins over deflation to fuel constant Tush Push
+      if (cardCoinsTotal >= 2) {
+        rawScore += cardCoinsTotal * 1.5;
+      }
+    }
+  }
+
+  if (effectiveTeamId === 'commanders') {
+    // Avoid self-inflation poison (Trevor Lawrence +8 inflate, Hunter Henry +3 recurring inflate)
+    const instInflate = card.effects?.filter(e => !e.perRound && e.type === 'inflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const recInflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'inflate').reduce((s, e) => s + e.amount, 0) || 0;
+    if (instInflate > 0) rawScore -= (instInflate * 30.0 + 100.0); // Severe poison penalty: never ruin 43 starting PSI
+    if (recInflate > 0) rawScore -= (recInflate * 40.0 + 100.0);
   }
   if (effectiveTeamId === 'cowboys') {
     if (card.effects?.some(e => e.type === 'deflate' && e.amount >= 2)) rawScore += 3.5;
@@ -2033,19 +2103,54 @@ export const chooseCpuCommandersMarkCard = (G, commandersId) => {
   const availableCards = G.board.auctionPlayers;
   if (!availableCards || availableCards.length === 0) return -1;
 
-  let bestIdx = -1;
-  let highestScore = -Infinity;
+  const firstPlayer = G.players[firstPlayerId];
+  const commanders = G.players[commandersId];
+  if (!firstPlayer || !commanders) return -1;
 
-  availableCards.forEach((card, idx) => {
-    if (!card) return;
-    const targetScore = scoreCardForPlayer(G, firstPlayerId, card);
-    if (targetScore > highestScore) {
-      highestScore = targetScore;
-      bestIdx = idx;
+  const firstCoins = firstPlayer.coins || 0;
+  const commCoins = commanders.coins || 0;
+  const isFirstDangerous = (firstPlayer.psi || 40) <= 18;
+
+  // Filter cards the First Player can ACTUALLY afford (prevents wasted marks!)
+  const affordableForFirst = [];
+  availableCards.forEach((c, idx) => {
+    if (!c) return;
+    if (firstCoins >= c.minBid) {
+      const scoreFirst = scoreCardForPlayer(G, firstPlayerId, c);
+      const scoreComm = scoreCardForPlayer(G, commandersId, c);
+      const commCanAfford = commCoins >= c.minBid;
+      affordableForFirst.push({ card: c, idx, scoreFirst, scoreComm, commCanAfford });
     }
   });
 
-  return bestIdx !== -1 ? bestIdx : 0;
+  if (affordableForFirst.length === 0) {
+    let bestIdx = -1, maxScore = -Infinity;
+    availableCards.forEach((c, idx) => {
+      if (c) {
+        const s = scoreCardForPlayer(G, commandersId, c);
+        if (s > maxScore) { maxScore = s; bestIdx = idx; }
+      }
+    });
+    return bestIdx !== -1 ? bestIdx : 0;
+  }
+
+  // Strategy A: Defensive Embargo if First Player is dangerous / leader
+  if (isFirstDangerous) {
+    affordableForFirst.sort((a, b) => b.scoreFirst - a.scoreFirst);
+    return affordableForFirst[0].idx;
+  }
+
+  // Strategy B: The "Shield / Dibs" Strategy:
+  // If there's an elite card Commanders loves and can afford, and First Player also can afford and wants it
+  const shieldTargets = affordableForFirst.filter(item => item.commCanAfford && item.scoreComm >= 16 && item.scoreFirst >= 12);
+  if (shieldTargets.length > 0) {
+    shieldTargets.sort((a, b) => b.scoreComm - a.scoreComm);
+    return shieldTargets[0].idx;
+  }
+
+  // Strategy C: Target Denial (Block First Player's best affordable card)
+  affordableForFirst.sort((a, b) => b.scoreFirst - a.scoreFirst);
+  return affordableForFirst[0].idx;
 };
 
 export const chooseCpuNominationCard = (G, currentPlayerId) => {
@@ -2080,6 +2185,23 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
   const richestOpponentCoins = activeOpponents.length > 0
     ? Math.max(0, ...activeOpponents.map(id => G.players[id]?.coins || 0))
     : 0;
+
+  // Commanders Strategic Nomination: Prioritize previously shielded marked card if unlocked and affordable!
+  if (getEffectiveTeamId(currentPlayer) === 'commanders') {
+    let shieldedCardItem = null;
+    if (G.board?.commandersShieldedCardId) {
+      shieldedCardItem = eligibleCards.find(item => item.card.id === G.board.commandersShieldedCardId);
+    } else if (G.board?.commandersMarkedIndices?.length > 0) {
+      const markedIdx = G.board.commandersMarkedIndices[0];
+      shieldedCardItem = eligibleCards.find(item => item.index === markedIdx);
+    }
+    if (shieldedCardItem && currentPlayer.coins >= shieldedCardItem.card.minBid) {
+      const s = scoreCardForPlayer(G, currentPlayerId, shieldedCardItem.card);
+      if (s >= 12) {
+        return shieldedCardItem.index;
+      }
+    }
+  }
 
   // Universal Superstar Priority: Everyone wants Patrick Mahomes and Travis Kelce!
   const eliteChiefsSuperstar = eligibleCards.find(item => item.card.id === 'patrick_mahomes' || item.card.id === 'travis_kelce');
@@ -3394,7 +3516,12 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     ((G.board.round || 1) <= 2 && (cardRecDeflateInit >= 2 || cardRecCoinsInit >= 3 || card.id === 'brock_bowers' || card.id === 'kirk_cousins' || card.id === 'george_kittle')) ||
     (currentPlayer.psi || 40) <= 16
   ));
-  const spendableCoins = (isSuperstar || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || isTexansTarget || isColtsTarget || isJaguarsTarget || isTitansTarget || isTitansR1Anchor || isBroncosTarget || isCowboysTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
+  const isCommandersTarget = (effectiveTeamId === 'commanders' && (
+    cardIndex === G.board?.commandersMarkedCardIndex || 
+    G.board?.commandersMarkedIndices?.includes(cardIndex) || 
+    G.board?.commandersShieldedCardId === card.id
+  ) && cardScore >= 14.0);
+  const spendableCoins = (isSuperstar || isCommandersTarget || isPatriotsR1Premier || isRavensR1Star || isRavensCompletingEngine || isJetsMaxTarget || isBengalsInstantTarget || isBrownsTarget || isSteelersTarget || isTexansTarget || isColtsTarget || isJaguarsTarget || isTitansTarget || isTitansR1Anchor || isBroncosTarget || isCowboysTarget || savingsReserve === 0 || effectiveTeamId === 'dolphins') 
     ? currentPlayer.coins 
     : Math.max(0, currentPlayer.coins - savingsReserve);
 
@@ -3512,6 +3639,14 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
       const spreadBoost = Math.min(1.35, 1.0 + (spread / 15.0));
       baseValuation = Math.round(Math.min(effMax, cardScore * 0.75 * spreadBoost));
       baseValuation = Math.min(spendableCoins, Math.max(card.minBid, baseValuation));
+    }
+  }
+
+  // Commanders Shielded Mark Conviction:
+  if (effectiveTeamId === 'commanders') {
+    const wasMarked = (cardIndex === G.board?.commandersMarkedCardIndex || G.board?.commandersMarkedIndices?.includes(cardIndex) || G.board?.commandersShieldedCardId === card.id);
+    if (wasMarked && cardScore >= 14) {
+      baseValuation = Math.max(baseValuation, Math.min(spendableCoins, Math.min(5, effMax)));
     }
   }
 
@@ -7140,6 +7275,9 @@ export const DeflategateGame = {
               }
               G.board.commandersMarkedCardIndex = chosenIdx;
               const card = G.board.auctionPlayers[chosenIdx];
+              if (card) {
+                G.board.commandersShieldedCardId = card.id;
+              }
               const displayId = parseInt(commandersId) + 1;
               const firstDisplayId = parseInt(G.board.firstPlayer) + 1;
               triggerAbilityNotification(G, commandersId, 'commanders', 'Commanders Blockade', `Marked ${card.name}! First Player (Player ${firstDisplayId}) cannot nominate or bid on this player.`);
@@ -7272,6 +7410,9 @@ export const DeflategateGame = {
             G.board.commandersMarkedIndices.push(auctionCardIndex);
           }
           G.board.commandersMarkedCardIndex = auctionCardIndex;
+          if (card) {
+            G.board.commandersShieldedCardId = card.id;
+          }
           const displayId = parseInt(targetPlayerId) + 1;
           const firstDisplayId = parseInt(G.board.firstPlayer) + 1;
           triggerAbilityNotification(G, targetPlayerId, 'commanders', 'Commanders Blockade', `Marked ${card.name}! First player blocked from bidding.`);
@@ -7745,14 +7886,34 @@ export const DeflategateGame = {
           const usedThisRound = eaglesPlayer.eaglesUsedRound === G.board.round ? (eaglesPlayer.eaglesUsedCount || 0) : 0;
           if (usedThisRound < 2) {
             if (eaglesPlayer.isCpu) {
-              const timesToUse = (usedThisRound === 0 && eaglesPlayer.coins >= 8) ? 2 : (eaglesPlayer.coins >= 5 ? 1 : 0);
+              const round = G.board.round || 1;
+
+              // Check if Saints is in the game and is top contender
+              const saintsPlayer = Object.values(G.players).find(p => getEffectiveTeamId(p) === 'saints');
+              let isSaintsTop = false;
+              if (saintsPlayer) {
+                const allPsi = Object.values(G.players).map(p => p.psi || 40);
+                const minPsi = Math.min(...allPsi);
+                if ((saintsPlayer.psi || 40) <= minPsi + 1) isSaintsTop = true;
+              }
+
+              // If Saints is top contender: play like normal team, do not burn coins on Tush Push
+              // Early Game Prudence: in Rounds 1-2, hold coins for auctions!
+              let timesToUse = 0;
+              if (!isSaintsTop && round >= 3) {
+                // Rounds 3+: Use Tush Push as much as possible!
+                timesToUse = (usedThisRound === 0 && eaglesPlayer.coins >= 8) ? 2 : (eaglesPlayer.coins >= 5 ? 1 : 0);
+              }
+
               if (timesToUse > 0) {
                 const cost = timesToUse * 3;
                 eaglesPlayer.coins -= cost;
                 eaglesPlayer.eaglesUsedRound = G.board.round;
                 eaglesPlayer.eaglesUsedCount = usedThisRound + timesToUse;
                 Object.keys(G.players).forEach(id => {
-                  if (id !== eaglesId) applyPsiInflated(G, id, timesToUse * 3);
+                  if (id !== eaglesId && getEffectiveTeamId(G.players[id]) !== 'saints') {
+                    applyPsiInflated(G, id, timesToUse * 3);
+                  }
                 });
                 triggerAbilityNotification(G, eaglesId, 'eagles', 'Eagles Tush Push', `Paid ${cost} coins to inflate all opponents +${timesToUse * 3} PSI!`);
                 addLog(G, `🦅 Eagles Ability: CPU Player ${parseInt(eaglesId) + 1} paid ${cost} coins to inflate all opponents +${timesToUse * 3} PSI! (${timesToUse}x)`);
