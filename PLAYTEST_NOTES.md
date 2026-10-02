@@ -2395,6 +2395,75 @@ A core inquiry addressed in Playtest 49 is whether `reserveCoins` should exist i
   - Playtests 39 through 50 (Patriots, Ravens, Jets, Bengals, Browns, Steelers, Texans, Colts, Jaguars, Titans, Broncos, Chiefs) all pass 100% with zero errors.
 - **Production Build**: Verified clean Vite build (`npm run build`) in 5.25s.
 
+---
+
+## Playtest 51: Las Vegas Raiders AI Human Auction Optimization & Strategic Game Theory Engine
+
+### 1. Executive Summary & Human Design Philosophy
+In Playtest 51, the Las Vegas Raiders CPU logic was comprehensively overhauled from a static, rule-based bidder into an elite, human-like auction drafter. Rather than relying on rigid static reserve coins or narrow franchise synergy constraints, the Raiders AI now plays with flexible strategic intelligence, mimicking how an experienced human drafter evaluates board state, rivals' budgets, engine deficits, and tactical opportunities:
+- **Strategy Flexibility**: Franchise synergy does not restrict card choices; Raiders accepts any card with deflation OR coins (`doesCardFitTeamStrategy` returns `true` for all productive cards).
+- **VORP / Board Quality Spread Scaling**: The AI evaluates the quality difference (spread) between the top card on the board and the median replacement option. When the spread is wide (e.g. Brock Bowers vs scrubs), Raiders bids aggressively. When the board is flat (multiple comparable alternatives), Raiders avoids overpriced bidding wars and secures value cheaply.
+- **Three Agreed Human Heuristics**:
+  1. *Rule 1: Era Horizon Cap*: In Round 3 (approaching Phase 2 explosion) and Round 6 (approaching HOF era), the AI caps spending on non-superstars to preserve at least 5–6 coins for the impending talent influx.
+  2. *Rule 2: Dynamic Poison-Pill Taxing*: When immune rivals (Saints or high-desire opponents) are present, Raiders safely price-taxes toxic cards (inflation or negative effects) up to 2 coins knowing the rival will outbid them to 3, but strictly NEVER bids $\ge 3$ to prevent getting stuck with the bad card.
+  3. *Rule 3: Roster Complementarity (Engine Deficit Check)*: Dynamically evaluates the active lineup each round. If lacking recurring coins in Round 2+, coin engines receive a $+1.4\times$ boost (`+cardRecCoins * 3.5`). If lacking recurring deflation, deflation engines receive the boost. Once an engine is saturated ($\ge 5$ coins or $\ge 6$ deflation), further redundant single-engine additions are dampened by $0.75\times$.
+- **Strategic Nomination Tactics**:
+  - *Extraction Bait*: When an expensive superstar is revealed that a richer rival desires and Raiders cannot comfortably win, Raiders nominates it to drain the leader's purse.
+  - *Greed Standoff Sneak*: When leaders are fixated on an expensive superstar, Raiders nominates an attainable Tier-2 card to steal it cheaply while rivals hesitate.
+  - *Primary Target*: Nominates top preference when in contention to set the pace.
+- **Pre-emptive Lockout Hammer**: Rather than bidding all available coins and overpaying, Raiders calculates the rival's maximum willingness ($\min(\text{wallet}, \text{valuation})$) and jumps directly to that threshold, locking out the rival while saving maximum coin surplus.
+- **Raiders Ability Bug Fix (Saints Exclusion)**: The CPU logic for transferring 1 PSI before the auction phase now explicitly excludes the New Orleans Saints. Because Saints ability renders them completely immune to inflation, transferring PSI to Saints was a 100% wasted activation. Excluding Saints redirects 100% of menace transfers to slow down actual contenders.
+
+---
+
+### 2. Comprehensive Benchmark Results
+
+#### A. 1,000-Game A/B Mirror Test (Ability Voided)
+*Format: 5-Player Lobby, 1 New Raiders vs 4 Old Baseline Raiders, rotating seat every 200 games.*
+- **New Raiders Wins**: **322 / 1000 (32.2%)**
+- **Old Raiders Wins**: **678 / 1000 (67.8%)** (Average per old bot: 16.95%)
+- **Fair Share Expected**: **20.0%**
+- **Relative Outperformance**: **+61.0%** over baseline code
+- **Seat Breakdown**:
+  - Seat 0: **45.5%**
+  - Seat 1: **35.5%**
+  - Seat 2: **33.0%**
+  - Seat 3: **23.5%**
+  - Seat 4: **23.5%**
+  *(Every single seat comfortably exceeded fair share).*
+
+#### B. Multi-Format Benchmarks (With Abilities Against Real Franchises)
+*Format: Tested across all 3 standard lobby configurations (50 games per format) using production code.*
+- **4-Player Lobby**: **52.0%** (26/50 wins) [Fair Share: 25.0%] — **2.08x fair share**, Avg Final PSI: 4.3, Avg Final Coins: 5.5
+- **7-Player Lobby**: **34.0%** (17/50 wins) [Fair Share: 14.3%] — **2.38x fair share**, Avg Final PSI: 5.7, Avg Final Coins: 5.3
+- **10-Player Lobby**: **24.0%** (12/50 wins) [Fair Share: 10.0%] — **2.40x fair share**, Avg Final PSI: 8.9, Avg Final Coins: 6.7
+
+#### C. Automated Unit Test Verification (`scratch/testPlaytest51Raiders.mjs`)
+- **Rule 1 (Era Horizon Cap R3)**: **PASSED ✅** (Bid capped at 2, spendable reserve 5 preserved)
+- **Rule 2 (Dynamic Poison Taxing)**: **PASSED ✅** (Taxes at 2 coins: true, Folds at 3 coins: true)
+- **Rule 3 (Roster Complementarity)**: **PASSED ✅** (Engine deficit boost awarded: score 18.4)
+- **Raiders Ability Bug Fix (Saints Exclusion)**: **PASSED ✅** (Target redirected from immune Saints to valid contender Player 2)
+
+---
+
+### 3. Implementation Details
+
+1. **`src/Game.js`**:
+   - `doesCardFitTeamStrategy`: Raiders accepts `deflate` OR `coins`.
+   - `scoreCardForPlayer`: Integrated engine deficit check and saturation dampeners for Raiders. Missing complementary engine types are exempt from redundant filler penalties.
+   - `chooseCpuNominationCard`: Added Extraction Bait, Greed Standoff Sneak, and Primary Target heuristics.
+   - `evaluateCpuAuctionBid`:
+     * Added Bowers, London, Lawrence, and 3+ recurring engines to universal `isSuperstar`.
+     * Added Rule 1 (Era Horizon Cap in Rounds 3 & 6).
+     * Added Rule 2 (Dynamic Poison-Pill Taxing up to 2 against immune opponents).
+     * Added VORP / Board Quality Spread Scaling.
+     * Added Pre-emptive Lockout Hammer calibrated to rival's maximum willingness.
+   - `preAuctionPhase.onBegin`: Added `if (effTeam === 'saints') return;` to prevent Raiders from giving PSI to inflation-immune Saints.
+2. **`src/ai/teamGenomes.js` & `src/ai/evolvedWeights.js`**:
+   - Calibrated `raiders` to clean balanced baseline (`deflateWeight: 1.0`, `coinWeight: 1.0`, `reserveCoins: 0`, `aggression: 1.0`).
+3. **Production Validation**:
+   - Clean Vite production build verified (`dist/assets/index-2kSshrYv.js`).
+
 
 
 

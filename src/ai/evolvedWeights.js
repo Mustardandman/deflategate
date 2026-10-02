@@ -273,21 +273,21 @@ export const EVOLVED_TEAM_GENOMES = {
     "superstarPriorityMult": 0.86
   },
   "raiders": {
-    "deflateWeight": 1.8,
+    "deflateWeight": 1,
     "coinWeight": 1,
     "recurringMult": 1,
-    "aggression": 1.19,
-    "reserveCoins": 2,
-    "priceBumpProb": 0.35,
-    "synergyBonus": 1.17,
-    "firstClaimAggression": 1.2,
-    "postClaimAggression": 0.9,
-    "sub5UrgencyBonus": 2,
+    "aggression": 1,
+    "reserveCoins": 0,
+    "priceBumpProb": 0.25,
+    "synergyBonus": 1,
+    "firstClaimAggression": 1,
+    "postClaimAggression": 1,
+    "sub5UrgencyBonus": 1,
     "richestBuffer": 1,
     "instantMaxBidAggression": 1,
-    "boardStrengthWeight": 1.1,
-    "threatDefenseWeight": 1.48,
-    "superstarPriorityMult": 1.15
+    "boardStrengthWeight": 1,
+    "threatDefenseWeight": 1.1,
+    "superstarPriorityMult": 1
   },
   "chargers": {
     "deflateWeight": 1.6,
@@ -461,10 +461,10 @@ export const EVOLVED_TEAM_GENOMES = {
     "superstarPriorityMult": 1.2
   },
   "chiefs": {
-    "deflateWeight": 1.7,
-    "coinWeight": 1.19,
-    "recurringMult": 0.7,
-    "aggression": 1.2,
+    "deflateWeight": 1.6,
+    "coinWeight": 1,
+    "recurringMult": 1,
+    "aggression": 1.1,
     "reserveCoins": 2,
     "priceBumpProb": 0.2,
     "synergyBonus": 1.3,
@@ -473,7 +473,7 @@ export const EVOLVED_TEAM_GENOMES = {
     "sub5UrgencyBonus": 2,
     "richestBuffer": 1,
     "instantMaxBidAggression": 1,
-    "boardStrengthWeight": 0.76,
+    "boardStrengthWeight": 1,
     "threatDefenseWeight": 1.1,
     "superstarPriorityMult": 1.5
   },

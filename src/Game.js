@@ -832,7 +832,7 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
     return card.effects?.some(e => e.type === 'deflate' && e.amount >= 2);
   }
   if (teamId === 'raiders') {
-    return card.effects?.some(e => e.type === 'deflate');
+    return card.effects?.some(e => e.type === 'deflate' || e.type === 'coins');
   }
   if (teamId === 'commanders') {
     return card.effects?.some(e => e.type === 'deflate' || e.type === 'coins');
@@ -1643,6 +1643,28 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       rawScore += 6.0;
     }
   }
+  if (effectiveTeamId === 'raiders') {
+    // Roster Complementarity & Engine Deficit Check:
+    // If Raiders lacks a recurring coin engine in Round 2+, heavily boost coin engines (+1.4x equivalent).
+    // If Raiders lacks a recurring deflation engine, heavily boost deflation!
+    const realStarters = (p.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+    const recCoinsInLineup = realStarters.reduce((sum, c) => sum + (c.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0), 0);
+    const recDeflateInLineup = realStarters.reduce((sum, c) => sum + (c.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0), 0);
+
+    const cardRecCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+    const cardRecDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+
+    const currentRound = G.board?.round || 1;
+    if (recCoinsInLineup === 0 && currentRound >= 2 && cardRecCoins >= 2) {
+      rawScore += cardRecCoins * 3.5;
+    } else if (recDeflateInLineup === 0 && currentRound >= 2 && cardRecDeflate >= 2) {
+      rawScore += cardRecDeflate * 3.5;
+    } else if (recCoinsInLineup >= 5 && cardRecCoins > 0 && cardRecDeflate === 0) {
+      rawScore *= 0.75;
+    } else if (recDeflateInLineup >= 6 && cardRecDeflate > 0 && cardRecCoins === 0) {
+      rawScore *= 0.75;
+    }
+  }
   if (effectiveTeamId === 'vikings') {
     if ((p.psi || 44) >= 27 && card.effects?.some(e => e.type === 'deflate')) rawScore += 5.5;
     else if ((p.psi || 44) < 27 && card.effects?.some(e => e.type === 'coins')) rawScore += 5.0;
@@ -1907,7 +1929,11 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       }
       if (isCandidatePerRound && currentLineup.length >= targetEngineQuota) {
         // If team already has 2+ engines, a mediocre redundant recurring filler is inferior to cycling instant cards:
-        if (!isSuperstar && rawScore < 22) {
+        const isRaidersComplementaryEngine = (effectiveTeamId === 'raiders' && (
+          (cleanRecurringEngines.every(c => !c.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate')) && card.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate')) ||
+          (cleanRecurringEngines.every(c => !c.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins')) && card.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins'))
+        ));
+        if (!isSuperstar && rawScore < 22 && !isRaidersComplementaryEngine) {
           rawScore *= (effectiveTeamId === 'bengals' ? 0.70 : 0.65);
         }
       }
@@ -2514,6 +2540,27 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     if (sub5Target) return sub5Target.index;
   }
 
+  // Raiders Tactical Nomination:
+  // - Extraction Bait: If top card is an expensive superstar dominated by a richer opponent, nominate to drain them!
+  // - Greed Standoff Sneak: If top card is dominated, sneak a high-utility Tier 2 card while leaders hesitate.
+  // - Primary Target: If we can contest or lead, nominate our top target directly.
+  if (effectiveTeamId === 'raiders' && eligibleCards.length > 0) {
+    const topCard = eligibleCards[0];
+    const canContestTop = (currentPlayer.coins >= Math.min(topCard?.card.maxBid || 8, 8) && currentPlayer.coins >= richestOpponentCoins - 1);
+
+    if (!canContestTop && richestOpponentCoins >= (topCard?.card.maxBid || 10) * 0.6) {
+      return topCard.index;
+    }
+
+    if (!canContestTop && eligibleCards.length >= 2) {
+      const tier2 = eligibleCards.find(item => item.score >= 10.0 && item.card.minBid <= currentPlayer.coins && item.index !== topCard.index);
+      if (tier2) return tier2.index;
+    }
+
+    const affordableTop = eligibleCards.find(item => item.card.minBid <= currentPlayer.coins && item.score > 0);
+    if (affordableTop) return affordableTop.index;
+  }
+
   // Playtest 19 Note 8: Tactical Middle-Player Targeting
   // When low on coins or cannot compete with the richest opponent for the top card:
   // Instead of futilely nominating the top superstar (which a richer rival will take),
@@ -2854,7 +2901,12 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     card.id === 'lamar_jackson' || 
     card.id === 'justin_jefferson' || 
     card.id === 'adrian_peterson' || 
-    card.id === 'derrick_henry'
+    card.id === 'derrick_henry' ||
+    card.id === 'brock_bowers' ||
+    card.id === 'drake_london' ||
+    card.id === 'trevor_lawrence' ||
+    card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount >= 3) ||
+    card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3)
   );
 
   const isPatriotsR1Premier = (
@@ -2963,6 +3015,23 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
         }
       }
     }
+  }
+
+  // Raiders Rule 2: Dynamic Poison-Pill Taxing
+  // If card is toxic (cardScore <= 0.5 or gives inflate >= 2), but an immune rival (Saints or score >= 15) is bidding/active:
+  // Safely price-tax up to 2 coins (nextBid <= 2) knowing they will outbid, but NEVER bid >= 3!
+  const isToxicForMe = cardScore <= 0.5 || card.effects?.some(e => e.type === 'inflate' && e.amount >= 2);
+  if (isToxicForMe && effectiveTeamId === 'raiders') {
+    const immuneOpponent = Object.keys(G.players).some(oppId => {
+      if (oppId === currentPlayerId) return false;
+      const opp = G.players[oppId];
+      if (!opp || opp.hasWonAuction || G.board.passedAuctionPlayers?.includes(oppId)) return false;
+      return (getEffectiveTeamId(opp) === 'saints' || scoreCardForPlayer(G, oppId, card) >= 15.0);
+    });
+    if (immuneOpponent && nextBid <= 2 && currentPlayer.coins >= nextBid) {
+      return { shouldBid: true, bidAmount: nextBid, isPriceBump: true };
+    }
+    return { shouldBid: false, bidAmount: 0 };
   }
 
   // #2 Leader Denial & 2-Round Table Threat Analysis
@@ -3084,6 +3153,14 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (isEarlyGame && !teamExemptFromHoarding && !isSuperstar) {
     const earlyReserve = Math.max(3, Math.round(currentPlayer.coins * 0.35));
     savingsReserve = Math.max(savingsReserve, earlyReserve);
+  }
+
+  // Raiders Era Horizon Cap (Rounds 3 & 6 Spending Cap):
+  // Preserve funds for Phase 2 explosion (Round 3) and HOF era (Round 6) on non-superstars.
+  if (effectiveTeamId === 'raiders' && !isSuperstar) {
+    if (G.board.round === 3) savingsReserve = Math.max(savingsReserve, 5);
+    else if (G.board.round === 6) savingsReserve = Math.max(savingsReserve, 6);
+    else if (G.board.round <= 2) savingsReserve = Math.max(savingsReserve, 2);
   }
 
   // #4 Rams Ability: Gain Double Token. In Rounds 1-3, Rams preserve >= 7 coins for Phase 2 / HOF centerpiece!
@@ -3274,6 +3351,27 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
       } else if (currentPlayer.coins <= 3 && nextBid <= currentPlayer.coins && cardScore >= zeroSeekingMinScore) {
         baseValuation = Math.max(baseValuation, currentPlayer.coins);
       }
+    }
+  }
+
+  // Raiders Valuation Strategy:
+  // VORP / Board Quality Spread Scaling:
+  // - High spread (e.g. Bowers vs bad scrubs): pay up for the top player!
+  // - Flat board (multiple comparable players): do not overpay; let rivals fight while securing good value.
+  if (effectiveTeamId === 'raiders') {
+    const boardCards = (G.board.auctionPlayers || []).filter(c => c !== null);
+    const allScores = boardCards.map(c => scoreCardForPlayer(G, currentPlayerId, c)).sort((a, b) => b - a);
+    const topScore = allScores[0] || cardScore;
+    const medianScore = allScores[Math.floor(allScores.length / 2)] || 0;
+    const spread = topScore - medianScore;
+
+    if (spread <= 1.5 && allScores.length >= 3 && !isSuperstar) {
+      // Flat board: quality across cards is similar; do not overpay!
+      baseValuation = Math.min(spendableCoins, Math.max(card.minBid, 3));
+    } else {
+      const spreadBoost = Math.min(1.35, 1.0 + (spread / 15.0));
+      baseValuation = Math.round(Math.min(effMax, cardScore * 0.75 * spreadBoost));
+      baseValuation = Math.min(spendableCoins, Math.max(card.minBid, baseValuation));
     }
   }
 
@@ -4220,6 +4318,28 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
         if (closerTarget >= nextBid) {
           targetBid = Math.max(targetBid, Math.min(nextBid + 2, closerTarget));
         }
+      }
+    }
+  }
+
+  // Raiders Target Bid Refinements:
+  // Pre-emptive Lockout Hammer: Jump to rival's maximum willing bid (min(rival purse, rival valuation)),
+  // locking them out immediately without needlessly overspending to our own ceiling.
+  if (effectiveTeamId === 'raiders' && cardScore >= 8.0 && valuation > nextBid) {
+    const rivalTargets = activeContenders.map(id => ({
+      id,
+      coins: G.players[id].coins,
+      score: scoreCardForPlayer(G, id, card)
+    })).filter(o => o.score >= 4.0 && o.coins < currentPlayer.coins).sort((a, b) => b.coins - a.coins);
+
+    if (rivalTargets.length > 0) {
+      const topRival = rivalTargets[0];
+      const rivalEffMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
+      const rivalWilling = Math.min(topRival.coins, Math.min(rivalEffMax, Math.round(topRival.score * 0.75)));
+      const lockoutTarget = Math.max(nextBid, rivalWilling);
+      if (lockoutTarget >= nextBid && lockoutTarget <= valuation && lockoutTarget <= spendableCoins && currentPlayer.coins >= lockoutTarget) {
+        targetBid = lockoutTarget;
+        isJumpBid = (targetBid > nextBid);
       }
     }
   }
@@ -6533,6 +6653,7 @@ export const DeflategateGame = {
                   }
                 });
                 const effTeam = getEffectiveTeamId(opp);
+                if (effTeam === 'saints') return; // Saints ignores inflation; giving PSI to Saints is completely wasted!
                 if (effTeam === 'panthers') oppNetDeflate += 2;
                 if (effTeam === 'packers' && opp.lineup.every(c => c.phase === 'p1' || c.isPracticeSquad)) oppNetDeflate += 4;
                 const velocity = Math.max(0.5, oppNetDeflate + (opp.coins >= 8 ? 2 : (opp.coins >= 4 ? 1 : 0)));
