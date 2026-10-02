@@ -645,7 +645,8 @@ export const GENERAL_HUMAN_HEURISTIC_TEAMS = new Set([
   'falcons', 'saints', 'panthers', 'buccaneers',
   'cardinals', 'rams', '49ers', 'seahawks',
   'bills', 'dolphins', 'patriots', 'jets', 'ravens',
-  'bengals', 'browns', 'steelers', 'texans', 'colts'
+  'bengals', 'browns', 'steelers', 'texans', 'colts',
+  'jaguars', 'titans', 'broncos', 'chiefs'
 ]);
 
 export const getCpuArchetype = (player, playerId) => {
@@ -3038,7 +3039,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const isToxicTaxingTeamExempt = (effectiveTeamId === 'colts' || effectiveTeamId === 'browns' || effectiveTeamId === 'steelers');
   const isTexansWaitingQb = (effectiveTeamId === 'texans' && otherAvailableCards.some(c => c && c.position === 'QB' && c.id !== 'deshaun_watson' && currentPlayer.coins >= c.minBid));
   const isBengalsInstantDiscard = (effectiveTeamId === 'bengals' && card.effects?.some(e => !e.perRound));
-  const isToxicForMe = effectiveTeamId !== 'saints' && !isBengalsInstantDiscard && (cardScore <= 0.5 || card.effects?.some(e => e.type === 'inflate' && e.amount >= 2));
+  const isBroncosPumpAndDump = (effectiveTeamId === 'broncos' && (card.id === 'hunter_henry' || card.id === 'ezekiel_elliott'));
+  const isToxicForMe = effectiveTeamId !== 'saints' && !isBengalsInstantDiscard && !isBroncosPumpAndDump && (cardScore <= 0.5 || card.effects?.some(e => e.type === 'inflate' && e.amount >= 2));
   if (isToxicForMe && GENERAL_HUMAN_HEURISTIC_TEAMS.has(effectiveTeamId)) {
     if (isToxicTaxingTeamExempt || isTexansWaitingQb) {
       return { shouldBid: false, bidAmount: 0 };
@@ -3190,11 +3192,16 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     const isTexansQbCard = (effectiveTeamId === 'texans' && ((card.position === 'QB' && card.id !== 'deshaun_watson') || (currentPlayer.psi || 47) <= 16));
     const isColtsCleanEngine = (effectiveTeamId === 'colts');
     const isSteelersSafeSpend = (effectiveTeamId === 'steelers');
+    const isBroncosAnchor = (effectiveTeamId === 'broncos' && (card.phase === 'hof' || card.id === 'brock_bowers' || card.id === 'george_kittle' || card.effects?.some(e => e.type === 'deflate' && (e.amount >= 3 || (e.perRound && e.amount >= 2)))));
+    const isChiefsHighTarget = (effectiveTeamId === 'chiefs' && (isChiefsSuperstar || cardScore >= 18.0));
+    const isJaguarsHighTarget = (effectiveTeamId === 'jaguars' && cardScore >= 16.0);
+    const isTitansAnchor = (effectiveTeamId === 'titans' && (G.board.round || 1) === 1 && (card.effects?.some(e => e.perRound && (e.type === 'deflate' || e.type === 'coins'))));
 
     const isExemptFromHorizonCap = isDolphinsBailout || is49ersDroppingBelow5 || isPackersPhase1Pursuit ||
       isPatriotsR1PremierCard || isRavensEngineCard || isJetsMaxBuyout ||
       isBengalsInstantBuyout || isBrownsDeflateCard || isTexansQbCard ||
-      isColtsCleanEngine || isSteelersSafeSpend;
+      isColtsCleanEngine || isSteelersSafeSpend || isBroncosAnchor ||
+      isChiefsHighTarget || isJaguarsHighTarget || isTitansAnchor;
 
     if (!isExemptFromHorizonCap) {
       if (G.board.round === 3) savingsReserve = Math.max(savingsReserve, 5);

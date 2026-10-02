@@ -2603,6 +2603,64 @@ To ensure zero compromise of earlier fine-tuning, each of the 5 franchises was a
 - **Production Build**:
   - Clean Vite build verified (`npm run build`) in 14.46s (`dist/assets/index-CNMMS5Tc.js`).
 
+---
+
+## Playtest 55: League-Wide Completion — Human Auction Heuristics for Jaguars, Titans, Broncos, and Chiefs
+
+### 1. Opponent Perspective Projection (Answering User Inquiry)
+> *"Is this adding the ability for the teams to see the board from the other team's point of view?"*
+
+**YES!** The core architecture of this human auction engine fundamentally relies on seeing the draft board through opponents' eyes:
+
+1. **Rival Perspective Bidding (The Lockout Hammer)**:
+   - Rather than naively bidding 1 coin at a time or blindly bidding up to their own maximum valuation, the CPU actively calculates each rival's willingness:
+     $$\text{rivalWilling} = \min(\text{rival coins}, \text{card maxBid}, \text{rivalCardScore} \times 0.75)$$
+   - The CPU projects: *"What is the most my opponent is willing and able to pay for this card?"* and jumps directly to that lockout threshold. If our team can afford it, the bid instantly locks out the rival on turn 1, preventing protracted bidding wars that drive up costs.
+
+2. **Opponent Perspective Nomination (Extraction Bait & Greed Standoff Sneak)**:
+   - **Extraction Bait**: When a wealthy opponent holds a massive war chest (e.g. 15–20 coins) and an S-Tier superstar appears that our team cannot afford or contest, the CPU nominates that superstar specifically to force the rich opponent to liquidate their coins. Once their purse is drained, our team can comfortably win subsequent mid-tier targets.
+   - **Greed Standoff Sneak**: When multiple leaders are fixated on an expensive premier card, our CPU recognizes that the leaders are hoarding their coins for the imminent bidding war. The CPU nominates an attainable Tier-2 card to steal it cheaply while the leaders hesitate to spend their bankrolls.
+
+3. **Opponent Perspective Taxing (Dynamic Poison-Pill Taxing)**:
+   - The CPU inspects rivals to see if an immune opponent (such as the New Orleans Saints, who ignores all inflation) or an opponent desperate for the card is active in the auction. If an immune rival is bidding, the CPU safely price-taxes the toxic card up to 2 coins, extracting coins from the rival with mathematical certainty that the immune rival will outbid them.
+
+---
+
+### 2. Franchise Audit & Rule Protection
+
+1. **Jacksonville Jaguars (Playtest 47)**:
+   - *Previous Fine-Tuning*: Master event deck sequencing (`buildJaguarsMasterDeckOrder`), Cold Air walk-off timing, and clock management (Hot Air vs. Cold Air).
+   - *Harmonization*: All deck sequencing and foresight timing remain untouched. Auction bidding gains the **Lockout Hammer**, **VORP Spread Scaling**, **Era Horizon Cap** (with foresight target exemptions), and **Strategic Nomination fallback**.
+2. **Tennessee Titans (Playtest 48)**:
+   - *Previous Fine-Tuning*: Turn 0 opening free draft pick, universal 3-slot cycle strategy, and R1 anchor spend up to 7 coins.
+   - *Harmonization*: Free Turn 0 pick and cycle rotation are preserved 100%. Bidding gains the **Lockout Hammer**, **VORP Spread Scaling**, **Poison Taxing**, and **Strategic Nomination fallback**.
+3. **Denver Broncos (Playtest 49)**:
+   - *Previous Fine-Tuning*: 20-coin treasury, `reserveCoins: 0`, pump & dump on Henry/Zeke, instant priority, and 1-round recurring delay.
+   - *Harmonization*: Added `isBroncosPumpAndDump` so Henry and Zeke are never auto-folded as toxic. The Lockout Hammer prevents Broncos from blindly overpaying 14 coins when rivals only value the card at 5–6 coins, preserving their treasury for future rounds.
+4. **Kansas City Chiefs (Playtest 50)**:
+   - *Previous Fine-Tuning*: Pre-auction 2-coin claim targeting (London, Higgins, Bowers, Kittle, Olsen, Allen in R1; Kelce, Mahomes, etc. in Phase 2; fail-safe) and board duplicate protection.
+   - *Harmonization*: Pre-auction claim targeting is preserved 100%. Auction bidding gains the **Lockout Hammer**, **Roster Complementarity**, **VORP Spread Scaling**, and **Strategic Nomination fallback**.
+
+---
+
+### 3. Verification & Regression Benchmarks
+
+- **Targeted 4-Team Test Suite (`scratch/testPlaytest55FourTeams.mjs`)**:
+  - Jaguars: Lockout Hammer on Henry (bids 4 vs 4-coin rival: PASSED ✅), Era Horizon Cap in R3 (PASSED ✅).
+  - Titans: R1 Anchor Conviction on Bowers (bids 5–7: PASSED ✅), Lockout Hammer (bids 4: PASSED ✅).
+  - Broncos: Pump & Dump on Henry (PASSED ✅), Lockout Hammer on Bowers (bids 6: PASSED ✅).
+  - Chiefs: Lockout Hammer on Kelce (bids 6: PASSED ✅), Roster Complementarity (deflation prioritized when coins saturated: PASSED ✅).
+  - **Result: 4/4 Teams Passed with ZERO Regressions ✅**.
+- **Playtest 54 Suite (`scratch/testPlaytest54FiveTeams.mjs`)**:
+  - Bengals, Browns, Steelers, Texans, Colts all verified passing 100% ✅.
+- **Playtest 53 Suite (`scratch/testPlaytest53FiveTeams.mjs`)**:
+  - Bills, Dolphins, Patriots, Jets, Ravens all verified passing 100% ✅.
+- **16-Team League Suite (`scratch/testPlaytest52GeneralTeams.mjs`)**:
+  - All 16 general franchises verified passing 100% ✅.
+- **Production Build**:
+  - Clean Vite build verified (`npm run build`) in 17.32s (`dist/assets/index-DeQfHeTM.js`).
+
+
 
 
 
