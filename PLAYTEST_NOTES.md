@@ -3184,6 +3184,87 @@ Per user directives, Detroit Lions was fundamentally overhauled around four stra
 - **Production Build**:
   - `npm run build` compiled cleanly in 10.48s with 0 errors.
 
+---
+
+## Playtest 62: Green Bay Packers Quality-Scaled Phase 1 Valuation & Phase 2/HOF Outweigh-Calculus
+
+### 1. Executive Summary & Problem Analysis
+Prior to Playtest 62, the Green Bay Packers suffered from low win rates, particularly in larger lobbies:
+- **Baseline Win Rate**: 21.7% Composite (4P: 36.3%, 7P: 21.3%, 10P: 7.5% - below 10.0% par; Composite PSI: 11.71).
+- **The Practice Squad Rule**: As confirmed by the user, Practice Squad players are *not* Phase 1 players. Consequently, the Packers' ability (*deflate 4 at the end of the round if all players are Phase 1*) does not activate until Round 3 at earliest, once all three Practice Squad starters have been replaced by real Phase 1 players.
+- **The Phase 2 Trap (Occurred in 76.7% of losses)**: Previously, non-Phase 1 cards were multiplied by a flat 0.30x. This still yielded 6–8 positive points, prompting Green Bay to purchase Phase 2 players (e.g. Ja'Marr Chase, Saquon Barkley) and permanently forfeit their -4 deflation/round engine.
+- **Flat Phase 1 Valuation**: All Phase 1 cards received an undifferentiated +5.0 points, ignoring the immense difference between premier centerpieces (Brock Bowers, George Kittle, Kirk Cousins) and vanilla 1-point utility.
+
+### 2. User-Directed Implementation Details
+
+1. **Practice Squad Rule Preserved ([`src/Game.js:5478`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L5478))**:
+   - `p.lineup.every(c => c.phase === 1 && !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'))`.
+   - Practice Squad cards do not count as Phase 1 players. The ability requires all three active starters to be real Phase 1 players, ensuring the ability begins in Round 3+ as designed.
+
+2. **Quality-Scaled Phase 1 Valuation ([`src/Game.js:1488-1509`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L1488-L1509))**:
+   - Replaced flat +5 bonus with quality-stratified scoring:
+     - **Tier 1 Centerpieces (+12.0 pts)**: Brock Bowers, George Kittle, Kirk Cousins.
+     - **Tier 1 Recurring Deflaters (+8.5 pts)**: Dallas Goedert, Sam LaPorta, Zach Ertz, Mark Andrews, TJ Hockenson, Kyle Pitts, Darren Waller.
+     - **Tier 1 Recurring Coins (+6.5 pts)**: Drake London, Tee Higgins, AJ Brown, Amari Cooper.
+     - **High-Efficiency Instant Coins (+6.0 pts)**: Malik Nabers, Rome Odunze (+5 coins for $\le 3$ max).
+     - **Tier 2 Solid Utility (+4.5 pts)**: Josh Allen, Jayden Daniels, Juju Smith-Schuster, Adam Thielen, Michael Thomas, Jalen Coker.
+     - **Tier 2 Instant Deflation (+4.0 pts)**: Bijan Robinson, Kyren Williams, Breece Hall, D'Andre Swift.
+     - **Tier 3 Vanilla (+1.5 pts)**: Chuba Hubbard, De'Von Achane, Xavier Legette.
+
+3. **Phase 2 & HOF Outweigh-Calculus ([`src/Game.js:1511-1551`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L1511-L1551))**:
+   - When evaluating a Phase 2 or HOF card:
+     - If the card is an **instant closer** (`card.instDeflate >= player.psi`), it unconditionally outweighs the 4 deflate (+35.0 pts) to win the game immediately!
+     - Otherwise, if Packers has (or is completing) all Phase 1 cards:
+       - Calculates the lost ability deflation: $4 \times R_{\text{left}}$ (where $R_{\text{left}} = \max(1, 10 - \text{round})$).
+       - Calculates the card's net lifetime deflation and coin advantage over the replaced starter.
+       - **Outweighs**: If $\text{Net Advantage} > 0$, or in late game ($R_{\text{left}} \le 2$ or $\text{PSI} \le 16$) where an instant nuke ($\ge 6$ deflate, e.g. Tom Brady -10 PSI, Aaron Jones -6 PSI) dominates, the card is targeted with a positive bonus.
+       - **Does NOT Outweigh**: Card is penalized to `-25.0` so Green Bay never breaks its engine.
+
+4. **Strategic Nomination ([`src/Game.js:2824-2856`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L2824-L2856))**:
+   - 1. Instant closer check ($\text{PSI} \le 16$): target game-winning instant deflation nuke.
+   - 2. Quality-sorted Phase 1 nomination: pick the highest scored Phase 1 card.
+   - 3. Phase 2 / HOF cards that genuinely outweigh the 4 deflate (`score >= 10.0`).
+   - 4. Fallback: highest scored board card / bait.
+
+5. **Genome Calibration ([`src/ai/teamGenomes.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/teamGenomes.js#L42) & [`src/ai/evolvedWeights.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/evolvedWeights.js#L309-L325))**:
+   - `deflateWeight`: Increased from 1.60 $\to$ **2.40**.
+   - `coinWeight`: Calibrated to **0.95**.
+   - `reserveCoins`: Reduced from 1 $\to$ **0** (allows Green Bay to freely deploy its 8-coin starting purse in Rounds 1 & 2 to secure 3 Phase 1 starters on schedule).
+   - `firstClaimAggression`: **1.25**.
+   - `priceBumpProb`: **0.20**.
+
+---
+
+### 3. Simulation & Benchmark Results
+
+#### 100-Game Detailed Benchmark (4P, 7P, 10P):
+- **4-Player Lobby**: **35.0% Win Rate** | **7.73 Avg PSI** | 13.8 Ability Deflation (Par: 25.0%)
+- **7-Player Lobby**: **23.0% Win Rate** | **9.29 Avg PSI** | 13.6 Ability Deflation (Par: 14.3%)
+- **10-Player Lobby**: **25.0% Win Rate** | **9.47 Avg PSI** | 11.0 Ability Deflation (Par: 10.0%, **2.5x League Par**)
+- **Composite League Performance**:
+  - **Win Rate**: **27.7%** (vs 21.7% baseline, **+6.0% net increase**, 1.69x league par)
+  - **Composite PSI**: **8.83** (vs 11.71 baseline, **-2.88 PSI reduction**)
+
+---
+
+### 4. Verification Suite & Test Results
+- **Dedicated Packers Verification Suite (`scratch/testPlaytest62Packers.mjs`)**:
+  - Test 1: Practice Squad Rule Verification (R1 & R2 ability is False; R3+ is True): **PASSED ✅**
+  - Test 2: Quality-Scaled Phase 1 Valuation (Bowers: 90.6 > Goedert: 79.0 > Chuba: 11.6): **PASSED ✅**
+  - Test 3: Phase 2/HOF Outweighs 4 Deflate Calculus (Weak Phase 2 penalized to -27.6; closer nuke: +142.9; Tom Brady: +224.0): **PASSED ✅**
+  - Test 4: Strategic Nomination (Bowers nominated first; instant closer Pollard nominated under 16 PSI): **PASSED ✅**
+  - Test 5: Active & Evolved Genome Verification (`deflate: 2.4, coin: 0.95, reserve: 0, firstClaim: 1.25, bump: 0.2`): **PASSED ✅**
+  - **Result: 16/16 Checks Passed 100% ✅**.
+
+- **League Regression Suites**:
+  - Playtest 61 (Lions): **PASSED 100% ✅**
+  - Playtest 60 (Bears): **PASSED 100% ✅**
+  - Playtest 59 (Universal Cycle Strategy, Eagles, Commanders): **PASSED 100% ✅**
+
+- **Production Build**:
+  - `npm run build` compiled cleanly in 9.25s with 0 errors.
+
+
 
 
 

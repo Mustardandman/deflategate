@@ -1479,10 +1479,72 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     }
   }
   if (effectiveTeamId === 'packers') {
-    if (card.phase === 1) {
-      rawScore += 5.0;
+    const roundsLeft = Math.max(1, 10 - currentRound);
+    const instDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const recDeflate = card.effects?.filter(e => e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const recCoins = card.effects?.filter(e => e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+    const instCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+
+    const realStarters = (p.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+    const hasOnlyPhase1 = realStarters.length > 0 && realStarters.every(c => c.phase === 1);
+    const hasAnyPracticeSquad = (p.lineup || []).some(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
+
+    // 1. Instant closer check: if card instantly deflates Packers to 0 PSI, unconditionally outweighs!
+    if (instDeflate >= p.psi) {
+      rawScore += 35.0;
+    } else if (card.phase === 1) {
+      // User Directive: "value the best phase 1 players more than the not good ones"
+      const isEliteEngine = (card.id === 'brock_bowers' || card.id === 'george_kittle' || card.id === 'kirk_cousins');
+      if (isEliteEngine) {
+        rawScore += 12.0; // Tier 1 centerpiece
+      } else if (recDeflate >= 2) {
+        rawScore += 8.5;  // Tier 1 recurring deflaters (Goedert, LaPorta, Ertz, Andrews, Hockenson, Pitts, Waller)
+      } else if (recCoins >= 3) {
+        rawScore += 6.5;  // Tier 1 recurring coin generators (London, Higgins, AJ Brown, Cooper)
+      } else if (card.id === 'malik_nabers' || card.id === 'rome_odunze') {
+        rawScore += 6.0;  // High-efficiency instant coin rockets
+      } else if (recDeflate >= 1 || recCoins >= 2) {
+        rawScore += 4.5;  // Tier 2 solid utility
+      } else if (instDeflate >= 3) {
+        rawScore += 4.0;  // Tier 2 instant deflation (Bijan, Kyren, Breece, Swift)
+      } else {
+        rawScore += 1.5;  // Tier 3 vanilla
+      }
     } else {
-      rawScore *= 0.30; // Avoid breaking all-Phase-1 bonus
+      // Card is Phase 2 or HOF:
+      // User Directive: "Have green bay target phase 2 or HOF players if it outweighs the benefits of the 4 deflate"
+      const forfeitsAbility = hasOnlyPhase1 || (realStarters.length < 3 && realStarters.every(c => c.phase === 1));
+
+      if (forfeitsAbility) {
+        const lostDeflate = 4 * roundsLeft;
+        const cardNetLifetimeDeflate = instDeflate + (recDeflate * roundsLeft);
+        const cardNetLifetimeCoins = instCoins + (recCoins * roundsLeft);
+
+        let replacedDeflate = 0;
+        let replacedCoins = 0;
+        if (!hasAnyPracticeSquad && realStarters.length >= 3) {
+          const weakest = realStarters[realStarters.length - 1];
+          const wInstD = weakest.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+          const wRecD = weakest.effects?.filter(e => e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+          const wRecC = weakest.effects?.filter(e => e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+          replacedDeflate = wInstD + (wRecD * roundsLeft);
+          replacedCoins = wRecC * roundsLeft;
+        }
+
+        const netDeflateGain = cardNetLifetimeDeflate - replacedDeflate;
+        const netCoinGain = cardNetLifetimeCoins - replacedCoins;
+        const netAdvantage = (netDeflateGain + (netCoinGain * 0.4)) - lostDeflate;
+
+        const outweighs = netAdvantage > 0 || (roundsLeft <= 2 && instDeflate >= 6);
+
+        if (outweighs) {
+          rawScore += Math.max(4.0, netAdvantage * 1.5);
+        } else {
+          rawScore = -25.0; // Does not outweigh: protect the 4-deflate/round engine!
+        }
+      } else {
+        rawScore *= 1.0;
+      }
     }
   }
   if (effectiveTeamId === 'jets') {
@@ -2759,10 +2821,37 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     if (eligibleCards.length > 0) return eligibleCards[0].index;
   }
 
-  // Packers: Prioritize nominating Phase 1 players to maintain Phase 1 purity
+  // Packers Strategic Nomination:
+  // User directive:
+  // "Practice squad are not phase 1 players so the ability shouldn't count until round 3 at least. 
+  // Have green bay target phase 2 or HOF players if it outweighs the benefits of the 4 deflate. Otherwise target the phase 1 players, value the best phase 1 players more than the not good ones."
   if (effectiveTeamId === 'packers') {
-    const phase1Card = eligibleCards.find(item => item.card.phase === 1 && item.score >= 3.0);
-    if (phase1Card) return phase1Card.index;
+    // 1. Instant closer check (<= 16 PSI closer mode)
+    if ((currentPlayer.psi || 50) <= 16) {
+      const closerNuke = eligibleCards.find(item => {
+        const instDeflate = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return instDeflate >= (currentPlayer.psi || 50) && currentPlayer.coins >= item.card.minBid;
+      });
+      if (closerNuke) return closerNuke.index;
+    }
+
+    // 2. High priority: Top Phase 1 cards (sorted by score)
+    const phase1Cards = eligibleCards.filter(item => item.card.phase === 1 && item.score >= 0);
+    if (phase1Cards.length > 0) {
+      phase1Cards.sort((a, b) => b.score - a.score);
+      return phase1Cards[0].index;
+    }
+
+    // 3. Phase 2/HOF cards that genuinely outweigh the 4 deflate
+    const highImpactCards = eligibleCards.filter(item => item.card.phase !== 1 && item.score >= 10.0);
+    if (highImpactCards.length > 0) {
+      highImpactCards.sort((a, b) => b.score - a.score);
+      return highImpactCards[0].index;
+    }
+
+    // 4. Fallback: nominate highest scored card (or bait)
+    eligibleCards.sort((a, b) => b.score - a.score);
+    return eligibleCards[0].index;
   }
 
   // Steelers Nomination Strategy:
