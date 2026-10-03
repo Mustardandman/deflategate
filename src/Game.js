@@ -1345,6 +1345,18 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
 
   let rawScore = (totalDeflate * deflateWeight) + (totalCoins * coinWeight);
 
+  // Universal Dual QB Recognition (Josh Allen, Jayden Daniels, Kirk Cousins, and top hybrid QBs):
+  // User Directive: "Dual qbs should be high, like 8.5 or 9 pts. Make sure that every team in the game isn't undervalueing good qbs like josh allen or jayden daniels."
+  // QBs that deliver BOTH deflation and coins provide premier two-way roster value in a single slot.
+  const isCleanDualQb = card.position === 'QB' &&
+    card.effects?.some(e => e.type === 'deflate' && e.amount > 0) &&
+    card.effects?.some(e => e.type === 'coins' && e.amount > 0) &&
+    !card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
+
+  if (isCleanDualQb) {
+    rawScore += 8.5;
+  }
+
   // Universal Cycle Strategy across ALL teams:
   // "Every turn [recurring] is better until you get 2 and then use the third spot to cycle."
   const recurringCardsInLineup = (p.lineup || []).filter(c =>
@@ -1494,21 +1506,33 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
       rawScore += 35.0;
     } else if (card.phase === 1) {
       // User Directive: "value the best phase 1 players more than the not good ones"
+      // User Directive: "Malik Nabers would not be a super good one unless it is in the third spot. See you need to get your practice squad players replaced as fast as possible, so instants don't do much the first two round. since you can't replace them . Dual qbs should be high, like 8.5 or 9 pts."
+      const isThirdSpot = realStarters.length >= 2;
       const isEliteEngine = (card.id === 'brock_bowers' || card.id === 'george_kittle' || card.id === 'kirk_cousins');
+      const isDualQb = card.position === 'QB' &&
+        card.effects?.some(e => e.type === 'deflate' && e.amount > 0) &&
+        card.effects?.some(e => e.type === 'coins' && e.amount > 0) &&
+        !card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
+
       if (isEliteEngine) {
         rawScore += 12.0; // Tier 1 centerpiece
+      } else if (isDualQb) {
+        rawScore += 9.0;  // User Directive: "Dual qbs should be high, like 8.5 or 9 pts" (Josh Allen, Jayden Daniels)
       } else if (recDeflate >= 2) {
         rawScore += 8.5;  // Tier 1 recurring deflaters (Goedert, LaPorta, Ertz, Andrews, Hockenson, Pitts, Waller)
       } else if (recCoins >= 3) {
         rawScore += 6.5;  // Tier 1 recurring coin generators (London, Higgins, AJ Brown, Cooper)
       } else if (card.id === 'malik_nabers' || card.id === 'rome_odunze') {
-        rawScore += 6.0;  // High-efficiency instant coin rockets
+        // User Directive: "Malik Nabers would not be a super good one unless it is in the third spot"
+        // In the first two spots (Rounds 1 & 2), instant cards do not establish a recurring engine.
+        // In the 3rd spot, they complete the 3-Phase-1 lineup to activate the -4 deflation and inject coins!
+        rawScore += isThirdSpot ? 6.5 : 1.5;
       } else if (recDeflate >= 1 || recCoins >= 2) {
         rawScore += 4.5;  // Tier 2 solid utility
       } else if (instDeflate >= 3) {
-        rawScore += 4.0;  // Tier 2 instant deflation (Bijan, Kyren, Breece, Swift)
+        rawScore += isThirdSpot ? 4.0 : 1.5;
       } else {
-        rawScore += 1.5;  // Tier 3 vanilla
+        rawScore += 1.0;  // Tier 3 vanilla
       }
     } else {
       // Card is Phase 2 or HOF:

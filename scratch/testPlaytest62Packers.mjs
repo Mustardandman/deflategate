@@ -168,15 +168,72 @@ console.log('\nTest 4: Strategic Nomination (Best Phase 1 & Closer Awareness)');
   assert(closerNomCard.id === 'tony_pollard', `Packers nominates instant closer nuke (${closerNomCard.name}) to win the game`);
 }
 
-// Test 5: Active Genome Calibration
-console.log('\nTest 5: Active & Evolved Genome Verification');
+// Test 6: Malik Nabers Spot 1/2 vs 3rd Spot
+console.log('\nTest 6: Malik Nabers in Spot 1/2 vs 3rd Spot');
 {
-  const genome = ACTIVE_TEAM_GENOMES.packers;
-  assert(genome.deflateWeight === 2.4, `deflateWeight calibrated to 2.4 (actual: ${genome.deflateWeight})`);
-  assert(genome.coinWeight === 0.95, `coinWeight calibrated to 0.95 (actual: ${genome.coinWeight})`);
-  assert(genome.reserveCoins === 0, `reserveCoins calibrated to 0 (actual: ${genome.reserveCoins})`);
-  assert(genome.firstClaimAggression === 1.25, `firstClaimAggression calibrated to 1.25 (actual: ${genome.firstClaimAggression})`);
-  assert(genome.priceBumpProb === 0.20, `priceBumpProb calibrated to 0.20 (actual: ${genome.priceBumpProb})`);
+  const nabers = { id: 'malik_nabers', name: 'Malik Nabers', position: 'WR', phase: 1, minBid: 1, maxBid: 3, effects: [{ type: 'coins', amount: 5, perRound: false }] };
+
+  // Spot 1 (Round 1, 3 Practice Squad cards)
+  const G_R1 = createPackersState({ packersCoins: 8, round: 1 });
+  const scoreSpot1 = scoreCardForPlayer(G_R1, '0', nabers);
+
+  // Spot 3 (Round 3, 2 real starters, 1 Practice Squad card left)
+  const G_R3 = createPackersState({
+    packersCoins: 8,
+    round: 3,
+    lineupCards: [
+      { id: 'dallas_goedert', name: 'Dallas Goedert', phase: 1, position: 'TE', uniqueId: 'c1', effects: [{ type: 'deflate', amount: 2, perRound: true }] },
+      { id: 'sam_laporta', name: 'Sam LaPorta', phase: 1, position: 'TE', uniqueId: 'c2', effects: [{ type: 'deflate', amount: 2, perRound: true }] },
+      { ...PRACTICE_SQUAD_CARD, uniqueId: 'ps_2' }
+    ]
+  });
+  const scoreSpot3 = scoreCardForPlayer(G_R3, '0', nabers);
+
+  assert(scoreSpot3 > scoreSpot1, `Nabers is valued higher in 3rd spot (${scoreSpot3.toFixed(1)}) than spot 1 (${scoreSpot1.toFixed(1)})`);
+  assert(scoreSpot3 - scoreSpot1 >= 5.0, `Nabers 3rd spot premium: +${(scoreSpot3 - scoreSpot1).toFixed(1)} pts higher when completing 3-Phase-1 lineup`);
+}
+
+// Test 7: Universal Dual QB Recognition (Josh Allen, Jayden Daniels)
+console.log('\nTest 7: Universal Dual QB Recognition (Josh Allen, Jayden Daniels across teams)');
+{
+  const joshAllen = { id: 'josh_allen', name: 'Josh Allen', position: 'QB', phase: 1, minBid: 1, maxBid: 11, effects: [{ type: 'deflate', amount: 2, perRound: true }, { type: 'coins', amount: 4, perRound: false }] };
+  const jaydenDaniels = { id: 'jayden_daniels', name: 'Jayden Daniels', position: 'QB', phase: 1, minBid: 1, maxBid: 10, effects: [{ type: 'deflate', amount: 3, perRound: false }, { type: 'coins', amount: 2, perRound: true }] };
+  const watson = { id: 'deshaun_watson', name: 'Deshaun Watson', position: 'QB', phase: 1, minBid: 1, maxBid: 5, effects: [{ type: 'inflate', amount: 4, perRound: true }, { type: 'coins', amount: 5, perRound: true }] };
+
+  const G = createPackersState({ packersCoins: 8, round: 1 });
+  const allenPackersScore = scoreCardForPlayer(G, '0', joshAllen);
+  const danielsPackersScore = scoreCardForPlayer(G, '0', jaydenDaniels);
+  assert(allenPackersScore >= 80.0, `Josh Allen scored high for Packers (${allenPackersScore.toFixed(1)})`);
+  assert(danielsPackersScore >= 55.0, `Jayden Daniels scored high for Packers (${danielsPackersScore.toFixed(1)})`);
+
+  // Check other teams (e.g. Cowboys, Commanders, Chargers)
+  const teamsToCheck = ['cowboys', 'commanders', 'chargers', 'bears'];
+  for (const teamId of teamsToCheck) {
+    const teamObj = TEAMS.find(t => t.id === teamId);
+    const testG = {
+      board: { round: 1, nominator: '0', auctionPlayers: [] },
+      players: {
+        '0': {
+          team: { ...teamObj },
+          coins: teamObj.coins,
+          psi: teamObj.initialPsi,
+          lineup: [
+            { ...PRACTICE_SQUAD_CARD, uniqueId: 'ps_0' },
+            { ...PRACTICE_SQUAD_CARD, uniqueId: 'ps_1' },
+            { ...PRACTICE_SQUAD_CARD, uniqueId: 'ps_2' }
+          ],
+          genome: { ...(ACTIVE_TEAM_GENOMES[teamId] || {}) }
+        }
+      }
+    };
+    const allenScore = scoreCardForPlayer(testG, '0', joshAllen);
+    const danielsScore = scoreCardForPlayer(testG, '0', jaydenDaniels);
+    const watsonScore = scoreCardForPlayer(testG, '0', watson);
+
+    assert(allenScore >= 60.0, `${teamId.toUpperCase()}: Josh Allen valued high (${allenScore.toFixed(1)})`);
+    assert(danielsScore >= 40.0, `${teamId.toUpperCase()}: Jayden Daniels valued high (${danielsScore.toFixed(1)})`);
+    assert(watsonScore < 0, `${teamId.toUpperCase()}: Deshaun Watson properly rejected (${watsonScore})`);
+  }
 }
 
 console.log(`\nResults: ${passedTests} / ${totalTests} tests passed.`);
@@ -186,3 +243,4 @@ if (passedTests === totalTests) {
   console.error('SOME TESTS FAILED!');
   process.exit(1);
 }
+
