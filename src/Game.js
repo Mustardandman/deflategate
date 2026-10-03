@@ -822,9 +822,10 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
   }
   if (teamId === 'vikings') {
     if ((player?.psi || 44) >= 27) {
-      return card.effects?.some(e => e.type === 'deflate');
+      return card.effects?.some(e => e.type === 'deflate' || (e.type === 'coins' && e.amount >= 2));
     }
-    return card.effects?.some(e => e.type === 'coins');
+    // Under 27 PSI: Franchise priority is strictly DEFLATION (ability already provides 2x coins)!
+    return card.effects?.some(e => e.type === 'deflate');
   }
   if (teamId === 'seahawks') {
     return (G?.board?.round || 1) <= 4 && card.effects?.some(e => e.perRound);
@@ -1831,8 +1832,41 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     }
   }
   if (effectiveTeamId === 'vikings') {
-    if ((p.psi || 44) >= 27 && card.effects?.some(e => e.type === 'deflate')) rawScore += 5.5;
-    else if ((p.psi || 44) < 27 && card.effects?.some(e => e.type === 'coins')) rawScore += 5.0;
+    const psi = p.psi || 44;
+    const instDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const recDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const instCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+
+    // 1. Instant closer check: if card instantly deflates Vikings to 0 PSI, unconditionally win!
+    if (instDeflate >= psi) {
+      rawScore += 35.0;
+    } else if (psi >= 27) {
+      // Phase 1 (PSI >= 27): Urgent sprint to crack 27 PSI barrier and unlock 2x coins!
+      if (recDeflate >= 2) {
+        rawScore += 8.5; // Tier 1 recurring deflaters (Bowers, Kittle, Goedert, LaPorta)
+      } else if (instDeflate >= 3) {
+        rawScore += 6.0; // Fast deflation bursts (Josh Allen, Jayden Daniels, Cousins, Bijan)
+      } else if (recDeflate >= 1) {
+        rawScore += 4.0;
+      }
+    } else {
+      // Phase 2 (PSI < 27): Economic Superpower mode!
+      // Ability ALREADY doubles all coin income!
+      // Convert massive coin surplus into heavy deflation engines and closer nukes.
+      // Strictly avoid buying dead-end coin cards that cause coin clutter!
+      if (instCoins > 0 && recDeflate === 0 && instDeflate === 0) {
+        rawScore -= 5.0; // Reject raw instant coins (Vikings already has infinite coins)
+      }
+      if (recDeflate >= 3 || card.phase === 'hof') {
+        rawScore += 12.0; // Premier deflation engines & HOF legends (Brady, Manning, Favre)
+      } else if (recDeflate >= 2) {
+        rawScore += 8.5;  // Core recurring deflaters
+      } else if (instDeflate >= 5) {
+        rawScore += 10.0; // Big closer nukes (Aaron Jones, Tony Pollard, Derrick Henry)
+      } else if (instDeflate >= 3) {
+        rawScore += 6.0;
+      }
+    }
   }
   if (effectiveTeamId === 'eagles') {
     // Check if Saints is in the game and is top contender
@@ -2874,6 +2908,56 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     }
 
     // 4. Fallback: nominate highest scored card (or bait)
+    eligibleCards.sort((a, b) => b.score - a.score);
+    return eligibleCards[0].index;
+  }
+
+  // Vikings Strategic Nomination:
+  // - Phase 1 (PSI >= 27): Sprint to crack the 27 PSI barrier!
+  //   Nominate top deflation cards (Bowers, Kittle, Goedert, Allen, Daniels, Cousins, Bijan)
+  //   that accelerate Vikings toward the 2x coin threshold.
+  // - Phase 2 (PSI < 27): Economic Superpower mode!
+  //   1. Closer Nuke: If PSI <= 16, nominate game-winning instant closer nukes.
+  //   2. Bully Tier 1 Superstars / HOF Legends: If richest (or holding high stack),
+  //      nominate Tom Brady, Peyton Manning, Mahomes, Kelce, or 3+ recurring deflaters to bully-bid and lock out rivals.
+  //   3. Deflation Engines: Nominate highest scored deflation cards, avoiding raw coin distractions.
+  if (effectiveTeamId === 'vikings') {
+    const psi = currentPlayer.psi || 44;
+
+    // 1. Instant closer check (<= 16 PSI closer mode)
+    if (psi <= 16) {
+      const closerNuke = eligibleCards.find(item => {
+        const instDeflate = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return instDeflate >= psi && currentPlayer.coins >= item.card.minBid;
+      });
+      if (closerNuke) return closerNuke.index;
+    }
+
+    // 2. Phase 2 (< 27 PSI) & Richest Player: bully out rivals on HOF Legends & Tier 1 Superstars
+    if (psi < 27 && currentPlayer.coins >= richestOpponentCoins) {
+      const superstar = eligibleCards.find(item =>
+        item.card.phase === 'hof' ||
+        item.card.id === 'patrick_mahomes' ||
+        item.card.id === 'travis_kelce' ||
+        item.card.id === 'christian_mccaffrey' ||
+        item.card.effects?.some(e => e.perRound && e.type === 'deflate' && e.amount >= 3)
+      );
+      if (superstar) return superstar.index;
+    }
+
+    // 3. Phase 1 (PSI >= 27): Nominate high deflation cards to unlock 2x coins
+    if (psi >= 27) {
+      const deflaters = eligibleCards.filter(item =>
+        item.card.effects?.some(e => e.type === 'deflate' && e.amount >= 2) &&
+        currentPlayer.coins >= item.card.minBid
+      );
+      if (deflaters.length > 0) {
+        deflaters.sort((a, b) => b.score - a.score);
+        return deflaters[0].index;
+      }
+    }
+
+    // 4. Default: Highest scored card
     eligibleCards.sort((a, b) => b.score - a.score);
     return eligibleCards[0].index;
   }

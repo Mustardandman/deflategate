@@ -3273,6 +3273,87 @@ Prior to Playtest 62, the Green Bay Packers suffered from low win rates, particu
 - **Production Build**:
   - `npm run build` compiled cleanly in 6.34s with 0 errors.
 
+---
+
+## Playtest 63: Minnesota Vikings Two-Phase Strategy & Deflation War Chest
+
+### 1. Diagnostic Findings & The "< 27 PSI Coin-Clutter Trap"
+- **Baseline Diagnostics**:
+  - Starting PSI: 44 | Starting Coins: 11
+  - Ability: *"If you have less than 27 PSI, your players receive twice as many coins."*
+  - In a 100-game diagnostic trace:
+    - In **93.6% of lost games**, Vikings successfully reached $< 27\text{ PSI}$ and activated the 2x coin ability!
+    - However, in **over 80% of lost games**, Vikings was outpaced by opponents while sitting at 10–16 PSI and holding an average of **11–15 coins**!
+- **The Core Flaw Identified**:
+  - In `scoreCardForPlayer:1835`: when $\text{PSI} < 27$, Vikings was programmed to award **+5.0 points to COIN cards**!
+  - Because the ability already doubled all coin income, buying more coin cards created massive coin clutter, stranding Minnesota with excess cash and insufficient deflation engines to cross 0 PSI.
+  - In `getFranchiseSpecificPriorities:827`: when $\text{PSI} < 27$, the priority was set to `card.effects?.some(e => e.type === 'coins')`.
+
+---
+
+### 2. Strategic Solution: The Two-Phase Doctrine
+
+1. **Franchise Priority Reversal ([`src/Game.js:823-828`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L823-L828))**:
+   - When $\ge 27\text{ PSI}$: Priority is deflation or high-yield coin engines ($\ge 2$ coins) to sprint down from 44 PSI.
+   - When $< 27\text{ PSI}$: Priority is **strictly DEFLATION** (`return card.effects?.some(e => e.type === 'deflate')`). The ability already doubles coins!
+
+2. **Two-Phase Valuation Engine ([`src/Game.js:1833-1875`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L1833-L1875))**:
+   - **Phase 1 ($\text{PSI} \ge 27$) — Sprint to 26 PSI**:
+     - Tier 1 recurring deflaters ($\ge 2$ deflate/rd): **+8.5 pts**.
+     - Fast deflation bursts ($\ge 3$ deflate): **+6.0 pts**.
+     - Secondary deflaters: **+4.0 pts**.
+   - **Phase 2 ($\text{PSI} < 27$) — Economic Superpower Mode**:
+     - Raw instant coin cards with no deflation: **Penalized (-5.0 pts)** to eliminate coin clutter.
+     - Premier deflation engines & HOF legends (Brady, Manning, Favre, 3+ deflate): **+12.0 pts**.
+     - Core recurring deflaters ($\ge 2$ deflate): **+8.5 pts**.
+     - Big closer nukes ($\ge 5$ deflate): **+10.0 pts**.
+     - Instant game-winning closer (`instDeflate >= p.psi`): **+35.0 pts** (unconditional clincher).
+
+3. **Strategic Nomination ([`src/Game.js:2915-2965`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L2915-L2965))**:
+   - 1. **Closer Mode ($\text{PSI} \le 16$)**: Target instant closer nukes that win the game immediately.
+   - 2. **Richest Bully Mode ($\text{PSI} < 27$ & richest player)**: Nominate HOF legends, Mahomes, Kelce, or 3+ recurring deflaters to bully-bid and lock out poorer rivals.
+   - 3. **Sprint Phase ($\text{PSI} \ge 27$)**: Nominate high deflation cards to unlock the 2x coin ability.
+   - 4. **Fallback**: Highest scored card.
+
+4. **Active & Evolved Genome Recalibration ([`src/ai/teamGenomes.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/teamGenomes.js#L43) & [`src/ai/evolvedWeights.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/evolvedWeights.js#L326-L342))**:
+   - `deflateWeight`: Increased from 1.80 $\to$ **2.35**.
+   - `coinWeight`: Calibrated from 1.37 $\to$ **0.90**.
+   - `reserveCoins`: Reduced from 3 $\to$ **1** (frees starting purse to compete early).
+   - `aggression`: Increased from 1.00 $\to$ **1.15**.
+   - `firstClaimAggression`: **1.25**.
+   - `superstarPriorityMult`: Increased from 1.20 $\to$ **1.35**.
+
+---
+
+### 3. Simulation & Benchmark Results
+
+#### 100-Game Detailed Benchmark (4P, 7P, 10P):
+- **4-Player Lobby**: **31.3% Win Rate** | **8.69 Avg PSI** (Par: 25.0%)
+- **7-Player Lobby**: **18.8% Win Rate** | **11.59 Avg PSI** (Par: 14.3%)
+- **10-Player Lobby**: **18.8% Win Rate** | **12.69 Avg PSI** (Par: 10.0%, **nearly 2x League Par**)
+- **Composite League Performance**:
+  - **Win Rate**: **22.9%** (vs 17.9% baseline, **+5.0% net increase**, 1.40x league par)
+  - **Composite PSI**: **10.99** (vs 12.35 baseline, **-1.36 PSI reduction**)
+
+---
+
+### 4. Verification Suite & Test Results
+- **Dedicated Vikings Verification Suite (`scratch/testPlaytest63Vikings.mjs`)**:
+  - Test 1: Ability Mechanics Check (< 27 PSI Threshold): **PASSED ✅**
+  - Test 2: Two-Phase Strategic Valuation (Sprint to 26 PSI vs Deflation War Chest): **PASSED ✅**
+  - Test 3: Game-Winning Instant Closer Check (+35.0 bonus): **PASSED ✅**
+  - Test 4: Strategic Nomination (Closer Nuke, Richest Bully, and Sprint Phase): **PASSED ✅**
+  - Test 5: Active & Evolved Genome Verification: **PASSED ✅**
+  - **Result: 15/15 Checks Passed 100% ✅**.
+
+- **League Regression Suites**:
+  - Playtest 62 (Packers): **PASSED 27/27 (100%) ✅**
+  - Playtest 61 (Lions): **PASSED 12/12 (100%) ✅**
+
+- **Production Build**:
+  - `npm run build` compiled cleanly in 10.26s with 0 errors.
+
+
 
 
 

@@ -324,21 +324,21 @@ export const EVOLVED_TEAM_GENOMES = {
     "superstarPriorityMult": 1.2
   },
   "vikings": {
-    "deflateWeight": 1.8,
-    "coinWeight": 1.37,
-    "recurringMult": 0.79,
-    "aggression": 1.08,
-    "reserveCoins": 3,
+    "deflateWeight": 2.35,
+    "coinWeight": 0.9,
+    "recurringMult": 1,
+    "aggression": 1.15,
+    "reserveCoins": 1,
     "priceBumpProb": 0.2,
     "synergyBonus": 1.3,
-    "firstClaimAggression": 1.1,
-    "postClaimAggression": 1.01,
+    "firstClaimAggression": 1.25,
+    "postClaimAggression": 0.9,
     "sub5UrgencyBonus": 2,
     "richestBuffer": 1,
-    "instantMaxBidAggression": 1,
+    "instantMaxBidAggression": 1.15,
     "boardStrengthWeight": 1,
-    "threatDefenseWeight": 0.99,
-    "superstarPriorityMult": 1.36
+    "threatDefenseWeight": 1.1,
+    "superstarPriorityMult": 1.35
   },
   "saints": {
     "deflateWeight": 1.6,
