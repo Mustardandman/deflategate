@@ -1471,6 +1471,30 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     if (hasDrawback) {
       rawScore += 7.0; // Drawback exploiter: zero penalty, great bargain
     }
+
+    // Closer awareness: When Saints is in striking distance of 0 PSI (psi <= 16),
+    // an instant closer that clinches the championship gets top priority over toxic coin generators!
+    const instDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    if (instDeflate >= p.psi && p.psi <= 16) {
+      rawScore += 35.0;
+    } else if (p.psi <= 16 && instDeflate >= 3) {
+      rawScore += 8.0;
+    }
+
+    // Best Player Available (BPA) & No Target Lock:
+    // User directive: "You should still value the second toxic card a lot.
+    // Diminishing Returns on Duplicate Positions: If Saints already owns a toxic QB (Watson or Lawrence),
+    // do NOT overvalue a second QB; evaluate board needs normally.
+    // You are basically taking the best player available and usually thats the toxic card."
+    const hasToxicQbInLineup = (p.lineup || []).some(c => c && (c.id === 'deshaun_watson' || c.id === 'trevor_lawrence'));
+    if (hasToxicQbInLineup && card.position === 'QB' && (card.id === 'deshaun_watson' || card.id === 'trevor_lawrence')) {
+      rawScore -= 5.0; // Still high value, but allows elite skill position players (Bowers, Jefferson, Henry) to compete
+    }
+
+    const isSuperstar = (card.phase === 'hof' || card.id === 'patrick_mahomes' || card.id === 'travis_kelce' || card.id === 'brock_bowers' || card.id === 'christian_mccaffrey' || card.id === 'justin_jefferson');
+    if (isSuperstar && !hasDrawback) {
+      rawScore += 4.0; // Superstars evaluated alongside toxic cards as top BPA candidates
+    }
   }
   if (effectiveTeamId === 'colts') {
     const isPoison = card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && ((e.type === 'coins' && e.amount < 0) || e.type === 'inflate' || e.type === 'freeze'));
@@ -1936,7 +1960,23 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     if (card.effects?.some(e => e.type === 'deflate' && e.amount >= 2)) rawScore += 3.5;
   }
   if (effectiveTeamId === 'panthers') {
-    if (card.effects?.some(e => (e.type === 'coins' && e.amount >= 2) || (e.type === 'deflate' && e.amount >= 2))) rawScore += 3.5;
+    // User directive: "Panthers: Reoccuring deflate engine already. They like it when the game goes longer
+    // since it gives them more time to catch up. Besides that probably normal values, but check to see."
+    // When game goes longer, recurring deflation stacks with passive -2 PSI/rd to generate 4-5 PSI/rd engine!
+    const recDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    if (recDeflate >= 2) {
+      rawScore += 6.0; // Stacks with passive ability for unstoppable late-game snowball
+    } else if (recDeflate === 1) {
+      rawScore += 3.0;
+    }
+
+    // Closer awareness: When PSI <= 16, instant deflation closer allows Panthers to strike the winning blow!
+    const instDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    if (instDeflate >= p.psi && p.psi <= 16) {
+      rawScore += 35.0;
+    } else if (p.psi <= 16 && instDeflate >= 3) {
+      rawScore += 8.0;
+    }
   }
   if (effectiveTeamId === 'ravens') {
     const realStarters = (p.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
@@ -3033,6 +3073,62 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
       cleanCards.sort((a, b) => b.score - a.score);
       return cleanCards[0].index;
     }
+  }
+
+  // Saints Strategic Nomination:
+  // User directive: "Saint: need to target the toxic players, but know when to bid on other players
+  // instead of being target locked and not just looking at toxic. Know when to go for others as well but also mostly for toxic players if they can."
+  if (effectiveTeamId === 'saints') {
+    const psi = currentPlayer.psi || 42;
+
+    // 1. Instant closer check (<= 16 PSI closer mode)
+    if (psi <= 16) {
+      const closerNuke = eligibleCards.find(item => {
+        const instDeflate = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return instDeflate >= psi && currentPlayer.coins >= item.card.minBid;
+      });
+      if (closerNuke) return closerNuke.index;
+    }
+
+    // 2. Toxic card nomination: Target unowned toxic cards (Deshaun Watson, Hunter Henry, Trevor Lawrence, Zeke)
+    // because Saints is immune to drawbacks, so Saints can acquire them cheaply at minBid without competition!
+    const toxicTarget = eligibleCards.find(item => {
+      const hasDrawback = item.card.effects?.some(e => (e.type === 'coins' && e.amount < 0) || e.type === 'inflate');
+      if (!hasDrawback) return false;
+      const isAffordable = currentPlayer.coins >= item.card.minBid;
+      const alreadyHasExactCard = (currentPlayer.lineup || []).some(c => c && c.id === item.card.id);
+      return isAffordable && !alreadyHasExactCard;
+    });
+    if (toxicTarget) return toxicTarget.index;
+
+    // 3. Otherwise: Best Player Available (highest score among eligible cards)
+    return eligibleCards[0].index;
+  }
+
+  // Panthers Strategic Nomination:
+  // User directive: "Panthers: Reoccuring deflate engine already. They like it when the game goes longer
+  // since it gives them more time to catch up. Besides that probably normal values, but check to see."
+  if (effectiveTeamId === 'panthers') {
+    const psi = currentPlayer.psi || 49;
+
+    // 1. Instant closer check (<= 16 PSI closer mode)
+    if (psi <= 16) {
+      const closerNuke = eligibleCards.find(item => {
+        const instDeflate = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return instDeflate >= psi && currentPlayer.coins >= item.card.minBid;
+      });
+      if (closerNuke) return closerNuke.index;
+    }
+
+    // 2. High recurring deflation engine: Stacks with passive -2 PSI/rd to burn 49 starting PSI
+    const recEngine = eligibleCards.find(item => {
+      const recDeflate = item.card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      return recDeflate >= 2 && currentPlayer.coins >= item.card.minBid;
+    });
+    if (recEngine) return recEngine.index;
+
+    // 3. Fallback: Best Player Available
+    return eligibleCards[0].index;
   }
 
   // Steelers Nomination Strategy:
@@ -8279,14 +8375,41 @@ export const DeflategateGame = {
                     billsPlayer.lineup[replaceIdx] = card;
                     G.decks.discard.push(replaced);
                   } else {
-                    let worstIdx = 0;
-                    let minScore = Infinity;
-                    billsPlayer.lineup.forEach((c, idx) => {
-                      const s = scoreCardForPlayer(c, billsPlayer, G);
-                      if (s < minScore) { minScore = s; worstIdx = idx; }
-                    });
-                    const replaced = billsPlayer.lineup[worstIdx];
-                    billsPlayer.lineup[worstIdx] = card;
+                    let replaceCardIdx = -1;
+                    // User Directive Side Note: If other teams get a recurring toxic player they should replace it next turn even before practice squad
+                    if (billsEffTeam !== 'saints') {
+                      let worstToxicPenalty = -Infinity;
+                      billsPlayer.lineup.forEach((c, idx) => {
+                        const isPS = c.isPracticeSquad || c.id === 'practice_squad' || c.uniqueId?.startsWith('ps_');
+                        if (!c || isPS) return;
+                        const recInflate = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate').reduce((s, e) => s + e.amount, 0) || 0;
+                        const recNegCoins = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0) || 0;
+                        if (recInflate > 0 || recNegCoins > 0) {
+                          const penalty = (recInflate * 3.0) + recNegCoins;
+                          if (penalty > worstToxicPenalty) {
+                            worstToxicPenalty = penalty;
+                            replaceCardIdx = idx;
+                          }
+                        }
+                      });
+                    }
+
+                    if (replaceCardIdx === -1) {
+                      const psIdx = billsPlayer.lineup.findIndex(c => c.isPracticeSquad || c.id === 'practice_squad' || c.uniqueId?.startsWith('ps_'));
+                      if (psIdx !== -1) {
+                        replaceCardIdx = psIdx;
+                      } else {
+                        let minScore = Infinity;
+                        billsPlayer.lineup.forEach((c, idx) => {
+                          const s = scoreCardForPlayer(G, billsId, c);
+                          if (s < minScore) { minScore = s; replaceCardIdx = idx; }
+                        });
+                      }
+                    }
+
+                    if (replaceCardIdx === -1) replaceCardIdx = 0;
+                    const replaced = billsPlayer.lineup[replaceCardIdx];
+                    billsPlayer.lineup[replaceCardIdx] = card;
                     G.decks.discard.push(replaced);
                   }
 

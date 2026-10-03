@@ -3430,6 +3430,91 @@ The **Atlanta Falcons** possess a powerful unique franchise ability: **Falcons M
 - **Production Build**:
   - `npm run build` compiled cleanly in 7.40s with 0 errors.
 
+---
+
+## Playtest 65: New Orleans Saints and Carolina Panthers Optimization + Universal Toxic Replacement Verification
+
+### 1. Executive Summary & Problem Analysis
+- **Side Note Verification (Toxic Card Replacement Priority)**:
+  - User Directive: *"If other teams get a reoccuring toxic player they should replace it next turn even before other practice squad players. Update this for other teams or check if it already behaves this way."*
+  - Investigation confirmed that in both standard auction (`resolveAuctionWin`, line 462) and bonus auction (`resolveBonusAuctionStep`, line 5480), all non-Saints teams were already programmed to replace recurring toxic cards (Watson, Henry, Elliott) before Practice Squad placeholders.
+  - To achieve 100% universal consistency across every acquisition route, the Bills CPU discard claim logic (`src/Game.js`, line 8282) was also upgraded with the toxic-first replacement protocol and parameter correction.
+- **New Orleans Saints Optimization**:
+  - Ability: *Negative coins and inflation don’t affect you.* (Initial: 42 PSI, 12 coins).
+  - Issue: Saints suffered from "Target Lock" on drawback cards regardless of game state or duplicate roles (e.g. overvaluing a second toxic QB over elite skill players), and ignored instant deflation closers when nearing 0 PSI ($\le 16$ PSI).
+  - Solution: Implemented Best Player Available (BPA) doctrine. Toxic cards retain immense bargain value without penalty, but Saints accounts for duplicate role diminishing returns, evaluates Tier 1 superstars fairly alongside toxic cards, and switches to instant closer nukes (+35.0 pts) when in striking distance of 0 PSI.
+- **Carolina Panthers Optimization**:
+  - Ability: *Deflate 2 PSI at the end of every round.* (Initial: 49 PSI, 10 coins).
+  - Issue: In `src/ai/evolvedWeights.js`, Panthers had `recurringMult: 0.72` (heavily penalizing recurring cards). For a team that thrives when games go 8–10 rounds to let their passive -2 PSI/rd engine burn down 49 PSI, penalizing recurring engines crippled their late-game snowball.
+  - Solution: Re-calibrated `recurringMult` from 0.72 $\to$ 1.20, added +6.0 pts valuation for recurring deflation $\ge 2$, elevated threat defense (`threatDefenseWeight`: 1.25, `priceBumpProb`: 0.25) to tax early rushers and keep the game going longer, and added $\le 16$ PSI closer awareness.
+
+---
+
+### 2. Core Mechanics Implemented
+1. **Universal Toxic Replacement on Bills Discard Claim (`src/Game.js:8280-8295`)**:
+   - Added `toxicStarterIdx` search to Bills CPU discard claim before evaluating Practice Squad placeholders or standard card replacement.
+2. **Saints BPA & Closer Evaluation (`src/Game.js:1469-1498`)**:
+   - `+7.0 pts` drawback exploiter bonus preserved.
+   - When $\text{PSI} \le 16$, instant deflation closers receive `+35.0 pts` to clinch immediate victory over toxic coin engines.
+   - Duplicate toxic QB penalty (`-5.0 pts`) prevents target locking when a toxic QB is already rostered.
+   - Clean Tier 1 superstars receive `+4.0 pts` to compete fairly as BPA candidates.
+3. **Saints Strategic Nomination (`src/Game.js:3075-3105`)**:
+   - When $\text{PSI} \le 16$, nominates instant closer nukes.
+   - Otherwise, targets unowned toxic cards (Watson, Henry, Lawrence, Elliott) to win them uncontested at `minBid`.
+   - Fallback: Best Player Available.
+4. **Panthers Compounding Clock & Extended Game Evaluation (`src/Game.js:1962-1980`)**:
+   - Recurring deflation $\ge 2$ receives `+6.0 pts` (stacks with passive -2 PSI/rd to form a 4–5 PSI/rd engine).
+   - When $\text{PSI} \le 16$, instant deflation closers receive `+35.0 pts`.
+5. **Panthers Strategic Nomination (`src/Game.js:3110-3135`)**:
+   - When $\text{PSI} \le 16$, nominates instant closer nukes.
+   - In early/mid rounds, targets recurring deflation engines ($\ge 2$) to build their compounding snowball.
+   - Fallback: Best Player Available.
+6. **Genetic Weight Recalibrations (`src/ai/teamGenomes.js` & `src/ai/evolvedWeights.js`)**:
+   - **Saints**: `deflateWeight: 2.15`, `coinWeight: 1.00`, `recurringMult: 1.15`, `aggression: 1.15`, `reserveCoins: 1`, `priceBumpProb: 0.20`, `superstarPriorityMult: 1.25`.
+   - **Panthers**: `deflateWeight: 2.15`, `coinWeight: 0.95`, `recurringMult: 1.20`, `aggression: 1.18`, `reserveCoins: 1`, `priceBumpProb: 0.25`, `threatDefenseWeight: 1.25`, `superstarPriorityMult: 1.25`.
+
+---
+
+### 3. Simulation Benchmark Results
+
+#### Carolina Panthers (Tested Across 50 Games Per Format):
+| Format | Baseline Win% | Baseline PSI | Evolved Win% | Evolved PSI | Performance vs League Par |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| **4-Player** | 64.0% | 4.30 | **74.0%** | **1.82** | **2.96x Par** (Par: 25.0%) |
+| **7-Player** | 40.0% | 6.52 | **44.0%** | **5.60** | **3.08x Par** (Par: 14.3%) |
+| **10-Player** | 34.0% | 8.44 | **38.0%** | **7.08** | **3.80x Par** (Par: 10.0%) |
+
+#### New Orleans Saints (Tested Across 50 Games Per Format):
+| Format | Win Rate | Avg PSI | Avg Coins | Performance vs League Par |
+|:---|:---:|:---:|:---:|:---:|
+| **4-Player** | **40.0%** | **7.04** | 6.4 | **1.60x Par** (Par: 25.0%) |
+| **7-Player** | **38.0%** | **6.46** | 4.8 | **2.65x Par** (Par: 14.3%) |
+| **10-Player** | **28.0%** | **7.68** | 4.9 | **2.80x Par** (Par: 10.0%) |
+
+---
+
+### 4. Verification & Regression Suites
+- **Playtest 65 Dedicated Suite (`scratch/testPlaytest65SaintsPanthers.mjs`)**:
+  - Test 1: Non-Saints CPU (Vikings) replaces toxic Hunter Henry before Practice Squad: **PASSED ✅**
+  - Test 2: Non-Saints CPU (Packers) replaces toxic Ezekiel Elliott before Practice Squad: **PASSED ✅**
+  - Test 3: Saints immune to drawback keeps Deshaun Watson and replaces Practice Squad: **PASSED ✅**
+  - Test 4: Saints nomination targets unowned toxic bargain (Hunter Henry) over generic cards: **PASSED ✅**
+  - Test 5: Saints closer mode (PSI $\le 16$) prioritizes instant 8 deflate closer (Tony Pollard): **PASSED ✅**
+  - Test 6: Panthers scores recurring deflation engine exceptionally high: **PASSED ✅**
+  - Test 7: Panthers nomination selects recurring deflation engine (Brock Bowers): **PASSED ✅**
+  - Test 8: Panthers switches to game-winning closer (Derrick Henry) when PSI $\le 16$: **PASSED ✅**
+  - Test 9: Active & evolved genomes match target calibrations: **PASSED ✅**
+  - **Result: 9 / 9 tests passed (100%) ✅**.
+
+- **League Regression Suites**:
+  - Playtest 64 (Falcons): **PASSED 9/9 (100%) ✅**
+  - Playtest 63 (Vikings): **PASSED 15/15 (100%) ✅**
+  - Playtest 28 (Deck Swap & Animation): **PASSED 4/4 (100%) ✅**
+
+- **Production Build**:
+  - `npm run build` compiled cleanly in 8.56s with 0 errors.
+
+
 
 
 
