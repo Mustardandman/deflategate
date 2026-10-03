@@ -3514,6 +3514,120 @@ The **Atlanta Falcons** possess a powerful unique franchise ability: **Falcons M
 - **Production Build**:
   - `npm run build` compiled cleanly in 8.56s with 0 errors.
 
+---
+
+## Playtest 66 — Tampa Bay Buccaneers Tiered Ability Assimilation & Full Strategic Adaptation
+
+### 1. Executive Summary & Design Directives
+The user requested a complete overhaul of the **Tampa Bay Buccaneers** franchise ability selection and gameplay doctrine:
+1. **Non-Random, Tiered Ability Selection**:
+   - Systematically tier all 32 franchise abilities from **Best to Worst**.
+   - Incorporate the foundational balancing principle: *Higher starting PSI and lower starting coins indicate a significantly stronger ability*.
+   - When Buccaneers (starting at 45 PSI and 10 coins) gains an ability designed for a high starting handicap (e.g. Colts at 50 PSI / 5 coins, or Packers at 50 PSI / 8 coins), the ability becomes extraordinary.
+2. **Frequency Requirements**:
+   - Have Buccaneers select the better abilities **at least 90% of the time**.
+   - **Never pick the bad abilities** under any circumstances (strictly blacklist Patriots, Broncos, Browns, Buccaneers).
+3. **Full Strategic Adoption**:
+   - Once Buccaneers selects an ability, Buccaneers adopts that team's strategy as their own for the rest of the game:
+     * Card evaluation and valuation (`scoreCardForPlayer` with team-specific bonuses).
+     * Genome weights (`p.genome` inheriting copied team's active parameters).
+     * Team strategy card matching (`doesCardFitTeamStrategy` delegating to copied team).
+     * Strategic nomination doctrine in `chooseCpuNominationCard`.
+     * Auction bidding behavior in `evaluateCpuAuctionBid`.
+     * In-game ability triggers (e.g. Panthers passive deflation, Seahawks 4th lineup slot, Colts unlimited roster, Saints drawback immunity, etc.).
+
+---
+
+### 2. Definitive Franchise Ability Tier Rankings for Buccaneers
+
+Each candidate team is scored using the composite formula:
+$$\text{Composite Score} = \text{Tier Score} + (1.5 \times \text{Initial PSI}) - \text{Coins}$$
+
+| Tier | Team | Initial PSI | Coins | Composite Score | Reason & Strategic Value for Buccaneers |
+|:-----|:-----|:-----------:|:-----:|:---------------:|:----------------------------------------|
+| **S** | **Colts** | 50 | 5 | **170.0** | **Unlimited Lineup Slots**: Permanently compounds every single deflation and coin engine acquired with zero roster cap. |
+| **S** | **Panthers** | 49 | 10 | **155.5** | **Passive Deflation**: -2 PSI every single round guaranteed without purchasing or lineup requirements. |
+| **S** | **Packers** | 50 | 8 | **155.0** | **Phase 1 Dominance**: -4 PSI/round deflation + coin synergy when maintaining Phase 1 cards. |
+| **S** | **Texans** | 47 | 8 | **146.5** | **Dual QB Engine**: +2 coins and +2 deflation for every QB on roster during refresh. |
+| **S** | **Lions** | 47 | 9 | **141.5** | **First Claim Bounty**: First player claim awards coins equal to table size (up to +10 coins). |
+| **S** | **Rams** | 49 | 11 | **138.5** | **x2 Multiplier Token**: Doubles an elite Phase 2 or HOF closer card's power. |
+| **S** | **Cowboys** | 42 | 5 | **130.0** | **Passive Economy**: +2 coins guaranteed at the end of every round. |
+| **A** | **Falcons** | 48 | 9 | **123.0** | **Auction Mulligan**: Total board refresh once per phase to dump poison and find centerpieces. |
+| **A** | **Bengals** | 46 | 9 | **116.0** | **Instant Loop**: Instant abilities yield +2 coins/deflate plus discard option upon acquisition. |
+| **A** | **Seahawks** | 46 | 12 | **111.0** | **4th Lineup Slot**: Immediately gains a 4th Practice Squad player and permanent 4-card roster capacity. |
+| **A** | **Steelers** | 48 | 12 | **110.0** | **Richest Bully**: Burns all opponents for +1 PSI each round when holding coin lead. |
+| **A** | **Chiefs** | 46 | 9 | **106.0** | **Free Claim**: Instant minimum-cost claim of revealed auction superstar once per game. |
+| **A** | **Jets** | 44 | 7 | **101.0** | **Max Bid Deflation**: Instant -4 PSI reduction whenever paying maximum purchase price. |
+| **A** | **Eagles** | 47 | 15 | **99.5** | **Tush Push**: Spends coins to push up all opponent PSI by +3. |
+| **A** | **Saints** | 42 | 12 | **99.0** | **Drawback Immunity**: Immune to negative coins and inflation (Hunter Henry, Deshaun Watson, etc.). |
+| **B** | **Chargers** | 50 | 6 | **99.0** | **Outbid Bonus**: +1 coin per outbid at end of round. |
+| **B** | **49ers** | 44 | 8 | **82.0** | **Emergency Deflation**: Double deflation when under 5 coins during refresh. |
+| **B** | **Vikings** | 44 | 11 | **81.0** | **Coin Multiplier**: 2x coins below 27 PSI. |
+| **B** | **Dolphins** | 45 | 9 | **80.5** | **Zero-Coin Bailout**: Awards 3 coins upon reaching 0 coins. |
+| **B** | **Raiders** | 45 | 8 | **79.5** | **PSI Transfer**: Gives 1 PSI to opponent before auction phase every round. |
+| **B** | **Bears** | 42 | 13 | **78.0** | **Outbid Barrier**: Opponents must outbid by 2 coins instead of 1. |
+| **C** | **Commanders** | 43 | 7 | **71.5** | **Mark Player**: 1st player cannot bid on marked card. |
+| **C** | **Cardinals** | 41 | 15 | **58.5** | **Deck Swap**: Swaps top deck card with revealed auction player. |
+| **C** | **Ravens** | 42 | 14 | **59.0** | **3-Position Bonus**: +3 coins if controlling 3 different positions. |
+| **C** | **Bills** | 44 | 12 | **62.0** | **Discard Buy**: 1-time purchase from discard at minimum cost. |
+| **C** | **Jaguars** | 43 | 12 | **58.5** | **Event Foresight**: Rearrange event deck once. |
+| **C** | **Titans** | 44 | 7 | **63.0** | **1-Time Draft**: 1-time setup draft card. |
+| **F** | **Patriots** | 36 | 7 | **-9999** | **STRICTLY BLACKLISTED**: No ability ("Starts with low PSI"). Copying yields zero benefits. |
+| **F** | **Broncos** | 40 | 20 | **-9999** | **STRICTLY BLACKLISTED**: Drawback penalty (ignores every turn abilities on turn 1). |
+| **F** | **Browns** | 45 | 20 | **-9999** | **STRICTLY BLACKLISTED**: Drawback penalty (cannot gain coins in rounds 1-4). |
+| **F** | **Buccaneers** | 45 | 10 | **-9999** | **STRICTLY BLACKLISTED**: Self-copying prohibited. |
+
+---
+
+### 3. Implementation Details
+
+1. **`BUCCANEERS_ABILITY_TIERS` & `scoreBucsCandidateTeam`** ([`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js)):
+   - Implemented exact tiered dictionary with descriptive reasoning and quantitative tier scores.
+   - Incorporated `handicap = (team.initialPsi * 1.5) - team.coins` scaling.
+   - Filtered out all F-Tier / blacklisted teams (`score = -9999`).
+
+2. **Selection Algorithm (`selectCpuBucsTeamToCopy`)** ([`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js)):
+   - **$\ge 90\%$ Rule**: With 92% probability, CPU Buccaneers selects the absolute top-ranked candidate team from `otherDrafted`.
+   - **Quality Fallback**: In the remaining 8% of cases, Buccaneers selects between ranks 2 and 3 *only if* they are S-Tier or A-Tier franchises.
+   - **0% Bad Picks**: Blacklisted / F-Tier teams are filtered out unconditionally.
+
+3. **Strategic Adaptation Engine** ([`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js)):
+   - `doesCardFitTeamStrategy`: Fixed bug at line 923 to use `getEffectiveTeamId(player)` instead of static properties, ensuring immediate delegation to the copied team's strategy.
+   - Copy moves (`copyAbility`, `buccaneersPickTeam`, and `buccaneersCopy.onBegin`): Explicitly set:
+     ```javascript
+     p.copiedTeam = targetTeam;
+     p.buccaneersCopiedTeamId = targetTeam.id;
+     p.genome = G?.teamGenomes?.[targetTeam.id] || ACTIVE_TEAM_GENOMES[targetTeam.id] || BASELINE_TEAM_GENOMES[targetTeam.id];
+     ```
+   - All evaluation functions (`scoreCardForPlayer`, `chooseCpuNominationCard`, `evaluateCpuAuctionBid`, `resolveAuctionWin`) automatically inherit the copied franchise's identity via `getEffectiveTeamId(p)`.
+
+---
+
+### 4. Verification & Playtest Results
+
+- **Monte Carlo Ability Selection (1,000 Randomized Lobbies)**:
+  - Top Ability Pick Rate: **91.5% – 93.0%** (Exceeds user requirement: $\ge 90\%$).
+  - Bad Ability Pick Count: **0 / 1,000 (0.0%)** (Strict compliance with zero tolerance).
+  - Most Frequent Selections: Colts (17.9%), Panthers (14.8%), Packers (14.1%), Texans (9.9%), Lions (8.8%), Rams (8.2%), Falcons (5.5%), Cowboys (5.1%), Bengals (4.0%).
+
+- **Strategy & Ability Inheritance Verification**:
+  - Panthers Copy: Inherited -2 PSI passive deflation per round; `doesCardFitTeamStrategy` matches Panthers.
+  - Colts Copy: Unlimited roster slots unlocked; acquisitions no longer constrained to max 3.
+  - Seahawks Copy: Granted 4th lineup slot and 4th Practice Squad card immediately.
+  - Saints Copy: Immune to drawback cards (Hunter Henry, Deshaun Watson).
+
+- **Automated Test Suite**:
+  - `scratch/testPlaytest66Buccaneers.mjs`: **PASSED (100%) ✅**
+  - Regression Suites:
+    * Playtest 65 (Saints & Panthers): **PASSED 9/9 (100%) ✅**
+    * Playtest 64 (Falcons): **PASSED 9/9 (100%) ✅**
+    * Playtest 61 (Lions): **PASSED 12/12 (100%) ✅**
+    * Playtest 60 (Bears): **PASSED 5/5 (100%) ✅**
+
+- **Production Build**:
+  - `npm run build` compiled in 15.87s with 0 errors.
+
+
 
 
 

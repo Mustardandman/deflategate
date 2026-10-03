@@ -920,7 +920,7 @@ export const doesCardFitTeamStrategy = (teamId, card, player, G) => {
            card.id === 'george_kittle';
   }
   if (teamId === 'buccaneers') {
-    const copiedTeam = player?.buccaneersCopiedTeamId || player?.team?.id;
+    const copiedTeam = getEffectiveTeamId(player);
     return copiedTeam && copiedTeam !== 'buccaneers' ? doesCardFitTeamStrategy(copiedTeam, card, player, G) : true;
   }
   return false;
@@ -5997,54 +5997,92 @@ export const calculateRefreshResults = (G) => {
   G.board.inRefreshSummary = true;
 };
 
+export const BUCCANEERS_ABILITY_TIERS = {
+  // S-Tier (God Tier / Elite game changers)
+  colts: { tier: 'S', tierScore: 100, reason: 'Unlimited roster spots permanently compounds engines' },
+  panthers: { tier: 'S', tierScore: 92, reason: 'Passive -2 PSI every single round without requirements' },
+  packers: { tier: 'S', tierScore: 88, reason: 'Phase 1 -4 PSI/round deflation engine + coins' },
+  texans: { tier: 'S', tierScore: 84, reason: 'Dual +2 coins and +2 deflate per QB on refresh' },
+  lions: { tier: 'S', tierScore: 80, reason: 'First claim bounty yields huge coin purse' },
+  rams: { tier: 'S', tierScore: 76, reason: 'x2 token doubles premier deflation/closer engine' },
+  cowboys: { tier: 'S', tierScore: 72, reason: 'Passive +2 coins guaranteed every round' },
+
+  // A-Tier (High Impact Premier Abilities)
+  falcons: { tier: 'A', tierScore: 60, reason: 'Auction mulligan provides full board control' },
+  bengals: { tier: 'A', tierScore: 56, reason: 'Instant abilities +2 coins/deflate + discard flexibility' },
+  seahawks: { tier: 'A', tierScore: 54, reason: 'Starts with 4th permanent roster spot' },
+  steelers: { tier: 'A', tierScore: 50, reason: 'Damages all opponents +1 PSI when richest' },
+  saints: { tier: 'A', tierScore: 48, reason: 'Immune to all drawback penalties and inflation' },
+  chiefs: { tier: 'A', tierScore: 46, reason: 'Free claim steal of elite superstar at minimum' },
+  eagles: { tier: 'A', tierScore: 44, reason: 'Tush push raises opponent PSI' },
+  jets: { tier: 'A', tierScore: 42, reason: 'Deflates 4 PSI on max bid purchases' },
+
+  // B-Tier (Solid / Situational)
+  chargers: { tier: 'B', tierScore: 30, reason: 'Outbid coin bonus' },
+  raiders: { tier: 'B', tierScore: 28, reason: 'Give 1 PSI to opponent before auction every round' },
+  bears: { tier: 'B', tierScore: 26, reason: '+2 coin outbid barrier' },
+  vikings: { tier: 'B', tierScore: 24, reason: '2x coins when under 27 PSI' },
+  '49ers': { tier: 'B', tierScore: 22, reason: '2x deflation when under 5 coins' },
+  dolphins: { tier: 'B', tierScore: 20, reason: '3 coin emergency bailout at 0 coins' },
+
+  // C-Tier (Mediocre / Low Impact)
+  commanders: { tier: 'C', tierScore: 14, reason: 'Mark player auction lockout' },
+  cardinals: { tier: 'C', tierScore: 12, reason: 'Swap auction player with deck' },
+  ravens: { tier: 'C', tierScore: 10, reason: '+3 coins if 3 different positions' },
+  bills: { tier: 'C', tierScore: 8, reason: '1-time discard purchase' },
+  jaguars: { tier: 'C', tierScore: 6, reason: 'Rearrange event deck once' },
+  titans: { tier: 'C', tierScore: 4, reason: '1-time initial card draft' },
+
+  // F-Tier (Bad / Detrimental / Non-Abilities) - STRICTLY BLACKLISTED
+  patriots: { tier: 'F', tierScore: -999, reason: 'No ability ("Starts with low PSI")' },
+  broncos: { tier: 'F', tierScore: -999, reason: 'Drawback: ignores every turn abilities on turn 1' },
+  browns: { tier: 'F', tierScore: -999, reason: 'Drawback: cannot gain coins in rounds 1-4' },
+  buccaneers: { tier: 'F', tierScore: -999, reason: 'Cannot copy self' }
+};
+
+export const scoreBucsCandidateTeam = (team) => {
+  if (!team || !team.id) return -9999;
+  const info = BUCCANEERS_ABILITY_TIERS[team.id] || { tier: 'C', tierScore: 5 };
+  if (info.tier === 'F' || info.tierScore < 0) return -9999;
+  // User principle: Usually high starting PSI and low starting coins means the ability is better
+  const handicap = (team.initialPsi || 45) * 1.5 - (team.coins || 10);
+  return info.tierScore + handicap;
+};
+
 export const selectCpuBucsTeamToCopy = (availableTeams) => {
   // Never copy negative, non-ability, or self teams
   const BLACKLIST = ['broncos', 'browns', 'patriots', 'buccaneers'];
-  const candidates = availableTeams.filter(t => t && !BLACKLIST.includes(t.id));
+  const candidates = (availableTeams || []).filter(t => t && !BLACKLIST.includes(t.id));
   if (candidates.length === 0) {
     const fallbackCandidates = TEAMS.filter(t => !BLACKLIST.includes(t.id));
-    return fallbackCandidates[Math.floor(Math.random() * fallbackCandidates.length)] || availableTeams[0];
+    return fallbackCandidates[0] || availableTeams[0];
   }
 
-  // Tier bonuses for powerful franchise powers
-  const TIER_BONUSES = {
-    colts: 18,     // Unlimited lineup slots
-    panthers: 12,  // Passive -2 PSI every round
-    rams: 10,      // 2x multiplier token
-    packers: 9,    // Phase 1 deflation & coin synergy
-    texans: 8,     // QB coins + deflation
-    cowboys: 8,    // 2 coins every round
-    lions: 8,      // First claim coins
-    seahawks: 7,   // 4th lineup slot
-    falcons: 6,    // Mulligan auction row
-    chiefs: 6,     // Free claim at minimum
-    jets: 6,       // -4 PSI on max bid
-    eagles: 6,     // Tush push opponents
-    dolphins: 5,   // 0 coins emergency 3 coins
-    chargers: 5,   // Outbid bonus coins
-    cardinals: 5,  // Swap top deck card
-    ravens: 4,     // 3 positions bonus coins
-    saints: 4,     // Immunity to negative coins & inflation
-    vikings: 4,
-    bears: 3,
-    bills: 3
-  };
-
-  // Score candidate teams: higher initialPsi and lower starting coins indicate stronger abilities
-  const scored = candidates.map(team => {
-    const psiBonus = (team.initialPsi || 45) * 1.5;
-    const coinPenalty = team.coins || 10;
-    const tierBonus = TIER_BONUSES[team.id] || 0;
-    const score = psiBonus - coinPenalty + tierBonus;
-    return { team, score };
-  });
+  // Score candidate teams using tier ranking + starting handicap
+  const scored = candidates.map(team => ({
+    team,
+    score: scoreBucsCandidateTeam(team),
+    tier: BUCCANEERS_ABILITY_TIERS[team.id]?.tier || 'C'
+  })).filter(item => item.score > 0);
 
   scored.sort((a, b) => b.score - a.score);
+  if (scored.length === 0) return candidates[0];
 
-  // Slight controlled randomness: 75% pick top choice, 25% pick second choice if available
-  if (scored.length > 1 && Math.random() < 0.25) {
-    return scored[1].team;
+  // User directive:
+  // "Have the bucs pick the better abilities at least 90% of the time and never pcik the bad abilities."
+  // - 92% of the time: Pick the absolute top-ranked candidate.
+  // - In the remaining 8% of the time: Pick from the other top tier (S or A tier) candidates.
+  // - Bad abilities are never picked.
+  const rand = Math.random();
+  if (rand < 0.92 || scored.length === 1) {
+    return scored[0].team;
   }
+
+  const topTierAlternatives = scored.slice(1, 3).filter(item => item.tier === 'S' || item.tier === 'A');
+  if (topTierAlternatives.length > 0) {
+    return topTierAlternatives[Math.floor(Math.random() * topTierAlternatives.length)].team;
+  }
+
   return scored[0].team;
 };
 
@@ -6423,6 +6461,8 @@ export const DeflategateGame = {
       if (!targetTeam) return INVALID_MOVE;
 
       p.copiedTeam = targetTeam;
+      p.buccaneersCopiedTeamId = targetTeam.id;
+      p.genome = G?.teamGenomes?.[targetTeam.id] || ACTIVE_TEAM_GENOMES[targetTeam.id] || BASELINE_TEAM_GENOMES[targetTeam.id];
       if (targetTeam.id === 'seahawks' && p.lineup.length < 4) {
         p.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${targetPlayerId}_3` });
         addLog(G, `Seahawks Ability: Buccaneers gained a 4th Practice Squad player!`);
@@ -6446,6 +6486,8 @@ export const DeflategateGame = {
       if (!targetTeam) return INVALID_MOVE;
 
       p.copiedTeam = targetTeam;
+      p.buccaneersCopiedTeamId = targetTeam.id;
+      p.genome = G?.teamGenomes?.[targetTeam.id] || ACTIVE_TEAM_GENOMES[targetTeam.id] || BASELINE_TEAM_GENOMES[targetTeam.id];
       if (targetTeam.id === 'seahawks' && p.lineup.length < 4) {
         p.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${targetPlayerId}_3` });
         addLog(G, `Seahawks Ability: Buccaneers gained a 4th Practice Squad player!`);
@@ -7089,6 +7131,8 @@ export const DeflategateGame = {
         if (bucsPlayer.isCpu) {
           const chosenTeam = selectCpuBucsTeamToCopy(otherDrafted);
           bucsPlayer.copiedTeam = chosenTeam;
+          bucsPlayer.buccaneersCopiedTeamId = chosenTeam.id;
+          bucsPlayer.genome = G?.teamGenomes?.[chosenTeam.id] || ACTIVE_TEAM_GENOMES[chosenTeam.id] || BASELINE_TEAM_GENOMES[chosenTeam.id];
           if (chosenTeam.id === 'seahawks' && bucsPlayer.lineup.length < 4) {
             bucsPlayer.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${bucsPlayerId}_3` });
             addLog(G, `Seahawks Ability: Buccaneers gained a 4th Practice Squad player!`);
@@ -7113,6 +7157,8 @@ export const DeflategateGame = {
           if (!targetTeam) return INVALID_MOVE;
 
           p.copiedTeam = targetTeam;
+          p.buccaneersCopiedTeamId = targetTeam.id;
+          p.genome = G?.teamGenomes?.[targetTeam.id] || ACTIVE_TEAM_GENOMES[targetTeam.id] || BASELINE_TEAM_GENOMES[targetTeam.id];
           if (targetTeam.id === 'seahawks' && p.lineup.length < 4) {
             p.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${targetPlayerId}_3` });
             addLog(G, `Seahawks Ability: Buccaneers gained a 4th Practice Squad player!`);
@@ -7136,6 +7182,8 @@ export const DeflategateGame = {
           if (!targetTeam) return INVALID_MOVE;
 
           p.copiedTeam = targetTeam;
+          p.buccaneersCopiedTeamId = targetTeam.id;
+          p.genome = G?.teamGenomes?.[targetTeam.id] || ACTIVE_TEAM_GENOMES[targetTeam.id] || BASELINE_TEAM_GENOMES[targetTeam.id];
           if (targetTeam.id === 'seahawks' && p.lineup.length < 4) {
             p.lineup.push({ ...PRACTICE_SQUAD_CARD, uniqueId: `ps_${targetPlayerId}_3` });
             addLog(G, `Seahawks Ability: Buccaneers gained a 4th Practice Squad player!`);
