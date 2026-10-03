@@ -3108,6 +3108,83 @@ In Playtest 60, we conducted a rigorous franchise diagnostic and simulation grid
 - **Production Build**:
   - `npm run build` compiled cleanly in 14.74s with 0 errors.
 
+---
+
+## Playtest 61: Detroit Lions Strategic Nomination & Calibrated Opponent Counter-Play
+
+### 1. Executive Summary & Problem Analysis
+Following diagnostic simulations across 4P, 7P, and 10P lobbies, the Detroit Lions exhibited a distinct strategic mismatch:
+- **Baseline Win Rate**: 22.5% Composite (4P: 28.7%, 7P: 20.0%, 10P: 18.8%, Composite PSI: 12.20).
+- **The Core Flaw in Early Nomination**: Universal superstar priority (e.g. Patrick Mahomes, Travis Kelce) forced Detroit to nominate premier cards in Round 1 even when Detroit was cash-poor (starting with 4 coins) and rivals possessed 10–13 coins. Wealthier opponents effortlessly outbid Detroit, depriving the Lions of their signature ability: *First Claim Bounty* (+1 coin per player in the game on their first auction win each round).
+- **Robotic Opponent Counter-Play Tax**: Non-Lions opponents previously fired an aggressive "D" block ceiling up to `effMax - 1` (or `75% of effMax`) 100% of the time, causing Detroit to be taxed to near-max bids even on low-tier 1-coin players.
+
+### 2. User-Directed Strategic Solution
+Per user directives, Detroit Lions was fundamentally overhauled around four strategic pillars:
+
+1. **Strategic Nomination Doctrine ("Don't Prioritize Unless You Can Win")**:
+   - **Superstar Restriction**: Tier 1 superstars (Patrick Mahomes, Travis Kelce, Brock Bowers, George Kittle, Kirk Cousins, HOF) are **only nominated if Detroit is strictly the richest player** and can guarantee outbidding rivals (`currentPlayer.coins > richestOpponentCoins`).
+   - **Bypassed Universal Superstar Priority**: When Detroit is nominator and *not* the richest player, the global Chiefs/superstar auto-pick is bypassed.
+   - **Early Game Focus (Rounds 1–3 & 1st Claim of Round)**:
+     - Target players Detroit *can win*:
+       1. **Low Max-Bid Gems** (`effMax <= 5` and `coins >= effMax`, e.g. Malik Nabers, Rome Odunze): Detroit immediately buys out or locks out the board to capture the +numPlayers coin bounty cleanly.
+       2. **Winnable Mid-Tier Players** (`minBid <= 2, score >= 4.0` or affordable max): Detroit captures value without risking an unwinnable bidding war.
+   - **Mid/Late Game Transition (Rounds 4+ or `coins >= 12`)**:
+     - Having accumulated immense purse wealth from early bounties, Detroit pivots 100% to **heavy deflation engines** (Phase 2 & HOF deflaters, recurring deflation, 2+ deflate engines) to burn down their 47 starting PSI.
+   - **Endgame Closer Mode ($\text{PSI} \le 16$)**:
+     - Detroit hunts instant deflation closer nukes (`amount >= 3`) to cross 0 PSI immediately.
+
+2. **Calibrated Opponent Counter-Play (1–2 Raise vs. 10% Spite Block)**:
+   - Opponents no longer tax Detroit up to max ceiling 100% of the time.
+   - **90% Normal Counterplay**: Opponents raise the bid by only **1–2 more coins than they normally would bid on that player** (`valuation + (Math.random() < 0.5 ? 2 : 1)`), capped at `effMax - 1`.
+   - **10% Spite Block ("D" Ceiling)**: In 10% of cases (`Math.random() < 0.10`), an aggressive spite block fires, bidding up to `min(effMax - 1, round(effMax * 0.75))`.
+
+3. **Optimized Nomination Opening Bid**:
+   - **Low Max Gems (`effMax <= 5` and `coins >= effMax`)**: Open at `effMax` to immediately lock out rivals and guarantee the bounty!
+   - **Richest Player**: Open at `lockoutBid` (`min(effMax, max(minBid, richestOpponentCoins))`), which locks out rivals without needlessly paying full `effMax`.
+   - **Otherwise**: Open at `card.minBid`.
+
+4. **Genome Calibration**:
+   - `deflateWeight`: Increased from 1.70 $\to$ **2.35** (ensuring Detroit uses its bounty riches to buy deflation engines in Rounds 4–8).
+   - `coinWeight`: Calibrated to **0.80** (bounty generates sufficient coin volume).
+   - `reserveCoins`: 1.
+   - `firstClaimAggression`: 1.50.
+   - `priceBumpProb`: 0.20 (conserves coins for key engine wins).
+
+---
+
+### 3. Simulation & Benchmark Results
+
+#### 100-Game Detailed Benchmark (4P, 7P, 10P):
+- **4-Player Lobby**: **40.0% Win Rate** | **7.60 Avg PSI** | 6.7 avg coins | 8.20c avg claim cost (Par: 25.0%)
+- **7-Player Lobby**: **25.0% Win Rate** | **10.94 Avg PSI** | 6.4 avg coins | 9.75c avg claim cost (Par: 14.3%)
+- **10-Player Lobby**: **17.0% Win Rate** | **13.03 Avg PSI** | 7.7 avg coins | 10.91c avg claim cost (Par: 10.0%)
+- **Composite League Performance**:
+  - **Win Rate**: **27.3%** (vs 22.5% baseline, **+4.8% net increase**, 1.66x league par)
+  - **Composite PSI**: **10.52** (vs 12.20 baseline, **-1.68 PSI improvement**)
+
+---
+
+### 4. Verification Suite & Test Results
+- **Dedicated Lions Verification Suite (`scratch/testPlaytest61Lions.mjs`)**:
+  - Test 1: Strategic Nomination - Avoid Superstars when not richest player (Mahomes bypassed, Nabers picked): **PASSED ✅**
+  - Test 2: Strategic Nomination - Richest Player (Outbids rivals for Mahomes/Kelce): **PASSED ✅**
+  - Test 3: Mid/Late Game - Focus shifts to heavy deflation engines: **PASSED ✅**
+  - Test 4: Endgame Closer Mode - Instant deflation closer nukes picked under 16 PSI: **PASSED ✅**
+  - Test 5: Opponent Counterplay Calibration (1-2 Raise vs 10% Spite Block): **PASSED ✅**
+  - Test 6: Opening Bid Calibration (Low Max Lockout & Richest Lockout): **PASSED ✅**
+  - Test 7: Genome Weights Verification (`deflate: 2.35, coin: 0.8, reserve: 1, firstClaimAgg: 1.5, bumpProb: 0.2`): **PASSED ✅**
+  - **Result: 12/12 Checks Passed 100% ✅**.
+
+- **League Regression Suites**:
+  - Playtest 60 (Bears): **PASSED 100% ✅**
+  - Playtest 59 (Universal Cycle Strategy, Eagles, Commanders): **PASSED 100% ✅**
+  - Playtest 58 (Cowboys): **PASSED 100% ✅**
+  - Playtest 57 (Anti-Chargers): **PASSED 100% ✅**
+
+- **Production Build**:
+  - `npm run build` compiled cleanly in 10.48s with 0 errors.
+
+
 
 
 

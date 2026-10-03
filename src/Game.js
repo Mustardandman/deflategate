@@ -2203,16 +2203,22 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     }
   }
 
+  const effectiveTeamId = getEffectiveTeamId(currentPlayer);
+
   // Universal Superstar Priority: Everyone wants Patrick Mahomes and Travis Kelce!
-  const eliteChiefsSuperstar = eligibleCards.find(item => item.card.id === 'patrick_mahomes' || item.card.id === 'travis_kelce');
-  if (eliteChiefsSuperstar && currentPlayer.coins >= eliteChiefsSuperstar.card.minBid) {
-    return eliteChiefsSuperstar.index;
+  // User directive: Lions only nominates Tier 1 superstars if they are the richest player and can win them!
+  const isLionsTeam = effectiveTeamId === 'lions';
+  const isRichestPlayer = currentPlayer.coins > richestOpponentCoins;
+  if (!isLionsTeam || isRichestPlayer) {
+    const eliteChiefsSuperstar = eligibleCards.find(item => item.card.id === 'patrick_mahomes' || item.card.id === 'travis_kelce');
+    if (eliteChiefsSuperstar && currentPlayer.coins >= eliteChiefsSuperstar.card.minBid) {
+      return eliteChiefsSuperstar.index;
+    }
   }
 
   // Chargers Strategic Nomination:
   // 1. If an elite deflation centerpiece is available (Bowers, Kelce, Mahomes, HOF legends), Chargers nominates it directly!
   // 2. Otherwise, Chargers finds cards that rivals CRAVE to farm outbid bonus coins!
-  const effectiveTeamId = getEffectiveTeamId(currentPlayer);
   if (effectiveTeamId === 'chargers') {
     const crownJewel = eligibleCards.find(item => {
       const isAnchor = item.card.id === 'brock_bowers' || item.card.id === 'travis_kelce' || item.card.id === 'patrick_mahomes' || item.card.phase === 'hof';
@@ -2244,21 +2250,80 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
 
   // Team-Specific Nomination Strategies:
   const isFirstPlayerOfRound = Object.values(G.players).every(p => !p.hasWonAuction);
-  const isLionsFirstBonus = isFirstPlayerOfRound && effectiveTeamId === 'lions';
 
-  if (isLionsFirstBonus) {
-    const maxAffordable = eligibleCards.filter(item => {
-      const effMax = getEffectiveCardMaxBid(item.card, G.board.activeEvent);
-      return currentPlayer.coins >= effMax;
-    });
-    if (maxAffordable.length > 0) {
-      return maxAffordable[0].index;
+  // Detroit Lions Strategic Nomination:
+  // User directive:
+  // "target whoever they think they can win in the early rounds. They need to acquire that first player early on.
+  // Then later once they are already rich they can focus on the deflation if needed.
+  // So when they are the nominating player they should target the player they can win.
+  // Maybe a low max bid player like Nabers or if they are the richest player they can get the best one and outbid everyone.
+  // Or maybe someone in the middle if they have enough coins.
+  // Only nominate the tier 1 superstar if you are the richest player and can win him"
+  if (effectiveTeamId === 'lions') {
+    // 1. Endgame closer mode (PSI <= 16): Prioritize instant deflation closer nukes
+    if ((currentPlayer.psi || 47) <= 16) {
+      const closerNuke = eligibleCards.find(item => {
+        const instDeflate = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return instDeflate >= 3 && currentPlayer.coins >= item.card.minBid;
+      });
+      if (closerNuke) return closerNuke.index;
     }
-    if (currentPlayer.coins > richestOpponentCoins) {
-      return eligibleCards[0].index;
+
+    // 2. Early Rounds (Rounds 1-3) & First Claim of the Round:
+    if (isFirstPlayerOfRound && (G.board.round || 1) <= 3) {
+      // Condition A: If Lions is strictly the richest player, Lions CAN win the Tier 1 superstar!
+      if (currentPlayer.coins > richestOpponentCoins) {
+        const superstar = eligibleCards.find(item =>
+          (item.card.id === 'brock_bowers' ||
+           item.card.id === 'travis_kelce' ||
+           item.card.id === 'patrick_mahomes' ||
+           item.card.id === 'george_kittle' ||
+           item.card.id === 'kirk_cousins' ||
+           item.card.phase === 'hof') && currentPlayer.coins >= item.card.minBid
+        );
+        if (superstar) return superstar.index;
+
+        eligibleCards.sort((a, b) => b.score - a.score);
+        return eligibleCards[0].index;
+      }
+
+      // Condition B: Lions is NOT the richest player. Target who Lions CAN win:
+      // 1. Low max-bid gems (e.g. Nabers, Odunze, effMax <= 5) where Lions has enough coins to pay max:
+      const lowMaxGems = eligibleCards.filter(item => {
+        const effMax = getEffectiveCardMaxBid(item.card, G.board.activeEvent);
+        return effMax <= 5 && currentPlayer.coins >= effMax && item.score >= 0;
+      }).sort((a, b) => b.score - a.score);
+      if (lowMaxGems.length > 0) {
+        return lowMaxGems[0].index;
+      }
+
+      // 2. Mid-tier cards where Lions has enough coins to win:
+      const winnableMidTier = eligibleCards.filter(item => {
+        const effMax = getEffectiveCardMaxBid(item.card, G.board.activeEvent);
+        const isAffordable = currentPlayer.coins >= effMax;
+        const isGoodMid = item.card.minBid <= 2 && item.score >= 4.0;
+        return isAffordable || isGoodMid;
+      }).sort((a, b) => b.score - a.score);
+      if (winnableMidTier.length > 0) {
+        return winnableMidTier[0].index;
+      }
     }
-    const cheapWin = eligibleCards.find(item => item.card.minBid <= currentPlayer.coins && item.score >= 0);
-    if (cheapWin) return cheapWin.index;
+
+    // 3. Later in game (Rounds 4+ or coins >= 12): Lions is already rich, focus on deflation!
+    if ((G.board.round || 1) >= 4 || currentPlayer.coins >= 12) {
+      const heavyDeflate = eligibleCards.filter(item => {
+        const recD = item.card.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate');
+        const instD = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return (recD || instD >= 2) && item.score >= 8.0;
+      }).sort((a, b) => b.score - a.score);
+      if (heavyDeflate.length > 0) {
+        return heavyDeflate[0].index;
+      }
+    }
+
+    // Default Lions fallback: pick highest scored card
+    eligibleCards.sort((a, b) => b.score - a.score);
+    return eligibleCards[0].index;
   }
 
   // Bengals Nomination Strategy:
@@ -4441,7 +4506,11 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
-  // Non-Lions Counter-Play
+  // Non-Lions Counter-Play:
+  // User directive:
+  // "I like D as a counterplay that sometimes happens but not always. I think the real problem is that the oppenents
+  // are bidding way more than they should just because. Can we have them raise the bid by 1-2 more than they normally
+  // would bid on that player instead? Then have D happen like 10% of the time?"
   const lionsPlayerId = Object.keys(G.players).find(
     id => getEffectiveTeamId(G.players[id]) === 'lions' && !G.players[id].hasWonAuction
   );
@@ -4450,8 +4519,19 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     const lionsPlayer = G.players[lionsPlayerId];
 
     if (isLionsHighest && lionsPlayer && lionsPlayer.coins >= nextBid + 1) {
-      const blockCeiling = Math.min(effMax - 1, Math.max(valuation + 3, Math.round(effMax * 0.75)));
-      if (nextBid <= blockCeiling && currentPlayer.coins >= nextBid + 1) {
+      // 10% Spite Block ("D" ceiling)
+      const isSpiteBlock = Math.random() < 0.10;
+      if (isSpiteBlock) {
+        const blockCeiling = Math.min(effMax - 1, Math.round(effMax * 0.75));
+        if (nextBid <= blockCeiling && currentPlayer.coins >= nextBid + 1) {
+          return { shouldBid: true, bidAmount: nextBid, isPriceBump: true };
+        }
+      }
+
+      // 90% Normal Counterplay: Raise 1-2 more than normal valuation
+      const stretchAmount = Math.random() < 0.5 ? 2 : 1;
+      const counterplayCeiling = Math.min(effMax - 1, valuation + stretchAmount);
+      if (nextBid <= counterplayCeiling && currentPlayer.coins >= nextBid + 1) {
         return { shouldBid: true, bidAmount: nextBid, isPriceBump: true };
       }
     }
@@ -4848,11 +4928,11 @@ const executeCpuMoveInternal = (G, ctx, events) => {
         const activeOpponents = Object.keys(G.players).filter(id => id !== currentPlayerId && !G.players[id].hasWonAuction);
         const richestOpponentCoins = Math.max(0, ...activeOpponents.map(id => G.players[id]?.coins || 0));
 
-        if (currentPlayer.coins >= effMax) {
-          // Target player they can afford max bid of and immediately pay max bid
+        if (effMax <= 5 && currentPlayer.coins >= effMax) {
+          // Target low max bid player (e.g. Nabers, Odunze) and immediately pay max bid to lock out rivals
           G.board.highestBid = effMax;
         } else if (currentPlayer.coins > richestOpponentCoins) {
-          // Lowest price possible that can't be bid up by any other player
+          // Richest player: lowest price possible that cannot be outbid by any rival
           const lockoutBid = Math.min(effMax, Math.max(card.minBid, richestOpponentCoins));
           G.board.highestBid = Math.min(currentPlayer.coins, lockoutBid);
         } else {
