@@ -2724,6 +2724,39 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     if (sub5Target) return sub5Target.index;
   }
 
+  // Bears Nomination Strategy:
+  // - "The 1-Coin Opening Bully":
+  //   * Rounds 1-2: Nominate Tier 1 centerpieces (Kelce, Bowers, Mahomes, Kittle, Cousins, HOF) to bully with 13 coins + 2-coin raise wall.
+  //   * Endgame (PSI <= 18): Nominate instant deflation nukes (deflate >= 3) to cross 0 PSI.
+  //   * 1-Coin Steal Bully: Nominate high-value 1-coin minBid cards (score >= 10.0), forcing rivals to leap immediately to 3 coins or let Chicago steal for 1 coin.
+  if (effectiveTeamId === 'bears' && eligibleCards.length > 0) {
+    const currentRound = G.board.round || 1;
+    const isEndgame = (currentPlayer.psi || 42) <= 18;
+
+    if (isEndgame) {
+      const closerNuke = eligibleCards.find(item => {
+        const instDeflate = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return instDeflate >= 3 && currentPlayer.coins >= item.card.minBid;
+      });
+      if (closerNuke) return closerNuke.index;
+    }
+
+    if (currentRound <= 2) {
+      const centerpiece = eligibleCards.find(item => 
+        (item.card.id === 'brock_bowers' || 
+         item.card.id === 'travis_kelce' || 
+         item.card.id === 'patrick_mahomes' || 
+         item.card.id === 'george_kittle' ||
+         item.card.id === 'kirk_cousins' ||
+         item.card.phase === 'hof') && currentPlayer.coins >= item.card.minBid
+      );
+      if (centerpiece) return centerpiece.index;
+    }
+
+    const bullySteal = eligibleCards.find(item => item.card.minBid === 1 && item.score >= 10.0 && currentPlayer.coins >= 1);
+    if (bullySteal) return bullySteal.index;
+  }
+
   // Tactical Nomination Engine for General Human Heuristic Franchises:
   // - Extraction Bait: If top card is an expensive superstar dominated by a richer opponent, nominate to drain them!
   // - Greed Standoff Sneak: If top card is dominated, sneak a high-utility Tier 2 card while leaders hesitate.
@@ -4453,7 +4486,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
     const oppTeamId = highestTeamId;
     const oppLovesCard = doesCardFitTeamStrategy(oppTeamId, card, highestBidderPlayer, G);
-    const opponentCanAffordRaise = highestBidderPlayer && highestBidderPlayer.coins >= nextBid + bidStep;
+    const opponentRaiseStep = (effectiveTeamId === 'bears') ? 2 : 1;
+    const opponentCanAffordRaise = highestBidderPlayer && highestBidderPlayer.coins >= nextBid + opponentRaiseStep;
     const safeRiskForMe = (effectiveTeamId === 'browns')
       ? ((G.board?.round || 1) >= 5 && nextBid <= Math.round(currentPlayer.coins * 0.40))
       : (effectiveTeamId === 'steelers' ? false : (cardScore >= 0)); // Colts strictly avoid bumping negative cards!
@@ -4485,11 +4519,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
 
     const isBullyOrOpportunist = (archetype === 'bully' || archetype === 'opportunist');
-    let bumpChance = teamGenome.priceBumpProb !== undefined ? teamGenome.priceBumpProb : (isBullyOrOpportunist ? 0.35 : 0.15);
-    if (effectiveTeamId === 'bears') {
-      const numPlayers = Object.keys(G.players).length;
-      bumpChance = numPlayers >= 8 ? 0.50 : (numPlayers >= 6 ? 0.35 : 0.20);
-    }
+    const bumpChance = teamGenome.priceBumpProb !== undefined ? teamGenome.priceBumpProb : (isBullyOrOpportunist ? 0.35 : 0.15);
     const isBargainPrice = G.board.highestBid < Math.round(effMax * 0.45);
 
     if (opponentCanAffordRaise && isBargainPrice && safeRiskForMe && spendableCoins >= nextBid && Math.random() < bumpChance) {
@@ -4549,15 +4579,18 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
         isJumpBid = true;
       }
     }
-  } else if (!isChargersRichestFarm &&
-      richestContenderCoins >= nextBid && 
-      richestContenderCoins <= valuation && 
-      richestContenderCoins <= effMax && 
-      currentPlayer.coins >= richestContenderCoins) {
-    const shouldJumpBid = (cardScore >= 6.0 || isSuperstar || redThreatLeaderId !== null || archetype === 'bully' || archetype === 'tycoon' || Math.random() < 0.70);
-    if (shouldJumpBid) {
-      targetBid = richestContenderCoins;
-      isJumpBid = true;
+  } else if (!isChargersRichestFarm) {
+    const generalLockoutDiscount = (effectiveTeamId === 'bears') ? 1 : 0;
+    const generalLockoutTarget = Math.max(nextBid, richestContenderCoins - generalLockoutDiscount);
+    if (generalLockoutTarget >= nextBid && 
+        generalLockoutTarget <= valuation && 
+        generalLockoutTarget <= effMax && 
+        currentPlayer.coins >= generalLockoutTarget) {
+      const shouldJumpBid = (cardScore >= 6.0 || isSuperstar || redThreatLeaderId !== null || archetype === 'bully' || archetype === 'tycoon' || Math.random() < 0.70);
+      if (shouldJumpBid) {
+        targetBid = generalLockoutTarget;
+        isJumpBid = (targetBid > nextBid);
+      }
     }
   }
 
@@ -4721,7 +4754,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
         const topRival = rivalTargets[0];
         const rivalEffMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
         const rivalWilling = Math.min(topRival.coins, Math.min(rivalEffMax, Math.round(topRival.score * 0.75)));
-        const lockoutTarget = Math.max(nextBid, rivalWilling);
+        const lockoutDiscount = (effectiveTeamId === 'bears') ? 1 : 0;
+        const lockoutTarget = Math.max(nextBid, rivalWilling - lockoutDiscount);
         if (lockoutTarget >= nextBid && lockoutTarget <= valuation && lockoutTarget <= spendableCoins && currentPlayer.coins >= lockoutTarget) {
           targetBid = lockoutTarget;
           isJumpBid = (targetBid > nextBid);

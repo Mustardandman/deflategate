@@ -93,21 +93,21 @@ export const EVOLVED_TEAM_GENOMES = {
     "dolphinsZeroSeekingThreshold": 0.0
   },
   "bears": {
-    "deflateWeight": 1.6,
-    "coinWeight": 1,
-    "recurringMult": 0.9,
+    "deflateWeight": 2.0,
+    "coinWeight": 1.1,
+    "recurringMult": 1.0,
     "aggression": 1.2,
-    "reserveCoins": 2,
-    "priceBumpProb": 0.33,
-    "synergyBonus": 1.28,
-    "firstClaimAggression": 1.4,
+    "reserveCoins": 1,
+    "priceBumpProb": 0.35,
+    "synergyBonus": 1.3,
+    "firstClaimAggression": 1.2,
     "postClaimAggression": 0.9,
-    "sub5UrgencyBonus": 1.53,
+    "sub5UrgencyBonus": 2.0,
     "richestBuffer": 1,
-    "instantMaxBidAggression": 0.63,
+    "instantMaxBidAggression": 1.0,
     "boardStrengthWeight": 1.1,
-    "threatDefenseWeight": 1.15,
-    "superstarPriorityMult": 1.26
+    "threatDefenseWeight": 1.3,
+    "superstarPriorityMult": 1.1
   },
   "texans": {
     "deflateWeight": 1.4,
