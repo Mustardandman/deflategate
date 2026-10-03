@@ -546,21 +546,21 @@ export const EVOLVED_TEAM_GENOMES = {
     "superstarPriorityMult": 1.19
   },
   "falcons": {
-    "deflateWeight": 2.05,
-    "coinWeight": 0.83,
+    "deflateWeight": 2.35,
+    "coinWeight": 1,
     "recurringMult": 1,
-    "aggression": 1.1,
-    "reserveCoins": 2,
-    "priceBumpProb": 0.24,
-    "synergyBonus": 0.8,
-    "firstClaimAggression": 1.1,
+    "aggression": 1.18,
+    "reserveCoins": 1,
+    "priceBumpProb": 0.2,
+    "synergyBonus": 1.3,
+    "firstClaimAggression": 1.25,
     "postClaimAggression": 0.9,
-    "sub5UrgencyBonus": 1.08,
+    "sub5UrgencyBonus": 2,
     "richestBuffer": 1,
     "instantMaxBidAggression": 1,
-    "boardStrengthWeight": 1.09,
-    "threatDefenseWeight": 1,
-    "superstarPriorityMult": 1.2
+    "boardStrengthWeight": 1.1,
+    "threatDefenseWeight": 1.1,
+    "superstarPriorityMult": 1.25
   },
   "patriots": {
     "deflateWeight": 2.4,

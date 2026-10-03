@@ -623,8 +623,8 @@ export const resolveAuctionWin = (G, playerID, card) => {
   }
 
   // Check CPU Falcons Mulligan opportunity between card acquisitions:
-  // If opponents have won top players and remaining cards on the block are mediocre scraps for Falcons,
-  // CPU Falcons triggers mulligan to refresh remaining slots.
+  // User directive: "Their ability is good for if things don't work out in the auction phase and they are one of the last teams
+  // (last one or one of the last 2 teams). They can refresh late in the auction to switch a bad player (tier 3) to something random."
   let phaseKey = 'p1';
   if (G.board.round >= 4 && G.board.round <= 6) phaseKey = 'p2';
   if (G.board.round >= 7) phaseKey = 'p3';
@@ -637,10 +637,27 @@ export const resolveAuctionWin = (G, playerID, card) => {
   falconsCpuIds.forEach(fId => {
     const falconsPlayer = G.players[fId];
     const remainingCards = (G.board.auctionPlayers || []).filter(c => c !== null);
-    const opponentsWonCount = Object.keys(G.players).filter(id => id !== fId && G.players[id].hasWonAuction).length;
-    if (opponentsWonCount >= 1 && remainingCards.length > 0 && falconsPlayer.coins >= 3) {
-      const bestScore = Math.max(...remainingCards.map(c => scoreCardForPlayer(c, falconsPlayer, G)));
-      if (bestScore < 16) {
+    const eligibleBidders = Object.keys(G.players).filter(id => !G.players[id].hasWonAuction);
+    const remainingBiddersCount = eligibleBidders.length;
+    const isLateAuction = (G.ctx?.numPlayers || Object.keys(G.players).length) >= 10 ? remainingBiddersCount <= 3 : remainingBiddersCount <= 2;
+    const isEndOfPhaseRound = (G.board.round === 3 || G.board.round === 6 || G.board.round >= 9);
+
+    if (remainingCards.length > 0 && falconsPlayer.coins >= 1) {
+      const bestScore = Math.max(...remainingCards.map(c => scoreCardForPlayer(G, fId, c)));
+      const isTier3OrScrap = (c) => {
+        if (!c) return true;
+        const hasRec = c.effects?.some(e => e.perRound || e.trigger === 'refresh');
+        const instD = c.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        const instC = c.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+        return !hasRec && instD <= 2 && instC <= 3;
+      };
+      const allScraps = remainingCards.every(c => isTier3OrScrap(c) || scoreCardForPlayer(G, fId, c) < 18.0);
+
+      const shouldMulligan = (isLateAuction && (bestScore < 20.0 || allScraps)) ||
+                            (isEndOfPhaseRound && bestScore < 20.0) ||
+                            (bestScore < 15.0);
+
+      if (shouldMulligan) {
         if (!G.decks.discard) G.decks.discard = [];
         G.decks.discard.push(...remainingCards);
         G.board.auctionPlayers = G.board.auctionPlayers.map(c => {
@@ -2110,6 +2127,34 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     }
   }
 
+  if (effectiveTeamId === 'falcons') {
+    // 1. Strict ban on Deshaun Watson and recurring inflation poison
+    if (card.id === 'deshaun_watson' || card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate')) {
+      return -50.0;
+    }
+
+    const recDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const instDeflate = card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+    const recCoins = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+    const instCoins = card.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+
+    // 2. High starting PSI (48) requires strong deflation urgency
+    if (recDeflate >= 2) rawScore += 7.0;
+    if (instDeflate >= 3) rawScore += 5.0;
+
+    // 3. Early economic boost (Rounds 1-3) to build up beyond starting 9 coins
+    const currentRound = G?.board?.round || 1;
+    if (currentRound <= 3) {
+      if (recCoins >= 3) rawScore += 5.0;
+      else if (instCoins >= 4) rawScore += 4.0;
+    }
+
+    // 4. Closer awareness
+    if (p.psi <= 16 && instDeflate >= p.psi) {
+      rawScore += 35.0;
+    }
+  }
+
   // Cards with low Max Bid
   const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
   if (effMax <= 4 && p.coins >= effMax) {
@@ -2960,6 +3005,34 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     // 4. Default: Highest scored card
     eligibleCards.sort((a, b) => b.score - a.score);
     return eligibleCards[0].index;
+  }
+
+  // Falcons Strategic Nomination:
+  // - If <= 16 PSI: Prioritize game-winning instant closer nukes.
+  // - Clean card selection: Strictly filter out Deshaun Watson / recurring inflation poison.
+  // - In early rounds, prioritize winnable deflation and economic anchors.
+  if (effectiveTeamId === 'falcons') {
+    const psi = currentPlayer.psi || 48;
+
+    // 1. Instant closer check (<= 16 PSI closer mode)
+    if (psi <= 16) {
+      const closerNuke = eligibleCards.find(item => {
+        const instDeflate = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return instDeflate >= psi && currentPlayer.coins >= item.card.minBid;
+      });
+      if (closerNuke) return closerNuke.index;
+    }
+
+    // 2. Filter out poison cards
+    const cleanCards = eligibleCards.filter(item =>
+      item.card.id !== 'deshaun_watson' &&
+      !item.card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate')
+    );
+
+    if (cleanCards.length > 0) {
+      cleanCards.sort((a, b) => b.score - a.score);
+      return cleanCards[0].index;
+    }
   }
 
   // Steelers Nomination Strategy:
@@ -4669,6 +4742,34 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  // Falcons Bidding Discipline & Late-Auction Leverage (User Directive):
+  // User insight: Falcons' ability is strongest late in the auction (when only 1 or 2 teams remain, or 3 in 10P).
+  // In early bidding (when multiple active bidders remain):
+  // - If card is Deshaun Watson or recurring inflation: strictly PASS ({ shouldBid: false, bidAmount: 0 }).
+  // - If card is mediocre (score < 20 and not recurring deflate), or contested:
+  //   Falcons INTENTIONALLY PASSES to let rivals exhaust coins and exit!
+  // - Only bid early if the card is an elite centerpiece (score >= 20 or recurring deflate >= 2) or a cheap bargain (nextBid <= 2 && score >= 12).
+  // - When remaining active bidders <= lateAuctionThreshold: Falcons is now in their power window! Bid normally or aggressively.
+  if (effectiveTeamId === 'falcons') {
+    if (card.id === 'deshaun_watson' || card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate')) {
+      return { shouldBid: false, bidAmount: 0 };
+    }
+
+    const eligibleBidders = Object.keys(G.players).filter(id => !G.players[id].hasWonAuction);
+    const remainingBiddersCount = eligibleBidders.length;
+    const isLateAuction = (G.ctx?.numPlayers || Object.keys(G.players).length) >= 10 ? remainingBiddersCount <= 3 : remainingBiddersCount <= 2;
+
+    if (!isLateAuction) {
+      const recDeflate = card.effects?.filter(e => (e.perRound || e.trigger === 'refresh') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      const isPremier = cardScore >= 20.0 || recDeflate >= 2 || isSuperstar;
+      const isCheapBargain = (nextBid <= 2 && cardScore >= 12.0);
+
+      if (!isPremier && !isCheapBargain) {
+        return { shouldBid: false, bidAmount: 0 };
+      }
+    }
+  }
+
   // Jets Ability: Pay Maximum -> Deflate 4 PSI instantly
   // User Strategy: "When thinking should I max this player at 15 coins just to get my ability,
   // I would think first, what is the most I would pay for this player (valuation based on other board options)?
@@ -5084,12 +5185,26 @@ const executeCpuMoveInternal = (G, ctx, events) => {
       if (G.board.round >= 7) phaseKey = 'p3';
       if (!currentPlayer.falconsPhaseUses[phaseKey]) {
         const remainingCards = G.board.auctionPlayers.filter(c => c !== null);
-        const opponentsWonCount = Object.keys(G.players).filter(id => id !== currentPlayerId && G.players[id].hasWonAuction).length;
+        const eligibleBidders = Object.keys(G.players).filter(id => !G.players[id].hasWonAuction);
+        const remainingBiddersCount = eligibleBidders.length;
+        const isLateAuction = (G.ctx?.numPlayers || Object.keys(G.players).length) >= 10 ? remainingBiddersCount <= 3 : remainingBiddersCount <= 2;
         const isEndOfPhaseRound = (G.board.round === 3 || G.board.round === 6 || G.board.round >= 9);
+
         if (remainingCards.length > 0) {
-          const bestScore = Math.max(...remainingCards.map(c => scoreCardForPlayer(c, currentPlayer, G)));
-          const shouldMulligan = (opponentsWonCount >= 1 && bestScore < 16 && currentPlayer.coins >= 3) ||
-                                (isEndOfPhaseRound && bestScore < 18);
+          const bestScore = Math.max(...remainingCards.map(c => scoreCardForPlayer(G, currentPlayerId, c)));
+          const isTier3OrScrap = (c) => {
+            if (!c) return true;
+            const hasRec = c.effects?.some(e => e.perRound || e.trigger === 'refresh');
+            const instD = c.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+            const instC = c.effects?.filter(e => !e.perRound && e.type === 'coins').reduce((s, e) => s + e.amount, 0) || 0;
+            return !hasRec && instD <= 2 && instC <= 3;
+          };
+          const allScraps = remainingCards.every(c => isTier3OrScrap(c) || scoreCardForPlayer(G, currentPlayerId, c) < 18.0);
+
+          const shouldMulligan = (isLateAuction && (bestScore < 20.0 || allScraps)) ||
+                                (isEndOfPhaseRound && bestScore < 20.0) ||
+                                (bestScore < 15.0);
+
           if (shouldMulligan) {
             const oldRemaining = G.board.auctionPlayers.filter(c => c !== null);
             if (!G.decks.discard) G.decks.discard = [];

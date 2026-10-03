@@ -3353,6 +3353,84 @@ Prior to Playtest 62, the Green Bay Packers suffered from low win rates, particu
 - **Production Build**:
   - `npm run build` compiled cleanly in 10.26s with 0 errors.
 
+---
+
+## Playtest 64: Atlanta Falcons Late-Auction Mulligan & Passing Strategy Optimization
+
+### 1. Executive Summary & Core Objective
+The **Atlanta Falcons** possess a powerful unique franchise ability: **Falcons Mulligan** (once per phase, discard all remaining un-won auction cards on the board and draw brand-new cards from the deck). However, diagnostics in `scratch/diagnoseVikingsAndFalcons.mjs` and loss-traces revealed critical strategic flaws:
+1. **Ability Under-Utilization**: Falcons averaged only **0.14 mulligans per game**. The previous trigger condition required opponents to have won cards while requiring remaining cards to have an artificially low score threshold, but argument inversion `scoreCardForPlayer(c, falconsPlayer, G)` meant the condition almost never triggered.
+2. **Exhaustion Before the Power Window**: When 3+ bidders were active, Falcons needlessly contested mediocre cards or bid wars against 12-14 coin bullies, emptying their meager 9-coin starting stack and exiting the auction before they could leverage their late mulligan.
+3. **Poison Suicide**: Falcons routinely purchased Deshaun Watson (+1 recurring inflation), condemning their 48 starting PSI to an unwinnable uphill climb.
+
+**User Directive Implemented**:
+> "Their ability is good for if things don't work out in the auction phase and they are one of the last teams (last one or one of the last 2 teams). They can refresh late in the auction to switch a bad player (tier 3) to something random. They could always pass intentially the whole auction to be the last person to use their ability."
+
+---
+
+### 2. Comprehensive Mechanical & Strategic Changes
+
+1. **Late-Auction Mulligan Redesign ([`src/Game.js:625-668`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L625-L668) & [`src/Game.js:5160-5205`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L5160-L5205))**:
+   - Fixed argument order in `scoreCardForPlayer(G, fId, c)`.
+   - **Late Auction Threshold**: Triggered when Falcons is one of the final remaining teams (`eligibleBidders.length <= (lobbySize >= 10 ? 3 : 2)`).
+   - **Scrap / Mediocre Detection**: If remaining cards are Tier 3 scraps (instant effects $\le 2$ deflate/3 coins with no recurring) or `bestScore < 20.0`, CPU Falcons activates the Mulligan!
+   - **End of Phase Urgency**: If on the last round of a phase (Rounds 3, 6, 9) and no top card exists (`bestScore < 20.0`), CPU Falcons automatically fires the Mulligan before it expires.
+   - Result: Mulligan frequency skyrocketed from **0.14 $\to$ 0.97–1.10 mulligans per game**!
+
+2. **Intentional Passing & Early Auction Discipline ([`src/Game.js:4750-4785`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L4750-L4785))**:
+   - **Poison Rejection**: Absolute veto on Deshaun Watson and recurring inflation (`{ shouldBid: false, bidAmount: 0 }`).
+   - **Early Passing Protocol**: When $> 2$ bidders remain ($> 3$ in 10P), Falcons **intentionally passes** on mediocre or contested cards (`score < 20.0` without recurring deflation $\ge 2$).
+   - **Exceptions**: Falcons will only bid early on premier centerpieces (Tier 1 superstars, recurring deflation $\ge 2$) or cheap bargains (`nextBid <= 2 && score >= 12.0`).
+   - This guarantees Atlanta reaches the end of the round with a healthy purse to exploit their late Mulligan.
+
+3. **Custom Valuation & Strategic Nomination ([`src/Game.js:2110-2140`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L2110-L2140) & [`src/Game.js:2990-3025`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L2990-L3025))**:
+   - Deshaun Watson & recurring inflation: **-50.0 pts** ban.
+   - Deflation urgency for 48 starting PSI: recurring deflation $\ge 2$ awards **+7.0 pts**; instant deflation $\ge 3$ awards **+5.0 pts**.
+   - Early economy boost (Rounds 1–3): recurring coins $\ge 3$ awards **+5.0 pts** to build capital beyond starting 9 coins.
+   - Closer awareness: `instDeflate >= p.psi && p.psi <= 16` awards **+35.0 pts**.
+   - Closer nomination: Prioritizes instant closer nukes (Pollard, Henry, Jones) when $\le 16$ PSI.
+
+4. **Genome Calibration ([`src/ai/teamGenomes.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/teamGenomes.js#L56) & [`src/ai/evolvedWeights.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/evolvedWeights.js#L548-L564))**:
+   - `deflateWeight`: Increased from 1.60 $\to$ **2.35**.
+   - `coinWeight`: **1.00**.
+   - `reserveCoins`: Reduced from 2 $\to$ **1** (frees capital to exploit late mulligans).
+   - `aggression`: Increased from 1.10 $\to$ **1.18**.
+   - `firstClaimAggression`: Increased from 1.10 $\to$ **1.25**.
+   - `superstarPriorityMult`: Increased from 1.20 $\to$ **1.25**.
+   - `threatDefenseWeight`: Increased from 1.00 $\to$ **1.10**.
+
+---
+
+### 3. Simulation & Fine-Tuning Results
+
+#### 100-Game Detailed Benchmark (4P, 7P, 10P):
+- **4-Player Lobby**: **33.0% Win Rate** | **9.2 Avg PSI** (Baseline: 18.8%, Par: 25.0%)
+- **7-Player Lobby**: **22.0% Win Rate** | **11.2 Avg PSI** (Baseline: 12.5%, Par: 14.3%, **1.54x League Par!**)
+- **10-Player Lobby**: **12.0% Win Rate** | **15.6 Avg PSI** (Baseline: 11.3%, Par: 10.0%, **above League Par!**)
+- **Composite League Performance**:
+  - **Win Rate**: **22.3%** (vs 14.2% baseline, **+8.1% absolute increase across 100-game simulations!**)
+  - **Composite PSI**: **11.98** (vs 15.48 baseline, **-3.50 PSI reduction**)
+  - **Ability Utilization**: **0.97 mulligans per game** (vs 0.14 baseline, **7x increase**)
+
+---
+
+### 4. Verification Suite & Test Results
+- **Dedicated Falcons Verification Suite (`scratch/testPlaytest64Falcons.mjs`)**:
+  - Test 1: Intentional Passing & Early Auction Discipline (Watson pass, mediocre pass, premier contest): **PASSED ✅**
+  - Test 2: Late-Auction Leverage & Passing to the End ($\le 2$ bidders active): **PASSED ✅**
+  - Test 3: Late-Auction Mulligan Trigger (Scrap refresh & phase use check): **PASSED ✅**
+  - Test 4: Strategic Nomination (Closer nuke & clean selection): **PASSED ✅**
+  - Test 5: Active & Evolved Genome Verification: **PASSED ✅**
+  - **Result: 9/9 Checks Passed 100% ✅**.
+
+- **League Regression Suites**:
+  - Playtest 63 (Vikings): **PASSED 15/15 (100%) ✅**
+  - Playtest 28 (Deck Swap & Animation): **PASSED 4/4 (100%) ✅**
+
+- **Production Build**:
+  - `npm run build` compiled cleanly in 7.40s with 0 errors.
+
+
 
 
 
