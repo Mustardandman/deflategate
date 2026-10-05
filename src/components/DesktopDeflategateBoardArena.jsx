@@ -169,6 +169,7 @@ export const DesktopDeflategateBoardArena = ({
 
   const effMaxBid = activeCard ? getEffectiveCardMaxBid(activeCard, G.board.activeEvent) : 0;
   const maxAllowedBid = activeCard && myPlayer ? (isSoleRemainingZeroCoins ? 0 : Math.min(myPlayer.coins, effMaxBid)) : 0;
+  const canAffordBid = isSoleRemainingZeroCoins ? true : (activeCard && myPlayer ? (myPlayer.coins >= nextBid && nextBid <= effMaxBid) : false);
 
   const activeCardId = activeCard?.uniqueId || G.board.activeAuctionCardIndex;
   const lastActiveCardRef = useRef(null);
@@ -188,12 +189,12 @@ export const DesktopDeflategateBoardArena = ({
         if (nextBid > 0 && customBid < nextBid) {
           setCustomBid(nextBid);
         }
-        if (maxAllowedBid > 0 && customBid > maxAllowedBid) {
+        if (canAffordBid && maxAllowedBid > 0 && customBid > maxAllowedBid) {
           setCustomBid(maxAllowedBid);
         }
       }
     }
-  }, [activeCardId, nextBid, maxAllowedBid, isSoleRemainingZeroCoins]);
+  }, [activeCardId, nextBid, maxAllowedBid, isSoleRemainingZeroCoins, canAffordBid]);
 
   // Transient 1.8s toast for CPU / franchise abilities
   useEffect(() => {
@@ -1554,12 +1555,12 @@ export const DesktopDeflategateBoardArena = ({
                 </div>
 
                 {/* Bid + and - buttons to alter your bid in the middle of the middle */}
-                <div className="flex flex-col items-center">
+                <div className={`flex flex-col items-center ${!canAffordBid ? 'opacity-40 pointer-events-none' : ''}`}>
                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Your Bid</div>
                   <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl p-0.5 shadow-inner">
                     <button
                       onClick={() => setCustomBid(b => Math.max(nextBid, b - 1))}
-                      disabled={!isMyTurnToBid || customBid <= nextBid}
+                      disabled={!isMyTurnToBid || !canAffordBid || customBid <= nextBid}
                       className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-slate-800 hover:bg-slate-750 active:scale-95 text-white font-black text-lg flex items-center justify-center disabled:opacity-30 cursor-pointer border border-slate-700 transition-all"
                       title="Decrease bid"
                     >
@@ -1570,7 +1571,7 @@ export const DesktopDeflategateBoardArena = ({
                     </span>
                     <button
                       onClick={() => setCustomBid(b => Math.min(maxAllowedBid, b + 1))}
-                      disabled={!isMyTurnToBid || customBid >= maxAllowedBid}
+                      disabled={!isMyTurnToBid || !canAffordBid || customBid >= maxAllowedBid}
                       className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-slate-800 hover:bg-slate-750 active:scale-95 text-white font-black text-lg flex items-center justify-center disabled:opacity-30 cursor-pointer border border-slate-700 transition-all"
                       title="Increase bid"
                     >
@@ -1594,16 +1595,16 @@ export const DesktopDeflategateBoardArena = ({
                 {/* Bottom Middle: Bid X */}
                 <button
                   onClick={() => moves.bid(customBid, effectivePlayerID)}
-                  disabled={!isMyTurnToBid || customBid < nextBid || customBid > maxAllowedBid}
-                  className="py-2 rounded-xl font-bold text-xs uppercase text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-30 shadow cursor-pointer transition-transform hover:scale-102"
+                  disabled={!isMyTurnToBid || !canAffordBid || customBid < nextBid || customBid > maxAllowedBid}
+                  className="py-2 rounded-xl font-bold text-xs uppercase text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-30 shadow cursor-pointer transition-transform hover:scale-102 truncate"
                 >
-                  Bid {customBid}🪙
+                  {!canAffordBid ? "Can't Afford" : `Bid ${customBid}🪙`}
                 </button>
 
                 {/* Bottom Right: Buy Max */}
                 <button
                   onClick={() => moves.bid(effMaxBid, effectivePlayerID)}
-                  disabled={!isMyTurnToBid || myPlayer?.coins < effMaxBid || effMaxBid < nextBid}
+                  disabled={!isMyTurnToBid || !canAffordBid || myPlayer?.coins < effMaxBid || effMaxBid < nextBid}
                   className="py-2 rounded-xl font-bold text-xs uppercase text-black bg-amber-400 hover:bg-amber-300 disabled:opacity-30 shadow cursor-pointer transition-transform hover:scale-102"
                 >
                   Buy Max

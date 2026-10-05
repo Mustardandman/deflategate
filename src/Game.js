@@ -45,6 +45,23 @@ export const addBannerEvent = (G, { icon = '⚡', title, text, round }) => {
   if (G.board.gameLogBannerHistory.length > 50) {
     G.board.gameLogBannerHistory = G.board.gameLogBannerHistory.slice(0, 50);
   }
+
+  // Also push to abilityNotification and abilityNotificationHistory so Mobile and Desktop banners stay synchronized
+  const notif = {
+    id: entry.id,
+    icon: entry.icon || '⚡',
+    teamName: entry.title || 'Event',
+    title: entry.title,
+    message: entry.text,
+    round: entry.round,
+    timestamp: entry.timestamp
+  };
+  G.board.abilityNotification = notif;
+  if (!G.board.abilityNotificationHistory) G.board.abilityNotificationHistory = [];
+  G.board.abilityNotificationHistory.unshift(notif);
+  if (G.board.abilityNotificationHistory.length > 50) {
+    G.board.abilityNotificationHistory = G.board.abilityNotificationHistory.slice(0, 50);
+  }
 };
 
 export const triggerAbilityNotification = (G, playerID, teamId, title, message) => {
@@ -84,23 +101,32 @@ export const triggerAbilityNotification = (G, playerID, teamId, title, message) 
     title,
     message,
     icon,
-    round: G.board.round || 1,
+    round: G.board?.round || 1,
     timestamp: Date.now()
   };
   G.board.abilityNotification = notif;
   if (!G.board.abilityNotificationHistory) G.board.abilityNotificationHistory = [];
   G.board.abilityNotificationHistory.unshift(notif);
+  if (G.board.abilityNotificationHistory.length > 50) {
+    G.board.abilityNotificationHistory = G.board.abilityNotificationHistory.slice(0, 50);
+  }
 
   // Also record in central Banner Log history for player recollection
   const bannerTitle = (title && teamId && title.toLowerCase().includes(teamId.toLowerCase()))
     ? title
     : `${teamName}: ${title}`;
-  addBannerEvent(G, {
+  if (!G.board.gameLogBannerHistory) G.board.gameLogBannerHistory = [];
+  G.board.gameLogBannerHistory.unshift({
+    id: notif.id,
     icon,
     title: bannerTitle,
     text: message,
-    round: G.board?.round || 1
+    round: G.board?.round || 1,
+    timestamp: notif.timestamp
   });
+  if (G.board.gameLogBannerHistory.length > 50) {
+    G.board.gameLogBannerHistory = G.board.gameLogBannerHistory.slice(0, 50);
+  }
 };
 
 export const checkDolphinsEmergencyCoins = (G, playerID) => {
@@ -201,7 +227,8 @@ export const resolveAuctionWin = (G, playerID, card) => {
   p.cardsWonThisRound = (p.cardsWonThisRound || 0) + 1;
   const maxWinsThisRound = (G.board.activeEvent?.category === 'double_draft') ? 2 : 1;
   p.hasWonAuction = p.cardsWonThisRound >= maxWinsThisRound;
-  p.coins -= G.board.highestBid;
+  const bidCost = G.board.highestBid || 0;
+  p.coins = Math.max(0, (p.coins || 0) - bidCost);
   checkDolphinsEmergencyCoins(G, playerID);
 
   const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
@@ -418,6 +445,7 @@ export const resolveAuctionWin = (G, playerID, card) => {
           if (!G.decks.discard) G.decks.discard = [];
           G.decks.discard.push(card);
           addLog(G, `🐅 Bengals Ability: CPU Player ${displayId} discarded ${card.name} after claiming its instant effect, avoiding recurring penalties.`);
+          triggerAbilityNotification(G, playerID, 'bengals', 'Bengals Discard', `Player ${displayId} discarded ${card.name} to avoid recurring penalties.`);
           return;
         }
 
@@ -427,6 +455,7 @@ export const resolveAuctionWin = (G, playerID, card) => {
           if (!G.decks.discard) G.decks.discard = [];
           G.decks.discard.push(card);
           addLog(G, `🐅 Bengals Ability: CPU Player ${displayId} discarded instant card ${card.name} after triggering its instant effect.`);
+          triggerAbilityNotification(G, playerID, 'bengals', 'Bengals Discard', `Player ${displayId} discarded instant card ${card.name} after triggering effect.`);
           return;
         }
 
@@ -442,6 +471,7 @@ export const resolveAuctionWin = (G, playerID, card) => {
             if (!G.decks.discard) G.decks.discard = [];
             G.decks.discard.push(card);
             addLog(G, `🐅 Bengals Ability: CPU Player ${displayId} discarded ${card.name} to preserve existing superior active lineup.`);
+            triggerAbilityNotification(G, playerID, 'bengals', 'Bengals Discard', `Player ${displayId} discarded ${card.name} to preserve active lineup.`);
             return;
           }
         }
@@ -5492,6 +5522,12 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  // Final safety checks: bidAmount must never exceed player coins or effective maximum bid!
+  targetBid = Math.min(currentPlayer.coins || 0, Math.min(effMax, targetBid));
+  if (targetBid < nextBid) {
+    return { shouldBid: false, bidAmount: 0 };
+  }
+
   return { shouldBid: true, bidAmount: targetBid, isJumpBid };
 };
 
@@ -5679,6 +5715,10 @@ const executeCpuMoveInternal = (G, ctx, events) => {
         G.players[currentPlayerId].outbidCount = (G.players[currentPlayerId].outbidCount || 0) + 1;
       }
       G.board.highestBid = nextBid;
+      G.board.highestBidder = currentPlayerId;
+      if (G.board.passedAuctionPlayers && G.board.passedAuctionPlayers.includes(currentPlayerId)) {
+        G.board.passedAuctionPlayers = G.board.passedAuctionPlayers.filter(id => id !== currentPlayerId);
+      }
       G.board.lastActionText = decision.isChampionshipBid
         ? `🏆 Player ${displayId} placed a CHAMPIONSHIP bid of ${nextBid} coins on ${card.name}!`
         : (decision.isJumpBid
@@ -6133,6 +6173,7 @@ export const calculateRefreshResults = (G) => {
       if (distinctPos.size >= 3) {
         bonusCoins += 3;
         addLog(G, `Ravens Ability: Controlled 3 distinct positions (${[...distinctPos].join(', ')}), gained +3 coins.`);
+        triggerAbilityNotification(G, playerID, 'ravens', 'Ravens Tri-Position Mastery', `Controlled 3 positions (${[...distinctPos].join(', ')}), gained +3 coins!`);
       }
     }
 
@@ -6958,15 +6999,15 @@ export const executeActiveEvent = (G) => {
     G.board.eventNotification = `❄️ Cold Air: All players deflated by -${ev.amount || 7} PSI!`;
     addLog(G, G.board.eventNotification);
   } else if (ev.category === 'match_second_psi') {
-    const sorted = Object.values(G.players).sort((a, b) => b.psi - a.psi);
+    const sorted = Object.entries(G.players).sort((a, b) => b[1].psi - a[1].psi);
     if (sorted.length >= 2) {
-      const highest = sorted[0];
-      const secondHighest = sorted[1];
+      const [highestId, highest] = sorted[0];
+      const [, secondHighest] = sorted[1];
       if (highest.psi === secondHighest.psi) {
         G.board.eventNotification = `1st Overall Pick: Tie for highest PSI (${highest.psi}). No deflation occurred.`;
       } else {
         const diff = highest.psi - secondHighest.psi;
-        highest.psi = secondHighest.psi;
+        applyPsiDeflated(G, highestId, diff);
         G.board.eventNotification = `1st Overall Pick: ${highest.team?.name || 'Player'} deflated by -${diff} PSI to match 2nd highest (${secondHighest.psi}).`;
       }
       addLog(G, G.board.eventNotification);
@@ -7362,6 +7403,7 @@ export const DeflategateGame = {
       G.decks.discard.push(wonCard);
       const displayId = parseInt(targetPlayerId) + 1;
       addLog(G, `Player ${displayId} chose to discard acquired card ${wonCard.name}.`);
+      triggerAbilityNotification(G, targetPlayerId, 'bengals', 'Bengals Discard', `Player ${displayId} discarded ${wonCard.name} instead of adding to lineup!`);
       G.pendingReplacement = null;
 
       if (G.board.postAuctionComplete === false && !G.board.pendingBills && !G.board.pendingEagles) {
@@ -7378,6 +7420,7 @@ export const DeflategateGame = {
       G.decks.event = newDeckOrder;
       G.board.jaguarsAbilityUsed = true;
       const displayId = parseInt(playerID) + 1;
+      triggerAbilityNotification(G, playerID, 'jaguars', 'Jaguars Foresight', `Player ${displayId} (${p.team.name}) reordered the Event Deck!`);
       G.board.jaguarsPopupNotification = `🐆 Jaguars Ability Used! Player ${displayId} (${p.team.name}) has secretly reordered the Event Deck!`;
       addLog(G, G.board.jaguarsPopupNotification);
     },
@@ -7578,22 +7621,24 @@ export const DeflategateGame = {
     },
     freeAgencySign: ({ G, playerID, events }, replaceIndex, actingPlayerId) => {
       if (!G.board.pendingFreeAgency || !G.board.pendingFreeAgency.card) return INVALID_MOVE;
-      const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
-      if (G.board.pendingFreeAgency.playerID && String(targetPlayerId) !== String(G.board.pendingFreeAgency.playerID)) {
+      const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]));
+      const actualReplaceIdx = (typeof replaceIndex === 'number') ? replaceIndex : -1;
+      if (G.board.pendingFreeAgency.playerID && String(actualTargetId) !== String(G.board.pendingFreeAgency.playerID)) {
         return INVALID_MOVE;
       }
-      const p = G.players[targetPlayerId];
+      const p = G.players[actualTargetId];
+      if (!p) return INVALID_MOVE;
       const card = G.board.pendingFreeAgency.card;
       const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
-      if (p.coins < effMax) return INVALID_MOVE;
+      if ((p.coins || 0) < effMax) return INVALID_MOVE;
 
-      p.coins -= effMax;
-      checkDolphinsEmergencyCoins(G, targetPlayerId);
-      const displayId = parseInt(targetPlayerId) + 1;
+      p.coins = Math.max(0, (p.coins || 0) - effMax);
+      checkDolphinsEmergencyCoins(G, actualTargetId);
+      const displayId = parseInt(actualTargetId) + 1;
       const isColts = getEffectiveTeamId(p) === 'colts';
-      if (!isColts && replaceIndex >= 0 && replaceIndex < p.lineup.length) {
-        const discarded = p.lineup[replaceIndex];
-        p.lineup[replaceIndex] = card;
+      if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
+        const discarded = p.lineup[actualReplaceIdx];
+        p.lineup[actualReplaceIdx] = card;
         if (!G.decks.discard) G.decks.discard = [];
         G.decks.discard.push(discarded);
         addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins, replacing ${discarded.name}!`);
@@ -7601,9 +7646,69 @@ export const DeflategateGame = {
         p.lineup.push(card);
         addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins!`);
       }
+
+      // Jets Ability: Deflate 4 on max bid!
+      if (getEffectiveTeamId(p) === 'jets') {
+        applyPsiDeflated(G, actualTargetId, 4);
+        addLog(G, `✈️ Jets Ability: Paid max price for Free Agent ${card.name}! Deflated 4 PSI.`);
+        triggerAbilityNotification(G, actualTargetId, 'jets', 'Jets: Max Bid Free Agent', `Paid maximum price (${effMax} coins) for ${card.name}! Deflated 4 PSI.`);
+      }
+
+      // Instant card effects & triggers
+      addAcquiredCardEffects(G, actualTargetId, card, effMax, true);
+
       advanceFreeAgencyQueue(G);
+      if (!G.board.pendingFreeAgency && !G.board.pendingNewCapLimit && !G.board.pendingTradeRumors && !G.board.bonusAuction) {
+        if (events && events.setPhase) {
+          events.setPhase('preAuctionPhase');
+        } else if (events && events.endPhase) {
+          events.endPhase();
+        }
+      }
     },
-    freeAgencyPass: ({ G, playerID }, actingPlayerId) => {
+    freeAgencyBuy: ({ G, playerID, events }, replaceIndex, actingPlayerId) => {
+      if (!G.board.pendingFreeAgency || !G.board.pendingFreeAgency.card) return INVALID_MOVE;
+      const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]));
+      const actualReplaceIdx = (typeof replaceIndex === 'number') ? replaceIndex : -1;
+      const p = G.players[actualTargetId];
+      if (!p) return INVALID_MOVE;
+      const card = G.board.pendingFreeAgency.card;
+      const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
+      if ((p.coins || 0) < effMax) return INVALID_MOVE;
+
+      p.coins = Math.max(0, (p.coins || 0) - effMax);
+      checkDolphinsEmergencyCoins(G, actualTargetId);
+      const displayId = parseInt(actualTargetId) + 1;
+      const isColts = getEffectiveTeamId(p) === 'colts';
+      if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
+        const discarded = p.lineup[actualReplaceIdx];
+        p.lineup[actualReplaceIdx] = card;
+        if (!G.decks.discard) G.decks.discard = [];
+        G.decks.discard.push(discarded);
+        addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins, replacing ${discarded.name}!`);
+      } else {
+        p.lineup.push(card);
+        addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins!`);
+      }
+
+      if (getEffectiveTeamId(p) === 'jets') {
+        applyPsiDeflated(G, actualTargetId, 4);
+        addLog(G, `✈️ Jets Ability: Paid max price for Free Agent ${card.name}! Deflated 4 PSI.`);
+        triggerAbilityNotification(G, actualTargetId, 'jets', 'Jets: Max Bid Free Agent', `Paid maximum price (${effMax} coins) for ${card.name}! Deflated 4 PSI.`);
+      }
+
+      addAcquiredCardEffects(G, actualTargetId, card, effMax, true);
+
+      advanceFreeAgencyQueue(G);
+      if (!G.board.pendingFreeAgency && !G.board.pendingNewCapLimit && !G.board.pendingTradeRumors && !G.board.bonusAuction) {
+        if (events && events.setPhase) {
+          events.setPhase('preAuctionPhase');
+        } else if (events && events.endPhase) {
+          events.endPhase();
+        }
+      }
+    },
+    freeAgencyPass: ({ G, playerID, events }, actingPlayerId) => {
       if (!G.board.pendingFreeAgency) return INVALID_MOVE;
       const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
       if (G.board.pendingFreeAgency.playerID && String(targetPlayerId) !== String(G.board.pendingFreeAgency.playerID)) {
@@ -7616,6 +7721,13 @@ export const DeflategateGame = {
       const displayId = parseInt(targetPlayerId) + 1;
       addLog(G, `Free Agency: Player ${displayId} passed.`);
       advanceFreeAgencyQueue(G);
+      if (!G.board.pendingFreeAgency && !G.board.pendingNewCapLimit && !G.board.pendingTradeRumors && !G.board.bonusAuction) {
+        if (events && events.setPhase) {
+          events.setPhase('preAuctionPhase');
+        } else if (events && events.endPhase) {
+          events.endPhase();
+        }
+      }
     },
     setQbChoice: ({ G, playerID }, cardUniqueId, choice) => {
       if (!G.board.qbChoices) G.board.qbChoices = {};
@@ -7633,10 +7745,17 @@ export const DeflategateGame = {
         G.board.refreshStage = 'complete';
       }
     },
-    confirmEventReveal: ({ G }) => {
+    confirmEventReveal: ({ G, events }) => {
       G.board.eventFlipRevealed = false;
       G.board.eventConfirmed = true;
       executeActiveEvent(G);
+      if (!G.board.pendingRivalry && !G.board.pendingTradeRumors && !G.board.tradeRumorsSummary && !G.board.bonusAuction && !G.board.pendingFreeAgency && !G.board.pendingNewCapLimit) {
+        if (events && events.setPhase) {
+          events.setPhase('preAuctionPhase');
+        } else if (events && events.endPhase) {
+          events.endPhase();
+        }
+      }
     },
     proceedToRefresh: ({ G, events }) => {
       G.board.pendingBills = null;
@@ -8140,6 +8259,7 @@ export const DeflategateGame = {
             const teamTitle = steelersPlayer.team?.id === 'buccaneers' ? 'Bucs (Steelers Ability)' : 'Steelers';
             G.board.steelersAlert = `⚡ ${teamTitle} Ability: Strictly richest! Transferred 1 PSI to opponents (PSI -${givenCount}).`;
             addLog(G, G.board.steelersAlert);
+            triggerAbilityNotification(G, steelersId, 'steelers', 'Steelers Richest Bounty', `Strictly richest! Transferred 1 PSI to rivals (-${givenCount} PSI).`);
           }
         });
 
@@ -8229,10 +8349,17 @@ export const DeflategateGame = {
         dismissJaguarsPopup: ({ G }) => {
           G.board.jaguarsPopupNotification = null;
         },
-        confirmEventReveal: ({ G }) => {
+        confirmEventReveal: ({ G, events }) => {
           G.board.eventFlipRevealed = false;
           G.board.eventConfirmed = true;
           executeActiveEvent(G);
+          if (!G.board.pendingRivalry && !G.board.pendingTradeRumors && !G.board.tradeRumorsSummary && !G.board.bonusAuction && !G.board.pendingFreeAgency && !G.board.pendingNewCapLimit) {
+            if (events && events.setPhase) {
+              events.setPhase('preAuctionPhase');
+            } else if (events && events.endPhase) {
+              events.endPhase();
+            }
+          }
         },
         buyPracticeSquad: ({ G, playerID }, actingPlayerId) => {
           if (!G.board.pendingNewCapLimit) return INVALID_MOVE;
@@ -8343,21 +8470,24 @@ export const DeflategateGame = {
         },
         freeAgencySign: ({ G, playerID, events }, replaceIndex, actingPlayerId) => {
           if (!G.board.pendingFreeAgency || !G.board.pendingFreeAgency.card) return INVALID_MOVE;
-          const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
-          if (G.board.pendingFreeAgency.playerID && String(targetPlayerId) !== String(G.board.pendingFreeAgency.playerID)) {
+          const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]));
+          const actualReplaceIdx = (typeof replaceIndex === 'number') ? replaceIndex : -1;
+          if (G.board.pendingFreeAgency.playerID && String(actualTargetId) !== String(G.board.pendingFreeAgency.playerID)) {
             return INVALID_MOVE;
           }
-          const p = G.players[targetPlayerId];
+          const p = G.players[actualTargetId];
+          if (!p) return INVALID_MOVE;
           const card = G.board.pendingFreeAgency.card;
           const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
-          if (p.coins < effMax) return INVALID_MOVE;
+          if ((p.coins || 0) < effMax) return INVALID_MOVE;
 
-          p.coins -= effMax;
-          const displayId = parseInt(targetPlayerId) + 1;
+          p.coins = Math.max(0, (p.coins || 0) - effMax);
+          checkDolphinsEmergencyCoins(G, actualTargetId);
+          const displayId = parseInt(actualTargetId) + 1;
           const isColts = getEffectiveTeamId(p) === 'colts';
-          if (!isColts && replaceIndex >= 0 && replaceIndex < p.lineup.length) {
-            const discarded = p.lineup[replaceIndex];
-            p.lineup[replaceIndex] = card;
+          if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
+            const discarded = p.lineup[actualReplaceIdx];
+            p.lineup[actualReplaceIdx] = card;
             if (!G.decks.discard) G.decks.discard = [];
             G.decks.discard.push(discarded);
             addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins, replacing ${discarded.name}!`);
@@ -8365,9 +8495,69 @@ export const DeflategateGame = {
             p.lineup.push(card);
             addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins!`);
           }
+
+          // Jets Ability: Deflate 4 on max bid!
+          if (getEffectiveTeamId(p) === 'jets') {
+            applyPsiDeflated(G, actualTargetId, 4);
+            addLog(G, `✈️ Jets Ability: Paid max price for Free Agent ${card.name}! Deflated 4 PSI.`);
+            triggerAbilityNotification(G, actualTargetId, 'jets', 'Jets: Max Bid Free Agent', `Paid maximum price (${effMax} coins) for ${card.name}! Deflated 4 PSI.`);
+          }
+
+          // Instant card effects & triggers
+          addAcquiredCardEffects(G, actualTargetId, card, effMax, true);
+
           advanceFreeAgencyQueue(G);
+          if (!G.board.pendingFreeAgency && !G.board.pendingNewCapLimit && !G.board.pendingTradeRumors && !G.board.bonusAuction) {
+            if (events && events.setPhase) {
+              events.setPhase('preAuctionPhase');
+            } else if (events && events.endPhase) {
+              events.endPhase();
+            }
+          }
         },
-        freeAgencyPass: ({ G, playerID }, actingPlayerId) => {
+        freeAgencyBuy: ({ G, playerID, events }, replaceIndex, actingPlayerId) => {
+          if (!G.board.pendingFreeAgency || !G.board.pendingFreeAgency.card) return INVALID_MOVE;
+          const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]));
+          const actualReplaceIdx = (typeof replaceIndex === 'number') ? replaceIndex : -1;
+          const p = G.players[actualTargetId];
+          if (!p) return INVALID_MOVE;
+          const card = G.board.pendingFreeAgency.card;
+          const effMax = getEffectiveCardMaxBid(card, G.board.activeEvent);
+          if ((p.coins || 0) < effMax) return INVALID_MOVE;
+
+          p.coins = Math.max(0, (p.coins || 0) - effMax);
+          checkDolphinsEmergencyCoins(G, actualTargetId);
+          const displayId = parseInt(actualTargetId) + 1;
+          const isColts = getEffectiveTeamId(p) === 'colts';
+          if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
+            const discarded = p.lineup[actualReplaceIdx];
+            p.lineup[actualReplaceIdx] = card;
+            if (!G.decks.discard) G.decks.discard = [];
+            G.decks.discard.push(discarded);
+            addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins, replacing ${discarded.name}!`);
+          } else {
+            p.lineup.push(card);
+            addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins!`);
+          }
+
+          if (getEffectiveTeamId(p) === 'jets') {
+            applyPsiDeflated(G, actualTargetId, 4);
+            addLog(G, `✈️ Jets Ability: Paid max price for Free Agent ${card.name}! Deflated 4 PSI.`);
+            triggerAbilityNotification(G, actualTargetId, 'jets', 'Jets: Max Bid Free Agent', `Paid maximum price (${effMax} coins) for ${card.name}! Deflated 4 PSI.`);
+          }
+
+          addAcquiredCardEffects(G, actualTargetId, card, effMax, true);
+
+          advanceFreeAgencyQueue(G);
+          if (!G.board.pendingFreeAgency && !G.board.pendingNewCapLimit && !G.board.pendingTradeRumors && !G.board.bonusAuction) {
+            if (events && events.setPhase) {
+              events.setPhase('preAuctionPhase');
+            } else if (events && events.endPhase) {
+              events.endPhase();
+            }
+          }
+        },
+        freeAgencyPass: ({ G, playerID, events }, actingPlayerId) => {
           if (!G.board.pendingFreeAgency) return INVALID_MOVE;
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (G.board.pendingFreeAgency.playerID && String(targetPlayerId) !== String(G.board.pendingFreeAgency.playerID)) {
@@ -8380,6 +8570,13 @@ export const DeflategateGame = {
           const displayId = parseInt(targetPlayerId) + 1;
           addLog(G, `Free Agency: Player ${displayId} passed.`);
           advanceFreeAgencyQueue(G);
+          if (!G.board.pendingFreeAgency && !G.board.pendingNewCapLimit && !G.board.pendingTradeRumors && !G.board.bonusAuction) {
+            if (events && events.setPhase) {
+              events.setPhase('preAuctionPhase');
+            } else if (events && events.endPhase) {
+              events.endPhase();
+            }
+          }
         },
         setQbChoice: ({ G, playerID }, cardUniqueId, choice) => {
           if (!G.board.qbChoices) G.board.qbChoices = {};
@@ -8696,6 +8893,7 @@ export const DeflategateGame = {
           G.decks.discard.push(wonCard);
           const displayId = parseInt(targetPlayerId) + 1;
           addLog(G, `Player ${displayId} chose to discard acquired card ${wonCard.name}.`);
+          triggerAbilityNotification(G, targetPlayerId, 'bengals', 'Bengals Discard', `Player ${displayId} discarded ${wonCard.name} instead of adding to lineup!`);
           G.pendingReplacement = null;
           if (events && events.endTurn) events.endTurn();
         },
@@ -9214,6 +9412,7 @@ export const DeflategateGame = {
           G.decks.discard.push(wonCard);
           const displayId = parseInt(targetPlayerId) + 1;
           addLog(G, `Player ${displayId} chose to discard acquired card ${wonCard.name}.`);
+          triggerAbilityNotification(G, targetPlayerId, 'bengals', 'Bengals Discard', `Player ${displayId} discarded ${wonCard.name} instead of adding to lineup!`);
           G.pendingReplacement = null;
 
           if (!G.board.pendingBills && !G.board.pendingEagles) {

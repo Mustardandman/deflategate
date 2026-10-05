@@ -21,6 +21,7 @@ export const MobileDeflategateBoard = ({
   const [biddingLocked, setBiddingLocked] = useState(false);
   const [nominateLocked, setNominateLocked] = useState(false);
   const [clientDismissedCardFlyTimestamp, setClientDismissedCardFlyTimestamp] = useState(null);
+  const [faReplaceIdx, setFaReplaceIdx] = useState(0);
 
   // Inspected Player Card Modal State with Carousel Navigation
   const [inspectedCard, setInspectedCard] = useState(null);
@@ -278,14 +279,15 @@ export const MobileDeflategateBoard = ({
   const minRequiredBid = activeCard ? (G.board.highestBid === null ? activeCard.minBid : G.board.highestBid + bidIncrement) : 1;
   const effMaxBid = activeCard ? getEffectiveCardMaxBid(activeCard, G.board.activeEvent) : 8;
   const maxAllowedBid = Math.min(myPlayer.coins || 0, effMaxBid);
-  const nextBid = Math.min(minRequiredBid, maxAllowedBid);
+  const nextBid = minRequiredBid;
+  const canAffordBid = (myPlayer.coins || 0) >= minRequiredBid && minRequiredBid <= effMaxBid;
 
   // Update custom bid to next valid minimum whenever turn / card updates
   useEffect(() => {
     if (activeCard) {
       setCustomBid(nextBid);
     }
-  }, [activeCard?.id, G.board.highestBid, nextBid]);
+  }, [activeCard?.id, activeCard?.uniqueId, G.board.highestBid, nextBid]);
 
   const isCommandersBlockedForBid = activeCard && activeCard.commandersBlocked && String(effectivePlayerID) === String(G.board.firstPlayer);
   const isDjMooreBlockedForBid = activeCard && activeCard.id === 'dj_moore' && (myPlayer.coins || 0) < 5;
@@ -600,10 +602,15 @@ export const MobileDeflategateBoard = ({
                 🛡️
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs font-black text-white truncate block">
-                    {effectiveTeam?.name || `Player ${displayPlayerNumber(effectivePlayerID)}`}
+                    {myPlayer?.team?.name || effectiveTeam?.name || `Player ${displayPlayerNumber(effectivePlayerID)}`}
                   </span>
+                  {myPlayer?.copiedTeam && (
+                    <span className="text-[8px] bg-purple-900/90 text-purple-200 border border-purple-500/70 px-1 py-0.2 rounded font-black uppercase shrink-0">
+                      Copied: {myPlayer.copiedTeam.name}
+                    </span>
+                  )}
                   <span className="text-[9px] text-indigo-400 font-bold group-hover:translate-x-0.5 transition-transform shrink-0">➔</span>
                 </div>
                 <span className="text-[10px] text-slate-400 font-medium">
@@ -964,13 +971,13 @@ export const MobileDeflategateBoard = ({
                         🏈
                       </div>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <h3 className="text-sm font-black text-white tracking-wide truncate">
-                            {effectiveTeam.name}
+                            {myPlayer?.team?.name || effectiveTeam?.name || `Player ${displayPlayerNumber(effectivePlayerID)}`}
                           </h3>
-                          {myPlayer.copiedTeam && (
-                            <span className="text-[9px] bg-purple-900 text-purple-200 border border-purple-500 px-1 py-0.2 rounded font-bold uppercase shrink-0">
-                              Copied
+                          {myPlayer?.copiedTeam && (
+                            <span className="text-[9px] bg-purple-900 text-purple-200 border border-purple-500 px-1.5 py-0.5 rounded font-black uppercase shrink-0">
+                              Copied: {myPlayer.copiedTeam.name}
                             </span>
                           )}
                         </div>
@@ -1541,40 +1548,75 @@ export const MobileDeflategateBoard = ({
       {/* Chiefs Claim Modal */}
       {G.board.pendingChiefs && String(G.board.pendingChiefs.playerID) === String(effectivePlayerID) && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3">
-          <div className="bg-slate-900 border-2 border-red-500 p-4 rounded-3xl max-w-sm w-full shadow-2xl space-y-3 max-h-[90vh] flex flex-col">
-            <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-              <span className="text-2xl">👑</span>
-              <div>
+          <div className="bg-slate-900 border-2 border-red-500 p-4 rounded-3xl max-w-md w-full shadow-2xl space-y-3 max-h-[92vh] flex flex-col">
+            <div className="flex items-center gap-2.5 border-b border-slate-800 pb-2.5">
+              <span className="text-3xl">👑</span>
+              <div className="min-w-0 flex-1">
                 <h3 className="text-sm font-black text-amber-400 uppercase tracking-wide">Chiefs Special Ability</h3>
                 <p className="text-[10px] text-slate-300">Claim 1 auction player for minimum cost without bidding:</p>
               </div>
             </div>
-            <div className="space-y-1.5 overflow-y-auto flex-1 pr-1 text-left">
+
+            <div className="grid grid-cols-2 gap-2 overflow-y-auto flex-1 pr-1 text-left">
               {G.board.auctionPlayers && G.board.auctionPlayers.map((card, idx) => {
                 if (!card) return null;
                 const canAfford = (myPlayer.coins || 0) >= card.minBid;
                 return (
-                  <div key={card.uniqueId || idx} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <span className="text-[9px] text-slate-400 font-mono">{card.position} • Min: {card.minBid}</span>
-                      <h4 className="text-xs font-black text-white truncate">{card.name}</h4>
+                  <div
+                    key={card.uniqueId || idx}
+                    className={`p-2.5 rounded-xl border flex flex-col justify-between shadow-md select-none relative ${getCardPhaseStyleHelper(card)}`}
+                  >
+                    {/* Top Header Row: Position & Phase */}
+                    <div className="flex items-center justify-between gap-1 mb-1 text-[10px]">
+                      <span className="bg-slate-950 border border-slate-700 text-cyan-400 font-mono font-black px-1.5 py-0.5 rounded uppercase shrink-0">
+                        {card.position || 'WR'}
+                      </span>
+                      {renderPhaseBadgeHelper(card.phase)}
                     </div>
+
+                    {/* Card Name */}
+                    <h5 className="text-xs font-black text-white truncate mb-0.5">
+                      {card.name}
+                    </h5>
+
+                    {/* Min / Max Bids */}
+                    <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between mb-1 pb-1 border-b border-slate-800/80">
+                      <span>Min <b className="text-yellow-400">{card.minBid}</b></span>
+                      <span>Max <b className="text-amber-400">{getEffectiveCardMaxBid(card, G.board.activeEvent)}</b></span>
+                    </div>
+
+                    {/* Card Effects */}
+                    <div className="text-[10px] flex-1 my-1">
+                      {renderCardEffectsHelper(card.effects, null)}
+                      {(card.specialText || card.customText) && (
+                        <div className="text-[9px] line-clamp-2 text-amber-200 bg-amber-950/60 border border-amber-500/50 rounded px-1.5 py-0.5 mt-1 font-medium leading-tight">
+                          ⚡ {card.specialText || card.customText}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Claim Button */}
                     <button
                       disabled={!canAfford}
                       onClick={() => moves.chiefsClaimCard(idx, effectivePlayerID)}
-                      className="bg-amber-500 hover:bg-amber-400 text-black font-black py-1.5 px-3 rounded-lg text-[10px] uppercase disabled:opacity-40 shrink-0"
+                      className={`w-full mt-2 py-1.5 px-2 rounded-lg font-black text-[10px] uppercase tracking-wider shadow transition-all ${
+                        canAfford
+                          ? 'bg-amber-500 hover:bg-amber-400 text-black cursor-pointer active:scale-95'
+                          : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                      }`}
                     >
-                      Claim ({card.minBid}🪙)
+                      {canAfford ? `Claim (${card.minBid}🪙)` : `Can't Afford (${card.minBid}🪙)`}
                     </button>
                   </div>
                 );
               })}
             </div>
+
             <button
               onClick={() => moves.chiefsPass(effectivePlayerID)}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-xl text-xs uppercase border border-slate-700"
+              className="w-full bg-slate-800 hover:bg-slate-700 active:scale-[0.99] text-slate-300 font-bold py-2.5 rounded-xl text-xs uppercase border border-slate-700 transition-colors cursor-pointer"
             >
-              Pass
+              Pass (Save Ability)
             </button>
           </div>
         </div>
@@ -1673,41 +1715,100 @@ export const MobileDeflategateBoard = ({
       )}
 
       {/* Free Agency Event Modal */}
-      {G.board.pendingFreeAgency && G.board.pendingFreeAgency.card && !G.board.eventFlipRevealed && G.board.eventConfirmed && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border-2 border-indigo-500 p-5 rounded-3xl max-w-sm w-full text-center shadow-2xl space-y-3">
-            <span className="text-3xl block">💼</span>
-            <h3 className="text-lg font-black text-indigo-300 uppercase">Free Agency!</h3>
-            {String(G.board.pendingFreeAgency.playerID) === String(effectivePlayerID) ? (
-              <>
-                <p className="text-slate-300 text-xs">
-                  You drew <strong className="text-white">{G.board.pendingFreeAgency.card.name}</strong> ({G.board.pendingFreeAgency.card.position}). Pay maximum price ({G.board.pendingFreeAgency.card.maxBid} Coins) to sign them immediately:
-                </p>
-                <div className="text-xs">{renderCardEffectsHelper(G.board.pendingFreeAgency.card.effects, G.board.pendingFreeAgency.card.specialText)}</div>
-                <div className="space-y-2 pt-2">
-                  <button
-                    disabled={(myPlayer.coins || 0) < G.board.pendingFreeAgency.card.maxBid}
-                    onClick={() => moves.freeAgencyBuy(effectivePlayerID)}
-                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-2.5 rounded-xl text-xs uppercase disabled:opacity-40"
-                  >
-                    Sign for {G.board.pendingFreeAgency.card.maxBid} Coins
-                  </button>
-                  <button
-                    onClick={() => moves.freeAgencyPass(effectivePlayerID)}
-                    className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-xl text-xs uppercase border border-slate-700"
-                  >
-                    Pass
-                  </button>
+      {G.board.pendingFreeAgency && G.board.pendingFreeAgency.card && !G.board.eventFlipRevealed && G.board.eventConfirmed && (() => {
+        const faCard = G.board.pendingFreeAgency.card;
+        const effMaxCost = getEffectiveCardMaxBid(faCard, G.board.activeEvent);
+        const canAfford = (myPlayer.coins || 0) >= effMaxCost;
+        const isMe = String(G.board.pendingFreeAgency.playerID) === String(effectivePlayerID);
+        const maxSlots = effectiveTeam?.id === 'colts' ? 999 : ((effectiveTeam?.id === 'seahawks' ? 4 : 3) + (myPlayer.extraLineupSlots || 0));
+        const isLineupFull = (myPlayer.lineup || []).length >= maxSlots;
+        const isJets = getEffectiveTeamId(myPlayer) === 'jets';
+
+        return (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border-2 border-indigo-500 p-5 rounded-3xl max-w-sm w-full text-center shadow-2xl space-y-3 max-h-[92vh] flex flex-col">
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-3xl">💼</span>
+                <h3 className="text-lg font-black text-indigo-300 uppercase">Free Agency!</h3>
+              </div>
+
+              {isMe ? (
+                <div className="space-y-3 overflow-y-auto flex-1 pr-1 text-left">
+                  <p className="text-slate-300 text-xs text-center">
+                    You drew a Free Agent prospect! Pay maximum price ({effMaxCost} Coins) to sign them immediately:
+                  </p>
+
+                  {/* Complete Styled Prospect Card */}
+                  <div className={`p-3 rounded-2xl border shadow-lg relative ${getCardPhaseStyleHelper(faCard)}`}>
+                    <div className="flex items-center justify-between gap-1 mb-1 text-[10px]">
+                      <span className="bg-slate-950 border border-slate-700 text-cyan-400 font-mono font-black px-1.5 py-0.5 rounded uppercase">
+                        {faCard.position || 'WR'}
+                      </span>
+                      {renderPhaseBadgeHelper(faCard.phase)}
+                    </div>
+                    <h4 className="text-sm font-black text-white truncate mb-1">{faCard.name}</h4>
+                    <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between mb-1 pb-1 border-b border-slate-800/80">
+                      <span>Min <b className="text-yellow-400">{faCard.minBid}</b></span>
+                      <span>Max <b className="text-amber-400">{effMaxCost}</b></span>
+                    </div>
+                    <div className="text-xs">
+                      {renderCardEffectsHelper(faCard.effects, faCard.specialText || faCard.customText)}
+                    </div>
+                  </div>
+
+                  {/* Jets Ability Callout */}
+                  {isJets && (
+                    <div className="bg-emerald-950/80 border border-emerald-500/70 p-2.5 rounded-xl text-xs text-emerald-200 font-semibold flex items-center gap-2">
+                      <span className="text-base">✈️</span>
+                      <span>Jets Perk: Signing for max price ({effMaxCost}🪙) deflates 4 PSI!</span>
+                    </div>
+                  )}
+
+                  {/* Lineup Full Selection */}
+                  {isLineupFull && (
+                    <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-amber-400 block">
+                        Lineup Full: Select player to replace:
+                      </label>
+                      <select
+                        value={faReplaceIdx}
+                        onChange={(e) => setFaReplaceIdx(parseInt(e.target.value))}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-medium cursor-pointer"
+                      >
+                        {myPlayer.lineup.map((card, idx) => (
+                          <option key={card.uniqueId || idx} value={idx}>
+                            Replace: {card.name} ({card.position})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 pt-1">
+                    <button
+                      disabled={!canAfford}
+                      onClick={() => moves.freeAgencySign(isLineupFull ? faReplaceIdx : -1, effectivePlayerID)}
+                      className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-black py-2.5 rounded-xl text-xs uppercase disabled:opacity-40 shadow transition-all cursor-pointer"
+                    >
+                      {canAfford ? `Sign for ${effMaxCost} Coins ✍️` : `Can't Afford (${effMaxCost} Coins)`}
+                    </button>
+                    <button
+                      onClick={() => moves.freeAgencyPass(effectivePlayerID)}
+                      className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-xl text-xs uppercase border border-slate-700 transition-colors cursor-pointer text-center"
+                    >
+                      Pass
+                    </button>
+                  </div>
                 </div>
-              </>
-            ) : (
-              <p className="text-slate-400 text-xs">
-                Waiting for Player {displayPlayerNumber(G.board.pendingFreeAgency.playerID)} to decide...
-              </p>
-            )}
+              ) : (
+                <p className="text-slate-400 text-xs text-center py-4">
+                  Waiting for Player {displayPlayerNumber(G.board.pendingFreeAgency.playerID)} to decide...
+                </p>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Event Details Info Modal (opened by clicking header event name) */}
       {showEventInfoModal && G.board.activeEvent && (
@@ -2017,9 +2118,9 @@ export const MobileDeflategateBoard = ({
                 </button>
 
                 {/* Stepper */}
-                <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shrink-0">
+                <div className={`flex items-center bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shrink-0 ${!canAffordBid ? 'opacity-40 pointer-events-none' : ''}`}>
                   <button
-                    disabled={biddingLocked}
+                    disabled={biddingLocked || !canAffordBid || customBid <= nextBid}
                     onClick={() => setCustomBid(Math.max(nextBid, customBid - 1))}
                     className="text-base px-3 py-2 text-slate-300 hover:text-white font-bold transition-colors cursor-pointer disabled:opacity-40"
                   >
@@ -2029,7 +2130,7 @@ export const MobileDeflategateBoard = ({
                     {customBid}
                   </span>
                   <button
-                    disabled={biddingLocked}
+                    disabled={biddingLocked || !canAffordBid || customBid >= maxAllowedBid}
                     onClick={() => setCustomBid(Math.min(maxAllowedBid, customBid + 1))}
                     className="text-base px-3 py-2 text-slate-300 hover:text-white font-bold transition-colors cursor-pointer disabled:opacity-40"
                   >
@@ -2040,20 +2141,20 @@ export const MobileDeflategateBoard = ({
                 <button
                   onClick={() => moves.bid(customBid, effectivePlayerID)}
                   disabled={
-                    biddingLocked || isCommandersBlockedForBid || (
+                    biddingLocked || !canAffordBid || isCommandersBlockedForBid || (
                       isSoleRemainingZeroCoins
                         ? false
-                        : (isDjMooreBlockedForBid || myPlayer.coins < customBid || customBid < nextBid || customBid > maxAllowedBid)
+                        : (isDjMooreBlockedForBid || (myPlayer.coins || 0) < customBid || customBid < nextBid || customBid > maxAllowedBid)
                     )
                   }
                   className="flex-1 py-2.5 px-2 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 shadow transition-colors cursor-pointer text-center truncate"
                 >
-                  {isSoleRemainingZeroCoins ? 'Acquire (0)' : `Bid ${customBid}`}
+                  {!canAffordBid ? "Can't Afford" : (isSoleRemainingZeroCoins ? 'Acquire (0)' : `Bid ${customBid}`)}
                 </button>
 
                 <button
                   onClick={() => moves.bid(effMaxBid, effectivePlayerID)}
-                  disabled={biddingLocked || isCommandersBlockedForBid || isDjMooreBlockedForBid || myPlayer.coins < effMaxBid || effMaxBid < nextBid}
+                  disabled={biddingLocked || !canAffordBid || isCommandersBlockedForBid || isDjMooreBlockedForBid || (myPlayer.coins || 0) < effMaxBid || effMaxBid < nextBid}
                   className="px-3.5 py-2.5 min-w-[78px] rounded-xl text-xs font-black bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-black disabled:opacity-40 shrink-0 text-center transition-colors cursor-pointer"
                 >
                   Max ({effMaxBid})
