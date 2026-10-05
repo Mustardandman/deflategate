@@ -88,7 +88,15 @@ export const triggerAbilityNotification = (G, playerID, teamId, title, message) 
     panthers: '🐆',
     cowboys: '🤠',
     seahawks: '🦅',
-    '49ers': '⛏️'
+    '49ers': '⛏️',
+    browns: '🐶',
+    titans: '⚔️',
+    buccaneers: '🏴‍☠️',
+    jaguars: '🐆',
+    patriots: '🇺🇸',
+    colts: '🐎',
+    broncos: '🐴',
+    bears: '🐻'
   };
   const icon = icons[teamId] || '⚡';
   const p = G.players[playerID];
@@ -175,10 +183,18 @@ export const applyPsiDeflated = (G, playerID, amount) => {
     const remaining = Math.max(0, ev.maxDeflate - current);
     allowed = Math.min(amount, remaining);
   }
+  const prevPsi = p.psi;
   p.psi = Math.max(0, p.psi - allowed);
   if (!G.board.roundStats) G.board.roundStats = {};
   if (!G.board.roundStats[playerID]) G.board.roundStats[playerID] = { coinsGained: 0, psiDeflated: 0 };
   G.board.roundStats[playerID].psiDeflated += allowed;
+
+  const effectiveTeamId = getEffectiveTeamId(p);
+  if (effectiveTeamId === 'vikings' && p.psi < 27 && (!p.hasNotifiedVikingsUnder27 || prevPsi >= 27)) {
+    p.hasNotifiedVikingsUnder27 = true;
+    triggerAbilityNotification(G, playerID, 'vikings', 'Vikings Under 27 PSI', `Vikings dropped under 27 PSI (${p.psi} PSI)! Double deflation & double coins active!`);
+  }
+
   return allowed;
 };
 
@@ -192,6 +208,9 @@ export const applyPsiInflated = (G, playerID, amount) => {
     return 0;
   }
   p.psi += amount;
+  if (p.psi >= 27) {
+    p.hasNotifiedVikingsUnder27 = false;
+  }
   return amount;
 };
 
@@ -388,6 +407,7 @@ export const resolveAuctionWin = (G, playerID, card) => {
         if (effectiveTeamId === 'bengals') {
           effAmount += 2;
           addLog(G, `Bengals Ability: +2 boost to instant ${eff.type}!`);
+          triggerAbilityNotification(G, playerID, 'bengals', 'Bengals Instant Boost', `Instant ${eff.type} boosted by +2!`);
         }
         if (eff.type === 'coins' && effectiveTeamId !== 'browns') {
           if (effectiveTeamId === 'vikings' && p.psi < 27) {
@@ -398,6 +418,11 @@ export const resolveAuctionWin = (G, playerID, card) => {
           applyCoinsGained(G, playerID, effAmount);
         }
         if (eff.type === 'deflate') {
+          if (effectiveTeamId === 'vikings' && p.psi < 27) {
+            effAmount *= 2;
+            addLog(G, `⚔️ Vikings Ability: Under 27 PSI! Instant deflation doubled to ${effAmount}.`);
+            triggerAbilityNotification(G, playerID, 'vikings', 'Vikings: Double Deflate Boost', `Under 27 PSI! Instant deflation doubled to -${effAmount} PSI!`);
+          }
           applyPsiDeflated(G, playerID, effAmount);
         }
         if (eff.type === 'inflate') {
@@ -6005,6 +6030,7 @@ export const advanceTitansDraftQueue = (G, events) => {
 
       const displayId = parseInt(currentId) + 1;
       const teamName = titansPlayer.team?.name || `Player ${displayId}`;
+      triggerAbilityNotification(G, currentId, 'titans', 'Titans Free Draft', `Drafted ${chosenCard.name} for free at kickoff!`);
       addLog(G, `Titans Ability: CPU ${teamName} (Player ${displayId}) drafted ${chosenCard.name} for free! Deck shuffled.`);
     } else {
       G.board.pendingTitansDraft = {
@@ -6124,6 +6150,10 @@ export const calculateRefreshResults = (G) => {
     // Lineup coins calculate first. If resulting coins < 5, double deflation takes effect.
     const resultingCoins = p.coins + lineupCoins;
     const is49ersDoubleDeflate = (effectiveTeamId === '49ers' && resultingCoins < 5);
+    if (is49ersDoubleDeflate) {
+      addLog(G, `⛏️ 49ers Ability: Bankroll under 5 coins (${resultingCoins}), generated double deflation!`);
+      triggerAbilityNotification(G, id, '49ers', '49ers Under 5 Coins', `49ers have under 5 coins (${resultingCoins})! Lineup generated double deflation.`);
+    }
 
     // 2. Calculate lineup deflation
     let lineupDeflate = 0;
@@ -6144,6 +6174,7 @@ export const calculateRefreshResults = (G) => {
       if (ev?.category === 'double_all') deflateMult *= 2;
       if (ev?.category === 'double_phase1' && card.phase === 1) deflateMult *= 2;
       if (is49ersDoubleDeflate) deflateMult *= 2;
+      if (effectiveTeamId === 'vikings' && p.psi < 27) deflateMult *= 2;
       if (card.ramsDoubleToken) deflateMult *= 2;
 
       const cardEffects = [...(card.effects || [])];
@@ -6182,6 +6213,7 @@ export const calculateRefreshResults = (G) => {
       if (allPhase1) {
         bonusDeflate += 4;
         addLog(G, `Packers Ability: All active lineup cards are Phase 1! Deflated -4 PSI.`);
+        triggerAbilityNotification(G, id, 'packers', 'Packers Phase 1 Chemistry', `Packers deflated -4 PSI because all active lineup players are Phase 1!`);
       }
     }
 
@@ -6198,6 +6230,7 @@ export const calculateRefreshResults = (G) => {
         if (effectiveTeamId !== 'browns') bonusCoins += qbCount * 2;
         bonusDeflate += qbCount * 2;
         addLog(G, `Texans Ability: ${qbCount} QB(s) generated deflation and coins.`);
+        triggerAbilityNotification(G, id, 'texans', 'Texans QB Bonus', `Texans gained +${qbCount * 2} coins and deflated -${qbCount * 2} PSI for ${qbCount} QB(s)!`);
       }
     }
 
@@ -6206,9 +6239,14 @@ export const calculateRefreshResults = (G) => {
       if (outbidCoins > 0) {
         if (effectiveTeamId !== 'browns') bonusCoins += outbidCoins;
         addLog(G, `Chargers Ability: Outbid opposing teams ${outbidCoins} time(s), gained +${outbidCoins} bonus coins.`);
+        const chargersMsg = `Chargers gained ${outbidCoins} coins by outbidding opposing teams`;
+        triggerAbilityNotification(G, id, 'chargers', 'Chargers Outbid Payout', chargersMsg);
       }
-      const chargersMsg = `Chargers gained ${outbidCoins} coins by outbiding opposing teams`;
-      triggerAbilityNotification(G, id, 'chargers', 'Chargers Ability', chargersMsg);
+    }
+
+    if (effectiveTeamId === 'vikings' && p.psi < 27) {
+      addLog(G, `⚔️ Vikings Ability: Under 27 PSI! Double coins and double deflation generated.`);
+      triggerAbilityNotification(G, id, 'vikings', 'Vikings Double Deflation', `Vikings under 27 PSI: Double deflation & double coins triggered!`);
     }
 
     // Apply through full-round capping helpers
@@ -6222,6 +6260,7 @@ export const calculateRefreshResults = (G) => {
     if (effectiveTeamId === 'dolphins' && p.coins === 0) {
       p.coins += 3;
       addLog(G, `🐬 Dolphins Ability Triggered: 0 coins triggers +3 emergency coins!`);
+      triggerAbilityNotification(G, id, 'dolphins', 'Dolphins Bailout', 'Whenever you have 0 coins, gain 3! Recharged with +3 coins.');
       p.dolphinsTriggered = true;
     }
   });
@@ -6430,7 +6469,7 @@ export const executeCpuRaiders = (G, raidersId) => {
     raidersPlayer.psi = Math.max(0, raidersPlayer.psi - 1);
     applyPsiInflated(G, targetId, 1);
     const teamTitle = raidersPlayer.team?.id === 'buccaneers' ? 'Bucs (Raiders Ability)' : 'Raiders';
-    triggerAbilityNotification(G, raidersId, 'raiders', 'Raiders Menace', `Gave 1 PSI to Player ${parseInt(targetId) + 1} (${G.players[targetId]?.team?.name || 'Rival'}) to slow down their lead!`);
+    triggerAbilityNotification(G, raidersId, 'raiders', 'Raiders Menace', `Raiders gave 1 PSI to Player ${parseInt(targetId) + 1} (${G.players[targetId]?.team?.name || 'Rival'})!`);
     addLog(G, `☠️ ${teamTitle} Ability: CPU Player ${parseInt(raidersId) + 1} gave 1 PSI to Player ${parseInt(targetId) + 1}.`);
   }
 };
@@ -6586,7 +6625,7 @@ export const executeCpuCardinals = (G, cardinalsId) => {
       reasonDesc = `purged high-risk penalty card ${oldCard.name} with deck card ${topCard.name}`;
     }
 
-    triggerAbilityNotification(G, cardinalsId, 'cardinals', 'Cardinals Deck Swap', `CPU Player ${displayId} ${reasonDesc}.`);
+    triggerAbilityNotification(G, cardinalsId, 'cardinals', 'Cardinals Deck Swap', `Cardinals swapped revealed player ${oldCard.name} with ${topCard.name} from the deck!`);
     addLog(G, `🦤 ${teamTitle} Ability: CPU Player ${displayId} ${reasonDesc}.`);
   } else {
     addLog(G, `🦤 ${teamTitle} Ability: CPU Player ${displayId} chose to keep the auction row.`);
@@ -7443,6 +7482,7 @@ export const DeflategateGame = {
       targetCard.ramsMultiplier = true;
       p.ramsTokenAttached = true;
       const displayId = parseInt(targetPlayerId) + 1;
+      triggerAbilityNotification(G, targetPlayerId, 'rams', 'Rams 2x Multiplier', `Attached 2x token to ${targetCard.name}!`);
       addLog(G, `🐏 Rams Ability: Player ${displayId} attached 2x Token to ${targetCard.name}!`);
     },
     commandersMarkCard: ({ G, playerID, events }, auctionCardIndex, actingPlayerId) => {
@@ -7830,6 +7870,7 @@ export const DeflategateGame = {
       });
 
       const displayId = parseInt(eaglesId) + 1;
+      triggerAbilityNotification(G, eaglesId, 'eagles', 'Eagles Tush Push', `Eagles paid ${cost} coins to inflate all opponents by +${count * 3} PSI!`);
       addLog(G, `🦅 Eagles Ability: Player ${displayId} paid ${cost} coins to inflate all opponents by +${count * 3} PSI! (${count}x this round).`);
 
       if (G.board.pendingEaglesQueue && G.board.pendingEaglesQueue.length > 0) {
@@ -7857,6 +7898,7 @@ export const DeflategateGame = {
       });
 
       const displayId = parseInt(eaglesId) + 1;
+      triggerAbilityNotification(G, eaglesId, 'eagles', 'Eagles Tush Push', `Eagles paid 3 coins to inflate all opponents by +3 PSI!`);
       addLog(G, `🦅 Eagles Ability: Player ${displayId} paid 3 coins to inflate all opponents by +3 PSI!`);
 
       if (G.board.pendingEaglesQueue && G.board.pendingEaglesQueue.length > 0) {
@@ -8191,6 +8233,7 @@ export const DeflategateGame = {
 
           const displayId = parseInt(targetPlayerId) + 1;
           const teamName = p.team?.name || `Player ${displayId}`;
+          triggerAbilityNotification(G, targetPlayerId, 'titans', 'Titans Free Draft', `Drafted ${chosenCard.name} for free at kickoff!`);
           addLog(G, `Titans Ability: ${teamName} (Player ${displayId}) drafted ${chosenCard.name} for free! Deck shuffled.`);
           G.board.pendingTitansDraft = null;
 
@@ -8302,6 +8345,7 @@ export const DeflategateGame = {
             p.coins += 30;
             p.hasBrownsBonus = true;
             addLog(G, `Browns Ability: Start of Round 5! Gained +30 coins.`);
+            triggerAbilityNotification(G, id, 'browns', 'Browns Round 5 War Chest', `Browns unlocked their Round 5 bonus: +30 coins gained!`);
           }
         });
 
@@ -8612,6 +8656,7 @@ export const DeflategateGame = {
             p.coins += 30;
             p.hasBrownsBonus = true;
             addLog(G, `Browns Ability: Start of Round 5! Gained +30 coins.`);
+            triggerAbilityNotification(G, id, 'browns', 'Browns Round 5 War Chest', `Browns unlocked their Round 5 bonus: +30 coins gained!`);
           }
         });
 
@@ -8689,7 +8734,7 @@ export const DeflategateGame = {
           applyPsiInflated(G, targetId, 1);
 
           const teamTitle = raidersPlayer?.team?.id === 'buccaneers' ? 'Bucs (Raiders Ability)' : 'Raiders';
-          triggerAbilityNotification(G, raidersId, 'raiders', 'Raiders Menace', `Gave 1 PSI to Player ${parseInt(targetId) + 1} (${G.players[targetId]?.team?.name || 'Rival'}) to slow down their lead!`);
+          triggerAbilityNotification(G, raidersId, 'raiders', 'Raiders Menace', `Raiders gave 1 PSI to Player ${parseInt(targetId) + 1} (${G.players[targetId]?.team?.name || 'Rival'})!`);
           addLog(G, `☠️ ${teamTitle} Ability: Player ${parseInt(raidersId) + 1} gave 1 PSI to Player ${parseInt(targetId) + 1}.`);
           advanceRaidersQueue(G);
         },
@@ -8716,7 +8761,25 @@ export const DeflategateGame = {
           const displayId = parseInt(actingId) + 1;
           const actingPlayer = G.players[actingId];
           const teamTitle = actingPlayer?.team?.id === 'buccaneers' ? 'Bucs (Cardinals Ability)' : 'Cardinals';
-          triggerAbilityNotification(G, actingId, 'cardinals', 'Cardinals Deck Swap', `Player ${displayId} swapped ${oldCard.name} with ${newCard.name}!`);
+          triggerAbilityNotification(G, actingId, 'cardinals', 'Cardinals Deck Swap', `Cardinals swapped revealed player ${oldCard.name} with ${newCard.name} from the deck!`);
+          addLog(G, `🦤 ${teamTitle} Ability: Player ${displayId} swapped auction card ${oldCard.name} with ${newCard.name}.`);
+          advanceCardinalsQueue(G);
+        },
+        cardinalsSwapCard: ({ G, playerID }, auctionCardIndex, actingPlayerId) => {
+          if (!G.board.pendingCardinals) return INVALID_MOVE;
+          const actingId = String(actingPlayerId || G.board.pendingCardinals.playerID || playerID);
+          if (auctionCardIndex < 0 || auctionCardIndex >= G.board.auctionPlayers.length) return INVALID_MOVE;
+          const oldCard = G.board.auctionPlayers[auctionCardIndex];
+          if (!oldCard) return INVALID_MOVE;
+
+          const newCard = G.decks.activePlayers.pop();
+          G.board.auctionPlayers[auctionCardIndex] = newCard;
+          G.decks.activePlayers.push(oldCard);
+
+          const displayId = parseInt(actingId) + 1;
+          const actingPlayer = G.players[actingId];
+          const teamTitle = actingPlayer?.team?.id === 'buccaneers' ? 'Bucs (Cardinals Ability)' : 'Cardinals';
+          triggerAbilityNotification(G, actingId, 'cardinals', 'Cardinals Deck Swap', `Cardinals swapped revealed player ${oldCard.name} with ${newCard.name} from the deck!`);
           addLog(G, `🦤 ${teamTitle} Ability: Player ${displayId} swapped auction card ${oldCard.name} with ${newCard.name}.`);
           advanceCardinalsQueue(G);
         },
@@ -9336,7 +9399,7 @@ export const DeflategateGame = {
 
           const displayId = parseInt(eaglesId) + 1;
           const teamTitle = eaglesPlayer?.team?.id === 'buccaneers' ? 'Bucs (Eagles Ability)' : 'Eagles';
-          triggerAbilityNotification(G, eaglesId, 'eagles', 'Eagles Tush Push', `Paid ${cost} coins to inflate all opponents by +${count * 3} PSI!`);
+          triggerAbilityNotification(G, eaglesId, 'eagles', 'Eagles Tush Push', `Eagles paid ${cost} coins to inflate all opponents by +${count * 3} PSI!`);
           addLog(G, `🦅 ${teamTitle} Ability: Player ${displayId} paid ${cost} coins to inflate all opponents by +${count * 3} PSI! (${count}x this round).`);
 
           advanceEaglesQueue(G);
@@ -9361,6 +9424,7 @@ export const DeflategateGame = {
 
           const displayId = parseInt(eaglesId) + 1;
           const teamTitle = eaglesPlayer?.team?.id === 'buccaneers' ? 'Bucs (Eagles Ability)' : 'Eagles';
+          triggerAbilityNotification(G, eaglesId, 'eagles', 'Eagles Tush Push', `Eagles paid 3 coins to inflate all opponents by +3 PSI!`);
           addLog(G, `🦅 ${teamTitle} Ability: Player ${displayId} paid 3 coins to inflate all opponents by +3 PSI!`);
 
           advanceEaglesQueue(G);
