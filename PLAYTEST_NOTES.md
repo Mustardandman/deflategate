@@ -3627,37 +3627,470 @@ $$\text{Composite Score} = \text{Tier Score} + (1.5 \times \text{Initial PSI}) -
 - **Production Build**:
   - `npm run build` compiled in 15.87s with 0 errors.
 
+----------------
 
+## Playtest #67: Buccaneers 10% Non-Best Ability Selection & Pre-Auction Multi-Team Resolution Ordering (Raiders & Cardinals)
+**Date**: October 3, 2026  
+**Status**: Complete (Verified & Tested)
 
+### 1. Requirements Overview
+1. **Buccaneers Ability Selection**:
+   - 90% of the time, Buccaneers CPU selects the absolute best available ability (`scored[0].team`).
+   - 10% of the time, Buccaneers picks from non-best candidates.
+   - In this 10%, Buccaneers must **never** pick F-Tier abilities (`patriots`, `broncos`, `browns`, `buccaneers`), but **must be allowed** to pick B-Tier (e.g. Raiders, Chargers, Bears, Vikings, 49ers) and C-Tier (e.g. Cardinals, Commanders, Ravens, Bills, Titans, Jaguars) abilities.
+2. **Raiders Multi-Team Ordering (PSI Transfer)**:
+   - When both real Raiders and Buccaneers (copying Raiders) are in the game, the real Raiders always acts first.
+   - Buccaneers (Raiders copy) always acts right after them.
+   - Must support all permutations (CPU-CPU, Human-CPU, CPU-Human, Human-Human) without modal or UI conflicts.
+3. **Cardinals Multi-Team Ordering & Dynamic State Evolution (Auction Row Swap)**:
+   - When both real Cardinals and Buccaneers (copying Cardinals) are in the game, the real Cardinals always acts first.
+   - Buccaneers (Cardinals copy) always acts second.
+   - If the real Cardinals swaps a card between the auction row and the top of the player deck, the top card changes immediately.
+   - When Buccaneers acts second, they evaluate their swap decision based on the **updated** top card and the **updated** auction row.
 
+---
 
+### 2. Implementation Details
 
+1. **`selectCpuBucsTeamToCopy` ([`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js))**:
+   - Replaced previous restrictiveness with 90% top pick and 10% non-best candidate selection:
+     ```javascript
+     const roll = typeof randomFn === 'function' ? randomFn() : Math.random();
+     if (roll < 0.90) {
+       return scored[0].team;
+     }
 
+     const nonBestCandidates = scored.slice(1).filter(c => c.tier !== 'F' && c.score > 0);
+     if (nonBestCandidates.length > 0) {
+       const picked = nonBestCandidates[Math.floor((typeof randomFn === 'function' ? randomFn() : Math.random()) * nonBestCandidates.length)];
+       return picked.team;
+     }
+     return scored[0].team;
+     ```
+   - Guarantees strict 0% F-tier selection while opening up valid B-Tier and C-Tier abilities during the 10% window.
 
+2. **Pre-Auction Multi-Team Resolution Architecture ([`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js))**:
+   - **Raiders Queue Execution**:
+     - `advanceRaidersQueue(G)` iterates through `G.board.pendingRaidersQueue`.
+     - Real Raiders is sorted first: `raidersTeams.sort((a, b) => (G.players[a].team?.id === 'raiders' ? 0 : 1) - (G.players[b].team?.id === 'raiders' ? 0 : 1))`.
+     - CPU players execute immediately via `executeCpuRaiders(G, raidersId)`.
+     - Human players pause and present the modal via `G.board.pendingRaiders`.
+     - Logs and notifications clearly reflect franchise identity (`Raiders` vs `Bucs (Raiders Ability)`).
+     - When the Raiders queue empties, `advanceCardinalsQueue(G)` is automatically triggered.
+   - **Cardinals Queue Execution**:
+     - `advanceCardinalsQueue(G)` checks `if (G.board.pendingRaiders) return;` to avoid overlapping modals with Raiders.
+     - Real Cardinals is sorted first: `cardinalsTeams.sort((a, b) => (G.players[a].team?.id === 'cardinals' ? 0 : 1) - (G.players[b].team?.id === 'cardinals' ? 0 : 1))`.
+     - CPU players dynamically inspect the live top card `G.decks.activePlayers[G.decks.activePlayers.length - 1]` and live auction row via `executeCpuCardinals(G, cardinalsId)`.
+     - If real Cardinals swapped, the card swapped back to the deck is on top, and Buccaneers evaluates a fresh swap against that new card and the new auction row.
+     - Human players receive the live top card in `G.board.pendingCardinals = { playerID, topCard }`.
+     - Logs and notifications display `Cardinals` vs `Bucs (Cardinals Ability)`.
+   - **Unified Completion Helper**:
+     - Added `checkPreAuctionCompletion(G)` checking that `pendingRaiders`, `pendingCardinals`, `pendingChiefs`, and `pendingCommanders` are all null, setting `G.board.preAuctionComplete = true`.
 
+---
 
+### 3. Verification & Playtest Results
 
+- **Monte Carlo 5,000 Simulation Test Suite** ([`scratch/testPlaytest67BuccaneersPreAuction.mjs`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/scratch/testPlaytest67BuccaneersPreAuction.mjs)):
+  - Top Pick Rate: **90.7%** (4,535 / 5,000)
+  - Non-Best Pick Rate: **9.3%** (465 / 5,000)
+  - F-Tier Picks: **0 (0.00%)**
+  - B/C-Tier Picks in 10% Branch: **297** verified picks (e.g. Raiders, Chargers, Cardinals, Commanders, Bears, etc.).
+  - Deterministic test verified B-tier (Raiders) and C-tier (Cardinals) can be cleanly selected in the 10% window.
 
+- **Multi-Team Ordering Verification**:
+  - Raiders: Verified real Raiders always acts first (decrements PSI and inflates target), and Buccaneers Raiders acts immediately second.
+  - Cardinals: Verified real Cardinals swaps first (placing old auction card on top of the deck), and Buccaneers Cardinals evaluates second against the newly changed top card and updated auction row.
+  - Human and CPU permutations all advance smoothly without state locking or conflicting modals.
 
+- **Regression & Build Checks**:
+  - `scratch/testPlaytest66Buccaneers.mjs`: **PASSED (100%) ✅**
+  - `scratch/testPlaytest67BuccaneersPreAuction.mjs`: **PASSED (100%) ✅**
+  - `npm run build`: Compiled with 0 errors.
 
+----------------
 
+## Playtest #68: Universal Buccaneers Ordering & Dynamic State Reaction Across All Copied Abilities
+**Date**: October 3, 2026  
+**Status**: Complete (Verified & Tested)
 
+### 1. Requirements Overview
+1. **Universal Real-Team-First, Bucs-Second Rule**:
+   - For **every** copied team ability in the game, when both the real team and Buccaneers (copying that team) are in the match, the **real team always acts first** and the **Buccaneers acts second** (right after them).
+   - This ordering applies to all multi-team abilities across every phase: Setup, Start-of-Round, Pre-Auction, Post-Auction, and In-Auction triggers.
+2. **Dynamic State Reaction & Fresh Decision Making**:
+   - When the real team acts first and mutates the game state (e.g. claims a player, swaps an auction card, marks a card, buys from the discard pile, or raises opponent PSI), Buccaneers acting second must evaluate a fresh decision based on the **updated** state, never acting on stale or already-consumed game elements.
+3. **Robust Support for All Controller Permutations**:
+   - CPU-CPU, Human-CPU, CPU-Human, and Human-Human combinations must seamlessly transition between actions without modal overlap, state corruption, or turn hanging.
 
+---
 
+### 2. Comprehensive Franchise Audit & Phase Implementation
 
+A comprehensive audit of all 31 franchises was conducted:
+- **Pre-Auction Abilities**:
+  - `raiders`: Transfers 1 PSI to another player. Chained queue ensures real Raiders acts first; Bucs Raiders acts second against updated PSI values.
+  - `cardinals`: Swaps top of player deck with auction row. Real Cardinals swaps first; Bucs Cardinals evaluates second with the newly changed top card and updated auction row.
+  - `chiefs`: Pay minimum cost to claim an auction card before bidding. Real Chiefs claims first (slot set to `null`); Bucs Chiefs evaluates second from remaining revealed cards.
+  - `commanders`: Marks an auction card to block the first player from bidding. Real Commanders marks first; Bucs Commanders marks second on unmarked cards (`alreadyMarked` filter prevents duplicate marks).
+- **Post-Auction Abilities**:
+  - `bills`: Buys a player from the discard pile for minimum cost. Real Bills buys first (splicing card from discard); Bucs Bills evaluates the remaining discard pile second.
+  - `eagles`: Pays 3 coins to inflate all opponents by 3 PSI (limit 2x/round). Real Eagles inflates opponents first; Bucs Eagles evaluates second with updated opponent PSI.
+  - `rams`: Places 2x multiplier token on an active player (once per game). Real Rams acts first; Bucs Rams acts second.
+- **Start-of-Round Abilities**:
+  - `steelers`: Richest player inflates all opponents by 1 PSI. Sorted with real Steelers first, Bucs Steelers second.
+  - `jaguars`: Looks at/reorders the event deck (once per game). Sorted with real Jaguars first, Bucs Jaguars second.
+- **Setup Abilities**:
+  - `titans`: Drafts 1 of 3 cards from the deck. Real Titans drafts first and shuffles the remaining cards; Bucs Titans drafts second from the newly shuffled deck.
+- **Personal / Trigger / Continuous Abilities**:
+  - `bengals`, `falcons`, `colts`, `seahawks`, `dolphins`, `jets`, `lions`, `bears`, `packers`, `vikings`, `texans`, `cowboys`, `saints`, `panthers`, `49ers`, etc.: Act on personal triggers, personal bidding turns, or passive continuous effects; when both are present, each team's effect triggers cleanly on their respective turn/acquisition.
 
+---
 
+### 3. Sequential Cascading Architecture ([`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js))
+- **Pre-Auction Chain**:
+  - `onBegin` sorts all pre-auction queues with real teams first (`team.id === target ? 0 : 1`).
+  - Automatically cascades: `advanceRaidersQueue` -> `advanceCardinalsQueue` -> `advanceChiefsQueue` -> `advanceCommandersQueue` -> `checkPreAuctionCompletion`.
+  - Only one active modal (`pendingRaiders`, `pendingCardinals`, `pendingChiefs`, `pendingCommanders`) can exist at any given time.
+- **Post-Auction Chain**:
+  - `onBegin` sorts all post-auction queues with real teams first.
+  - Automatically cascades: `advanceBillsQueue` -> `advanceEaglesQueue` -> `checkPostAuctionCompletion`.
+  - Lineup replacement (`replaceLineupCard`) smoothly triggers `advanceBillsQueue` upon completion to resume the cascade.
 
+---
 
+### 4. Verification & Playtest Results
 
+- **Automated Verification Suite** ([`scratch/testAllBucsMultiTeamAbilities.mjs`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/scratch/testAllBucsMultiTeamAbilities.mjs)):
+  - **Raiders**: Real Raiders transferred PSI first (-1, +1 target); Bucs Raiders transferred second (-1, +1 target). Total 2 PSI transferred to target. ✅
+  - **Cardinals**: Real Cardinals swapped first (placing previous auction card on top of deck); Bucs Cardinals reacted to the new top card second. ✅
+  - **Chiefs**: Real Chiefs claimed Henry first (leaving slot null); Bucs Chiefs saw Henry was gone and took Barkley second from remaining cards. ✅
+  - **Commanders**: Real Commanders marked index 0 first; Bucs Commanders marked index 1 second without duplicating marked indices (`[0, 1]`). ✅
+  - **Bills**: Real Bills purchased Jerry Rice first (splicing from discard); Bucs Bills saw remaining discard and bought Calvin Johnson second. ✅
+  - **Eagles**: Real Eagles inflated opponents by +6 PSI first; Bucs Eagles inflated opponents by +6 PSI second (total +12 PSI). ✅
+  - **Titans**: Real Titans drafted first and deck was reshuffled; Bucs Titans drafted second from newly shuffled deck. ✅
+  - **Steelers**: Real Steelers evaluates richest condition first before Bucs Steelers. ✅
+  - **Jaguars**: Real Jaguars evaluates event deck first before Bucs Jaguars. ✅
+  - **Rams**: Real Rams attaches 2x token first before Bucs Rams. ✅
 
+- **Regression & Build Checks**:
+  - `scratch/testPlaytest66Buccaneers.mjs`: **PASSED (100%) ✅**
+  - `scratch/testPlaytest67BuccaneersPreAuction.mjs`: **PASSED (100%) ✅**
+  - `scratch/testAllBucsMultiTeamAbilities.mjs`: **PASSED (100%) ✅**
+  - `npm run build`: Compiled in 6.55s with 0 errors. ✅
 
+----------------
 
+## Playtest #69: Arizona Cardinals Strategic Overhaul, Cash Deployment & Selective Toxic Purging
+**Date**: October 3, 2026  
+**Status**: Complete (Verified & Tested)
 
+### 1. Requirements Overview
+1. **Strategic Overhaul (Idea 4)**:
+   - Modernize the Cardinals AI without modifying the official card/ability text.
+   - Fix the coin-hoarding defect where Cardinals accumulated 50+ unspent coins due to a low `deflateWeight: 1.6`.
+   - Properly value deflation (`deflateWeight: 2.30`) and deploy their massive 15 starting coins early (`reserveCoins: 1`, `aggression: 1.20`, `superstarPriorityMult: 1.35`).
+2. **Defensive Denial / Hate-Swapping**:
+   - When a leading opponent is close to victory (PSI $\le 16$) and about to claim a game-ending card that Cardinals cannot afford to outbid, Cardinals defensively swaps the card back into the deck.
+3. **Selective Toxic Purging (User Constraint)**:
+   - Cardinals must **not** purge toxic cards (inflation or negative coin penalties) from the auction row *unless* the Cardinals predicts that it is the most likely team to get stuck with that player.
+   - If opponents are poorer or have 0 coins, Cardinals leaves toxic cards in the row as traps for rivals.
+   - Cardinals only purges a toxic card if Cardinals itself is broke ($\le 1$ coin) with no poorer non-Saints rivals to absorb the leftover card.
+4. **Santa Claus Prevention & Priority Upgrade**:
+   - Only swap in high-value deck cards when Cardinals has the nomination position, coin leadership, or purchasing power to actually claim them, preventing gifts to richer rivals ahead in turn order.
+   - When performing an upgrade, preserve existing toxic cards on the board for rivals by only replacing non-toxic cards.
 
+---
 
+### 2. Implementation Details
 
+1. **AI Genome & Weight Evolution** ([`src/ai/teamGenomes.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/teamGenomes.js), [`src/ai/team_weights.json`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/team_weights.json), [`src/ai/evolvedWeights.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/evolvedWeights.js)):
+   ```javascript
+   cardinals: { 
+     deflateWeight: 2.30, 
+     coinWeight: 0.85, 
+     recurringMult: 1.1, 
+     aggression: 1.20, 
+     reserveCoins: 1, 
+     priceBumpProb: 0.20, 
+     synergyBonus: 1.3, 
+     firstClaimAggression: 1.25, 
+     postClaimAggression: 0.9, 
+     sub5UrgencyBonus: 2.0, 
+     richestBuffer: 1, 
+     instantMaxBidAggression: 1.10, 
+     boardStrengthWeight: 1.1, 
+     threatDefenseWeight: 1.20, 
+     superstarPriorityMult: 1.35 
+   }
+   ```
 
+2. **Card Strategy Refinement** ([`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L896)):
+   ```javascript
+   if (teamId === 'cardinals') {
+     return card.effects?.some(e => (e.type === 'deflate' && (e.amount >= 2 || e.perRound)) || (e.type === 'coins' && e.amount >= 2));
+   }
+   ```
 
+3. **Strategic Swap Engine (`executeCpuCardinals`)** ([`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L6169)):
+   - **Step 1: Defensive Denial**: Evaluates threat of cards to leading rival (`psi <= 16`). Swaps out threats with `rivalScore >= 18.0` that Cardinals cannot block.
+   - **Step 2: Selective Toxic Purge**: Checks if Cardinals is broke (`coins <= 1`) and no non-Saints rival has fewer coins. Only purges toxic card when Cardinals is doomed to auto-receive it.
+   - **Step 3: Santa-Claus-Safe Upgrade**: Assesses acquisition probability (`nomDistance === 0`, `isRichest`, or `coins >= 8`). Replaces lowest *non-toxic* card to keep toxic cards on the board for rivals.
 
+---
 
+### 3. Verification & Benchmark Results
+
+- **Benchmark Comparison Across Lobby Sizes (200 Games per lobby)**:
+  | Metric | Baseline | Playtest 69 | Delta |
+  | :--- | :---: | :---: | :---: |
+  | **4-Player Win Rate** (Fair: 25%) | 43.3% | **54.0%** | **+10.7%** |
+  | **7-Player Win Rate** (Fair: 14.3%) | 15.3% | **35.5%** | **+20.2%** |
+  | **10-Player Win Rate** (Fair: 10%) | 3.3% | **14.5%** | **+11.2% (4.4x boost)** |
+  | **10P Avg Final PSI** | 23.0 PSI | **14.8 PSI** | **-8.2 PSI** |
+  | **Avg Unspent Coins** | 51.1 coins | **37.2 - 39.8 coins** | **-12.0 coins deployed** |
+  | **Toxic Traps Left on Board** | 0/game | **3.0 - 5.2/game** | Weaponized against rivals |
+
+- **Unit Test Suite** ([`scratch/testPlaytest69Cardinals.mjs`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/scratch/testPlaytest69Cardinals.mjs)):
+  - Test 1 (Genome & Weights): Verified all 15 active parameters match target. ✅
+  - Test 2 (Card Strategy): Verified targeting of high-impact deflation and strong economy. ✅
+  - Test 3 (Selective Toxic Purge):
+    * Scenario A: Rich Cardinals (15 coins) left Ezekiel Elliott (+3 inflate) on the board for poor rivals. Passed. ✅
+    * Scenario B: Broke Cardinals (0 coins) purged Ezekiel Elliott when doomed to receive it. Passed. ✅
+  - Test 4 (Defensive Denial): Cardinals buried Derrick Henry to stop Cowboys leader (10 PSI) from winning. Passed. ✅
+  - Test 5 (Santa Claus Prevention): Poor Cardinals in back seat passed on Henry rather than gifting to rich 1st nominator. Passed. ✅
+  - Test 6 (Positive Upgrade): Cardinals in 1st nominator seat with 15 coins brought in Henry to dominate auction. Passed. ✅
+
+- **Regression & Build Suite**:
+  - `scratch/testPlaytest69Cardinals.mjs`: **PASSED (100%) ✅**
+  - `scratch/testAllBucsMultiTeamAbilities.mjs`: **PASSED (100%) ✅**
+  - `scratch/testPlaytest67BuccaneersPreAuction.mjs`: **PASSED (100%) ✅**
+  - `scratch/testPlaytest66Buccaneers.mjs`: **PASSED (100%) ✅**
+  - `npm run build`: Compiled with 0 errors. ✅
+
+---
+
+## Playtest #70: Cardinals Advanced Strategic Mastery (Three Strategic Pillars)
+
+### 1. Overview & Strategy Focus
+- **Objective**: Further elevate Arizona Cardinals CPU win-rate and game management purely through elite decision-making and auction intelligence—**strictly without altering card text, team powers, or starting stats**.
+- **User Instruction**: Omit deck memory/scouting UI (Option 4). Focus exclusively on the other three strategic pillars:
+  1. **Active Roster Delta Check (Roster Improvement Filter)**: Avoid swapping in deck cards if the Cardinals' active roster is already strong and wouldn't be upgraded by the card, preventing unintended gifts to opponents.
+  2. **Round 1–2 Bankroll Bully Bidding**: Capitalize on Cardinals' starting 15-coin bankroll by aggressively securing cornerstone anchors early (bidding ceiling up to 8 coins) while opponents have low starting funds (5–8 coins).
+  3. **Rusher-Specific Counter-Bidding**: Identify cash-strapped low-PSI rushers (e.g. Patriots at 36 PSI or any rival $\le 25$ PSI with $\le 7$ coins) attempting to buy deflation cards, and price-bump them by +1 to bleed their treasury.
+
+---
+
+### 2. Implementation Details
+
+1. **Active Roster Delta Check (`executeCpuCardinals`)** ([`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L6230)):
+   - Checks whether Cardinals already controls a full active roster of real players (no practice squad players).
+   - If full, compares `topCardScore` against the lowest-rated active starter (`minStarterScore`).
+   - If `topCardScore <= minStarterScore`, Cardinals declines to swap the card into the auction row, ensuring it does not accidentally upgrade a rival when it cannot use the player itself.
+
+2. **Round 1–2 Bankroll Bully (`evaluateCpuAuctionBid`)** ([`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L1456)):
+   - In Rounds 1 and 2, when targeting cornerstone anchor cards (score $\ge 12.0$, superstar, or $\ge 1$ deflate / $\ge 2$ coins per round), Cardinals treats reserve coin restrictions as 0.
+   - Sets bully bidding ceiling up to 8 coins (or card max bid), exploiting opponents' early-game poverty to lock down elite engines (e.g. Bowers, Kittle, Cousins, Henry, Barkley).
+
+3. **Rusher-Specific Counter-Bidding (`evaluateCpuAuctionBid`)** ([`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js#L1475)):
+   - Identifies whether the current highest bidder is an active deflation rusher:
+     * Starting low-PSI teams (Patriots with 36 starting PSI) or any team with $\le 25$ current PSI.
+     * Cash-strapped with $\le 7$ coins.
+   - If the player card offers deflation ($\ge 1$ deflate or deflate per round) and Cardinals has surplus funds ($\ge 6$ coins), Cardinals executes a tactical +1 price bump to force the rusher to overpay or lose critical tempo.
+
+---
+
+### 3. Verification & Test Results
+
+- **Unit Test Suite** ([`scratch/testPlaytest70CardinalsStrategy.mjs`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/scratch/testPlaytest70CardinalsStrategy.mjs)):
+  - **Test 1A (Active Roster Delta - Skip Weak Card)**: Full-roster Cardinals evaluated top card (score 10.0) against starters (scores 14.0, 16.0, 18.0) and correctly declined to swap. **Passed ✅**
+  - **Test 1B (Active Roster Delta - Swap Strong Card)**: Cardinals evaluated top card (score 25.0, Derrick Henry) and successfully swapped it in. **Passed ✅**
+  - **Test 2 (Round 1–2 Bankroll Bully)**: Cardinals in Round 1 with 15 coins bid 6 coins on Brock Bowers, leveraging treasury to dominate early auction. **Passed ✅**
+  - **Test 3 (Rusher-Specific Price Bumping)**: Cardinals price-bumped Patriots rusher (36 PSI, 5 coins) from 4 to 5 coins on a deflation card. **Passed ✅**
+
+- **Regression & Build Suite**:
+  - `scratch/testPlaytest70CardinalsStrategy.mjs`: **PASSED (100%) ✅**
+  - `scratch/testPlaytest69Cardinals.mjs`: **PASSED (100%) ✅**
+  - `scratch/testAllBucsMultiTeamAbilities.mjs`: **PASSED (100%) ✅**
+  - `scratch/testPlaytest67BuccaneersPreAuction.mjs`: **PASSED (100%) ✅**
+  - `scratch/testPlaytest66Buccaneers.mjs`: **PASSED (100%) ✅**
+  - `npm run build`: **Compiled successfully with 0 errors ✅**
+
+---
+
+## Playtest #71: Cardinals Genome Fine-Tuning & Weight Perfection
+
+### 1. Overview & Objectives
+- Following the introduction of the 3 advanced strategic mechanics in Playtest #70 (Active Roster Delta Check, Round 1–2 Bankroll Bully, and Rusher-Specific Counter-Bidding), the AI weights and genome were systematically fine-tuned to synergize with these new mechanics.
+- A multi-tier tournament grid search and micro-tuning sweep across 4-Player, 7-Player, and 10-Player lobbies (300 games per format per candidate) was conducted to find the optimal weights.
+
+---
+
+### 2. Fine-Tuning Analysis & Key Insights
+- **`recurringMult` boost (1.10 -> 1.20)**:
+  * By securing cornerstone recurring engines (Brock Bowers, George Kittle, Kirk Cousins, Derrick Henry) in Rounds 1–2 via Bankroll Bully, valuing persistent round-over-round deflation at 1.20 prevents the Cardinals from discarding or undervaluing high-yield compounders for low-impact one-off cards.
+- **`deflateWeight` recalibration (2.30 -> 2.38)**:
+  * Fine-tuned to 2.38 to balance aggressive deflation burn (from 41 starting PSI) while maintaining healthy valuation of coin engines (0.85).
+- **`aggression` adjustment (1.20 -> 1.18)**:
+  * Slightly tapering general auction aggression from 1.20 to 1.18 prevents overpaying on mid-tier players in later rounds, preserving cash for high-threat counter-bidding and end-game closures.
+
+---
+
+### 3. Champion Genome Configuration
+Updated in [`src/ai/teamGenomes.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/teamGenomes.js), [`src/ai/team_weights.json`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/team_weights.json), and [`src/ai/evolvedWeights.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/evolvedWeights.js):
+```javascript
+cardinals: { 
+  deflateWeight: 2.38, 
+  coinWeight: 0.85, 
+  recurringMult: 1.20, 
+  aggression: 1.18, 
+  reserveCoins: 1, 
+  priceBumpProb: 0.20, 
+  synergyBonus: 1.30, 
+  firstClaimAggression: 1.25, 
+  postClaimAggression: 0.90, 
+  sub5UrgencyBonus: 2.0, 
+  richestBuffer: 1, 
+  instantMaxBidAggression: 1.10, 
+  boardStrengthWeight: 1.10, 
+  threatDefenseWeight: 1.20, 
+  superstarPriorityMult: 1.35 
+}
+```
+
+---
+
+### 4. Benchmark Performance (300 Games per Format)
+| Metric | Pre-Fine-Tuned Baseline | Playtest 71 Champion | Net Improvement |
+| :--- | :---: | :---: | :---: |
+| **4-Player Win Rate** (Fair: 25%) | 57.5% | **64.0%** | **+6.5% (2.56x fair share)** |
+| **7-Player Win Rate** (Fair: 14.3%) | 35.0% | **45.7%** | **+10.7% (3.20x fair share)** |
+| **10-Player Win Rate** (Fair: 10%) | 10.0% | **13.7%** | **+3.7% (1.37x fair share)** |
+| **4P Avg Final PSI** | 7.2 PSI | **6.3 PSI** | **-0.9 PSI** |
+| **7P Avg Final PSI** | 9.6 PSI | **8.4 PSI** | **-1.2 PSI** |
+| **Capital Efficiency (Unspent Coins)** | 39.4 coins | **35.3 - 37.0 coins** | **Active engine deployment** |
+| **Overall Composite Multiplier** | 1.92x | **2.38x** | **+0.46x total strength** |
+
+---
+
+### 5. Verification & Regression Suite
+- `scratch/testPlaytest70CardinalsStrategy.mjs`: **PASSED (100%) ✅**
+- `scratch/testPlaytest69Cardinals.mjs`: **PASSED (100%) ✅**
+- `scratch/testAllBucsMultiTeamAbilities.mjs`: **PASSED (100%) ✅**
+- `scratch/testPlaytest67BuccaneersPreAuction.mjs`: **PASSED (100%) ✅**
+- `scratch/testPlaytest66Buccaneers.mjs`: **PASSED (100%) ✅**
+- `npm run build`: **Compiled successfully with 0 errors ✅**
+
+--------------------------------------------------
+
+## Playtest #72: NFC West Mastery (49ers Refresh Rule Calculus, Rams 2x Doubling Token Patience & Leaning, Seahawks 4-Slot Engine Deployment)
+
+### 1. Overview & User Directives
+Without modifying team abilities, card values, or starting stats (49ers 44 PSI / 8 coins; Rams 49 PSI / 11 coins; Seahawks 46 PSI / 12 coins), optimize CPU strategic play:
+1. **49ers Refresh Rule Calculus**:
+   - In Deflategate refresh phase, lineup coins resolve *before* the under-5 coins deflation check (`resultingCoins = p.coins + lineupCoins < 5`).
+   - If 49ers enters refresh with 3 coins but gains 2 coins from their lineup during refresh, `3 + 2 = 5 >= 5`, so they do NOT receive their double deflation ability!
+   - Strategy: The AI must calculate `calculate49ersIncomingCoins(player, G)` to determine their true spend-down target: `targetPurse = Math.max(0, 4 - incomingCoins)`.
+   - Avoid recurring coin generators (especially $\ge 2$ coins/round) which permanently shrink the spend-down window.
+   - In auction bidding, bid up to `spendDownNeeded = player.coins - targetPurse` on deflation cards to guarantee remaining purse $< 5$ entering refresh.
+2. **Rams Doubling Token Strategy**:
+   - Rams starts with a 2x doubling token (applicable to non-Phase 1 cards).
+   - Bankroll preservation: Enter Phase 2 (and Round 5) with $\ge 8$ coins to afford the best player available to double.
+   - In Round 4 (and earlier), do not blow the treasury on a "decent to good" Phase 1 card; save enough coins ($\ge 8$) to acquire the superstar in Round 5.
+   - Superstar criteria to double:
+     * Deflate superstar: $\ge 4$ deflate every round (e.g. Derrick Henry, Adrian Peterson, Patrick Mahomes, Lamar Jackson, Christian McCaffrey, Saquon Barkley, DJ Moore, Travis Kelce, Marshawn Lynch, or HOF legends).
+     * Coin superstar: $\ge 5$ coins every round (e.g. Justin Jefferson, Ja'Marr Chase, CeeDee Lamb).
+   - **Deflate Leaning Preference**: Strongly prefer deflation over coins when choosing between the two for doubling (+28.0 deflate boost vs +18.0 coins boost).
+   - **Patience vs Expiration**: If no superstar appears in Round 5, do NOT burn the token on a mediocre card; continue saving $\ge 8$ coins and wait for Round 8 (HOF players) if needed.
+   - Endgame fallback: Only attach the token to the best available non-Phase 1 card in Round 8+ or if someone hits $\le 12$ PSI to avoid letting the token expire unused.
+3. **Seahawks 4-Slot Compounding**:
+   - Seahawks starts with a 4th roster slot and 4 practice squad players.
+   - Aggressively replace all 4 practice squad players in Rounds 1–4 by bidding up to 4 coins on recurring engines/deflation cards.
+   - Remove the previous hardcoded `round <= 4` cutoff in strategy fit and card scoring so Seahawks builds engines across all 4 slots all game.
+
+---
+
+### 2. Implementation Details
+
+#### A. Core Helpers in [`src/Game.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/Game.js)
+1. **`calculate49ersIncomingCoins(player, G, incomingCard = null)`**:
+   - Accurately sums lineup coins generated during refresh phase, accounting for event multipliers (`double_all`, `double_phase1`, `double_wr`, `double_te`) and Rams 2x doubling tokens.
+2. **`isRamsDoublingSuperstar(card)`**:
+   - Rejects Phase 1 cards and practice squad.
+   - Recognizes HOF cards and cards with $\ge 4$ recurring deflate as `type: 'deflate'`.
+   - Recognizes cards with $\ge 5$ recurring coins as `type: 'coins'`.
+3. **Strategy Alignment (`doesCardFitTeamStrategy`)**:
+   - `49ers`: Matches deflation cards with $< 2$ recurring coins.
+   - `rams`: Matches doubling superstars or non-Phase 1 recurring engines, while preserving funds in Phase 1.
+   - `seahawks`: Matches any recurring engine or deflation card across all rounds.
+
+#### B. Card Scoring (`scoreCardForPlayer`)
+- **49ers**:
+  - Deflation valued at 2x value (`cardRecDeflate * 4.0`).
+  - Recurring coins penalized (-2.0 for 1 coin, `-cardRecCoins * 4.0` for $\ge 2$ coins).
+  - Spend-down urgency bonus (+8.0) when `coins + incomingCoins >= 5`.
+- **Rams**:
+  - Deflation superstars boosted by `+28.0 + (value * 4.0)`.
+  - Coin superstars boosted by `+18.0 + (value * 2.5)`.
+  - Ordinary non-Phase 1 cards kept at modest scores to prevent premature distraction.
+- **Seahawks**:
+  - Recurring engines boosted (+5.5) and deflation boosted (+3.5) across all rounds.
+  - Early practice squad replacement urgency (+6.0 in Rounds 1–4).
+
+#### C. Auction Nominations & Bidding (`chooseCpuNominationCard` & `evaluateCpuAuctionBid`)
+- **49ers**:
+  - Nominates deflation cards that allow spending down below `targetPurse = 4 - incomingCoins`.
+  - In auction bidding, dynamically calculates `targetPurse = 4 - incomingCoinsWithCard`. Bids up to `spendDownNeeded + urgency` to guarantee double deflation at refresh.
+- **Rams**:
+  - In Rounds 1–7, enforces `savingsReserve = Math.max(savingsReserve, 8)` unless bidding on a doubling superstar (`savingsReserve = 0`).
+  - Aggressive bully ceiling on doubling superstars (up to 14 coins for deflate, 11 coins for coins).
+- **Seahawks**:
+  - In early rounds (1–4), bids up to 4 coins on valid engines to ensure practice squad replacement.
+- **Post-Auction Token Attaching**:
+  - Rams CPU searches for deflation superstar first, coin superstar second, HOF card third.
+  - Only falls back in Round 8+ or if someone is $\le 12$ PSI.
+
+#### D. Final Calibrated Team Genomes
+Synchronized in [`src/ai/teamGenomes.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/teamGenomes.js), [`src/ai/evolvedWeights.js`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/evolvedWeights.js), and [`src/ai/team_weights.json`](file:///c:/Users/tthorne/OneDrive%20-%20Lenovo/Desktop/Documents/AntiGravity%20Projects/AntiGravity%20Deflategate/src/ai/team_weights.json):
+```javascript
+rams: { deflateWeight: 2.50, coinWeight: 0.75, recurringMult: 1.25, aggression: 1.18, reserveCoins: 1, priceBumpProb: 0.2, synergyBonus: 1.3, firstClaimAggression: 1.2, postClaimAggression: 0.9, sub5UrgencyBonus: 2.0, richestBuffer: 1, instantMaxBidAggression: 1.0, boardStrengthWeight: 1.0, threatDefenseWeight: 1.1, superstarPriorityMult: 1.5 },
+seahawks: { deflateWeight: 2.75, coinWeight: 0.75, recurringMult: 1.25, aggression: 1.18, reserveCoins: 1, priceBumpProb: 0.2, synergyBonus: 1.3, firstClaimAggression: 1.2, postClaimAggression: 0.9, sub5UrgencyBonus: 2.0, richestBuffer: 1, instantMaxBidAggression: 1.0, boardStrengthWeight: 1.1, threatDefenseWeight: 1.1, superstarPriorityMult: 1.3 },
+'49ers': { deflateWeight: 2.45, coinWeight: 0.35, recurringMult: 1.10, aggression: 1.25, reserveCoins: 0, priceBumpProb: 0.2, synergyBonus: 1.5, firstClaimAggression: 1.3, postClaimAggression: 1.0, sub5UrgencyBonus: 3.8, richestBuffer: 1, instantMaxBidAggression: 1.0, boardStrengthWeight: 1.1, threatDefenseWeight: 1.1, superstarPriorityMult: 1.2 },
+```
+
+#### E. Critical Valuation Architecture Calibration
+1. **General Human Heuristic Execution Order**:
+   - Reordered `GENERAL_HUMAN_HEURISTIC_TEAMS` baseline calculation to execute *before* team-specific logic.
+   - Prevents generic board spread clamping from accidentally overwriting 49ers spend-down targets, Rams bankroll preservation, or Seahawks early engine targets.
+2. **Seahawks Mid/Late Wealth Deployment**:
+   - When holding $\ge 12$ coins in Rounds 5+, Seahawks automatically deploys up to $45\%$ of their purse on elite deflation cards ($\ge 3$ recDeflate or $\ge 4$ instDeflate), converting their massive 4-slot coin engine into game-winning deflation.
+3. **Rams Non-Superstar Ceiling Guard**:
+   - Strictly enforces `valuation <= currentPlayer.coins - 8` on non-superstars in early/mid rounds, preventing archetype multiplier or jitter from eroding the Phase 2 doubling bankroll.
+4. **49ers Spend-Down Exemption**:
+   - Exempts 49ers spend-down bids from generic early-game 65% purse caps, ensuring they can drop cleanly below 5 coins to trigger double deflation at refresh.
+
+---
+
+### 3. Comprehensive Benchmark Results (Multi-Game Calibrated Tests)
+
+| Team | 4-Player Win Rate (Fair: 25%) | 7-Player Win Rate (Fair: 14.3%) | 10-Player Win Rate (Fair: 10%) | Avg Final PSI (7P) | Avg Coins (7P) | Key Highlight |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **49ers** | **79.0%** (3.16x) | **80.0%** (5.59x) | **35.0%** (3.50x) | **0.9 PSI** | 9.8 coins | Exact refresh incoming coins accounted for; double deflation reliably triggered |
+| **Seahawks** | **70.0%** (2.80x) | **68.0%** (4.76x) | **29.0%** (2.90x) | **2.0 PSI** | 29.0 coins | Rapid practice squad replacement + mid/late wealth deployment across 4 slots |
+| **Rams** | **57.0%** (2.28x) | **59.0%** (4.13x) | **19.0%** (1.90x) | **4.6 PSI** | 29.0 coins | Bankroll $\ge 8$ preserved; doubles Henry/Mahomes/HOF legends with deflate priority |
+
+#### 4-Way NFC West Division Clash (Rams vs 49ers vs Seahawks vs Cardinals):
+- **49ers**: **61.5% Win Rate**, 2.6 Avg Final PSI, 1.5 Avg End Coins (dominates with clean spend-downs).
+- **Rams**: **30.5% Win Rate**, 12.8 Avg Final PSI, 5.9 Avg End Coins.
+- Combined Rams + 49ers claim **92.0%** of all 4-player division clash championships!
+
+---
+
+### 4. Verification & Regression Suite
+- `scratch/testPlaytest72NfcWest.mjs`: **PASSED (100%) ✅**
+  * 49ers incoming refresh coins rule calculus verified (3 coins + 2 refresh coins = 5 coins -> no ability).
+  * Rams superstar categorization & deflate-over-coins preference verified (Henry score 211.7 vs Jefferson 104.5).
+  * Rams bankroll preservation in Round 4 verified (bid capped at 0/refused on Phase 1 card to preserve $\ge 8$ coins).
+- `scratch/testPlaytest70CardinalsStrategy.mjs`: **PASSED (100%) ✅**
+- `scratch/testAllBucsMultiTeamAbilities.mjs`: **PASSED (100%) ✅**
+- `npm run build`: **Compiled successfully with 0 errors ✅**
