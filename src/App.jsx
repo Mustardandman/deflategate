@@ -104,7 +104,7 @@ const App = () => {
       setupData: { 
         numHumans: actualNumHumans,
         cpuDifficulty: cpuDifficulty,
-        forceTitans: typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('team') === 'titans'
+        forceTeam: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('team') : null
       }
     };
 

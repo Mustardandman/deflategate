@@ -6209,7 +6209,7 @@ export const calculateRefreshResults = (G) => {
       if (distinctPos.size >= 3) {
         bonusCoins += 3;
         addLog(G, `Ravens Ability: Controlled 3 distinct positions (${[...distinctPos].join(', ')}), gained +3 coins.`);
-        triggerAbilityNotification(G, playerID, 'ravens', 'Ravens Tri-Position Mastery', `Controlled 3 positions (${[...distinctPos].join(', ')}), gained +3 coins!`);
+        triggerAbilityNotification(G, id, 'ravens', 'Ravens Tri-Position Mastery', `Controlled 3 positions (${[...distinctPos].join(', ')}), gained +3 coins!`);
       }
     }
 
@@ -7205,11 +7205,12 @@ export const DeflategateGame = {
       };
     }
 
-    const forceTitans = (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('team') === 'titans') || setupData?.forceTitans;
-    if (forceTitans) {
-      const titans = TEAMS.find(t => t.id === 'titans');
-      if (titans && players['0']) {
-        players['0'].teamChoices[0] = titans;
+    const forceTeamParam = (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('team')) || setupData?.forceTeam || (setupData?.forceTitans ? 'titans' : null);
+    if (forceTeamParam) {
+      const forcedTeam = TEAMS.find(t => t.id === forceTeamParam.toLowerCase());
+      if (forcedTeam && players['0']) {
+        const otherChoices = (players['0'].teamChoices || []).filter(t => t.id !== forcedTeam.id);
+        players['0'].teamChoices = [forcedTeam, ...otherChoices.slice(0, 2)];
       }
     }
 
@@ -9198,9 +9199,17 @@ export const DeflategateGame = {
               G.board.auctionPlayers[G.board.activeAuctionCardIndex] = null;
               G.board.activeAuctionCardIndex = null;
               G.board.passedAuctionPlayers = [];
-              G.board.highestBid = 0;
-              G.board.highestBidder = null;
-              advanceAuctionCard(G);
+              const numP = Object.keys(G.players).length;
+              const currentNom = G.board.nominator !== null ? G.board.nominator : '0';
+              let found = null;
+              for (let i = 1; i <= numP; i++) {
+                const candidate = ((parseInt(currentNom) + i) % numP).toString();
+                if (!G.players[candidate]?.hasWonAuction) {
+                  found = candidate;
+                  break;
+                }
+              }
+              if (found) G.board.nominator = found;
             }
           }
           if (events && events.endTurn) events.endTurn();

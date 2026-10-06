@@ -554,7 +554,7 @@ export const DesktopDeflategateBoardArena = ({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 justify-center">
             {availableChoices.map((team, idx) => (
               <div
-                key={team.id}
+                key={`${team.id}-${idx}`}
                 onClick={() => moves.selectTeam(idx, effectivePlayerID)}
                 className="bg-slate-900 border-2 border-slate-800 hover:border-blue-500 p-6 rounded-3xl flex flex-col justify-between transition-all transform hover:-translate-y-1.5 shadow-xl cursor-pointer text-left"
               >
