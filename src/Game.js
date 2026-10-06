@@ -6046,6 +6046,11 @@ export const advanceTitansDraftQueue = (G, events) => {
 
   G.board.pendingTitansDraft = null;
   G.board.titansDraftComplete = true;
+  if (events && events.setPhase) {
+    events.setPhase('eventPhase');
+  } else if (events && events.endPhase) {
+    events.endPhase();
+  }
 };
 
 export const advanceFreeAgencyQueue = (G) => {
@@ -7200,6 +7205,14 @@ export const DeflategateGame = {
       };
     }
 
+    const forceTitans = (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('team') === 'titans') || setupData?.forceTitans;
+    if (forceTitans) {
+      const titans = TEAMS.find(t => t.id === 'titans');
+      if (titans && players['0']) {
+        players['0'].teamChoices[0] = titans;
+      }
+    }
+
     return {
       players,
       vsCpu: numHumans < numPlayers,
@@ -8238,6 +8251,13 @@ export const DeflategateGame = {
           G.board.pendingTitansDraft = null;
 
           advanceTitansDraftQueue(G, events);
+          if (G.board.titansDraftComplete) {
+            if (events && events.setPhase) {
+              events.setPhase('eventPhase');
+            } else if (events && events.endPhase) {
+              events.endPhase();
+            }
+          }
         }
       },
       endIf: ({ G }) => G.board.titansDraftComplete === true,

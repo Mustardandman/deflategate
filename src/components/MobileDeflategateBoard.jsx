@@ -431,7 +431,7 @@ export const MobileDeflategateBoard = ({
   // -------------------------------------------------------------
   // PHASE 3: TITANS DRAFT
   // -------------------------------------------------------------
-  if (ctx.phase === 'titansDraft') {
+  if ((ctx.phase === 'titansDraft' || G.board.pendingTitansDraft) && !G.board.titansDraftComplete) {
     const isMyDraftTurn = G.board.pendingTitansDraft && String(G.board.pendingTitansDraft.playerID) === String(effectivePlayerID);
     if (!isMyDraftTurn) {
       return (
@@ -445,13 +445,15 @@ export const MobileDeflategateBoard = ({
       );
     }
 
+    const draftCards = G.board.pendingTitansDraft?.cards || G.board.pendingTitansDraft?.options || [];
+
     return (
       <div className="min-h-screen bg-slate-950 text-white p-4 font-sans max-w-md mx-auto">
         <h1 className="text-xl font-black text-blue-400 uppercase mb-1">⚔️ Titans Opening Draft</h1>
         <p className="text-slate-400 text-xs mb-3">Choose 1 of the top 3 cards to acquire for free:</p>
 
         <div className="space-y-2.5">
-          {G.board.pendingTitansDraft.options.map((card, idx) => (
+          {draftCards.map((card, idx) => (
             <div
               key={card.uniqueId || idx}
               onClick={() => moves.titansPickCard(idx, effectivePlayerID)}

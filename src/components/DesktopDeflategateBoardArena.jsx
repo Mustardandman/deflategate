@@ -10,7 +10,8 @@ export const DesktopDeflategateBoardArena = ({
   playerID, 
   vsCpu, 
   playMode, 
-  numHumans: initialNumHumans 
+  numHumans: initialNumHumans,
+  toggleDesktopUi = null
 }) => {
   const [showRules, setShowRules] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -662,7 +663,7 @@ export const DesktopDeflategateBoardArena = ({
   }
 
   // Titans Opening Draft Screen
-  if (ctx.phase === 'titansDraft' || G.board.pendingTitansDraft) {
+  if ((ctx.phase === 'titansDraft' || G.board.pendingTitansDraft) && !G.board.titansDraftComplete) {
     const isMyDraftTurn = G.board.pendingTitansDraft && String(G.board.pendingTitansDraft.playerID) === String(effectivePlayerID);
     if (!isMyDraftTurn) {
       const draftingPlayer = G.board.pendingTitansDraft ? G.players[G.board.pendingTitansDraft.playerID] : null;
@@ -846,7 +847,7 @@ export const DesktopDeflategateBoardArena = ({
           </button>
 
           {/* Classic Desktop UI Revert Button */}
-          {toggleDesktopUi && (
+          {typeof toggleDesktopUi === 'function' && (
             <button
               onClick={toggleDesktopUi}
               className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold px-2.5 py-1 rounded-lg text-xs uppercase tracking-wider"

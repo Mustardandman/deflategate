@@ -103,7 +103,8 @@ const App = () => {
       debug: false,
       setupData: { 
         numHumans: actualNumHumans,
-        cpuDifficulty: cpuDifficulty
+        cpuDifficulty: cpuDifficulty,
+        forceTitans: typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('team') === 'titans'
       }
     };
 
@@ -455,7 +456,8 @@ const App = () => {
       cpuDifficulty={cpuDifficulty}
       setupData={{ 
         numHumans: actualNumHumans,
-        cpuDifficulty: cpuDifficulty
+        cpuDifficulty: cpuDifficulty,
+        forceTitans: typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('team') === 'titans'
       }}
     />
   );
