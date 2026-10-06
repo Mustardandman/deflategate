@@ -184,7 +184,7 @@ export const applyPsiDeflated = (G, playerID, amount) => {
     allowed = Math.min(amount, remaining);
   }
   const prevPsi = p.psi;
-  p.psi = Math.max(0, p.psi - allowed);
+  p.psi = p.psi - allowed;
   if (!G.board.roundStats) G.board.roundStats = {};
   if (!G.board.roundStats[playerID]) G.board.roundStats[playerID] = { coinsGained: 0, psiDeflated: 0 };
   G.board.roundStats[playerID].psiDeflated += allowed;
@@ -1226,12 +1226,15 @@ export const buildJaguarsMasterDeckOrder = (G, jaguarsPlayerId) => {
 
   const plannedSequence = [];
 
+  const isCoinPoor = (p.coins < 8 || p.coins < richestOppCoins - 2 || (numPlayers >= 8 && p.coins < richestOppCoins));
+  const rookiePref = isCoinPoor ? (numPlayers >= 8 ? 8 : 7) : (isCoinLeader ? 2.5 : 4);
+
   // Slot 1 (Immediate Next Round Event):
   if (needsMoreTimeToCook && hotAir) {
     plannedSequence.push(hotAir); // Extend the clock!
   } else if (hasLeadAndWantsShorter && coldAir) {
     plannedSequence.push(coldAir); // Shorten the clock / win immediately!
-  } else if (isCoinLeader && rookieClass && currentRound <= 3) {
+  } else if (isCoinLeader && !isCoinPoor && rookieClass && currentRound <= 3) {
     plannedSequence.push(rookieClass); // Bully double draft with coin lead!
   } else if (currentRound <= 2 && rawTalent && nonPsLineup.some(c => c.phase === 1)) {
     plannedSequence.push(rawTalent); // Double Phase 1 cards!
@@ -1241,7 +1244,7 @@ export const buildJaguarsMasterDeckOrder = (G, jaguarsPlayerId) => {
     plannedSequence.push(offensiveBattle); // Double mature engine!
   } else if (currentRound >= 5 && coldAir && p.psi <= 16) {
     plannedSequence.push(coldAir); // Closer mode!
-  } else if (rookieClass && isCoinLeader) {
+  } else if (rookieClass && isCoinLeader && !isCoinPoor) {
     plannedSequence.push(rookieClass);
   } else if (rawTalent && currentRound <= 3) {
     plannedSequence.push(rawTalent);
@@ -1254,13 +1257,13 @@ export const buildJaguarsMasterDeckOrder = (G, jaguarsPlayerId) => {
 
   // Build the remaining strategic progression:
   // User Blueprint:
-  // - Early (R2-3): Raw Talent, Rookie Class
+  // - Early (R2-3): Raw Talent, Rookie Class (only if rich)
   // - Mid (Round 4): Team Legend Returns (user directive: "Maybe you have legend returns on round 4 so you can get a HOF player on round 5 out.")
   // - Late Mid (Round 5): Offensive Battle (doubles full 3-player lineup + HOF superstar!)
   // - Endgame (Round 6+): Cold Air (guillotine closer)
   const remainingGameChangers = [
     { event: rawTalent, prefRound: 2 },
-    { event: rookieClass, prefRound: 3 },
+    { event: rookieClass, prefRound: rookiePref },
     { event: teamLegend, prefRound: 4 },
     { event: offensiveBattle, prefRound: 5 },
     { event: coldAir, prefRound: (hasLeadAndWantsShorter && p.psi <= 16) ? 4.5 : (isBehindOnPsi || numPlayers >= 8 ? 8 : 6.5) },
@@ -1463,9 +1466,22 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
   if (card.id === 'tyreek_hill') {
     totalDeflate += 2;
   }
-  if (card.id === 'amon_st_brown') {
-    const oppCount = Object.keys(G.players).length - 1;
-    totalCoins += oppCount * roundsLeft;
+  if (card.id === 'amon_ra_st_brown' || card.id === 'amon_st_brown') {
+    const oppCount = Math.max(1, (G?.ctx?.numPlayers || Object.keys(G.players || {}).length) - 1);
+    // Dynamic value: Steals 1 coin from each opponent every turn.
+    // In a 10P game, that's +9 net coins/turn (+9 to player, -1 to each opp = huge swing).
+    totalCoins += oppCount * 1.35 * roundsLeft;
+  }
+  if (card.id === 'brock_purdy') {
+    const maxPurchases = (G?.board?.activeEvent?.category === 'double_draft') ? 2 : (G?.board?.maxCardPurchasesPerRound || 1);
+    const totalPossibleWins = Object.keys(G.players || {}).length * maxPurchases;
+    const currentTotalWins = Object.values(G.players || {}).reduce((sum, pl) => sum + (pl.cardsWonThisRound || 0), 0);
+    const remainingAcquisitions = totalPossibleWins - currentTotalWins;
+    if (remainingAcquisitions <= 2) {
+      // Last 2 players bonus will trigger (+5 coins and -3 PSI instantly!)
+      totalCoins += 5;
+      totalDeflate += 3;
+    }
   }
   if (card.id === 'dj_moore' && p.coins <= 10) {
     totalDeflate += 2;
@@ -1523,17 +1539,22 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     }
   }
 
-  // Playtest 20: Puka Nacua Expected Value (Copies teammate's recurring effect each round)
+  // Puka Nacua Dynamic Value: Copies best active recurring teammate effect.
+  // Valued strictly on what is in the active starting lineup without artificial floor!
   if (card.id === 'puka_nacua') {
-    const bestLineupDeflate = p.lineup?.reduce((max, c) => {
-      const d = (c.effects || []).filter(e => e.perRound && e.type === 'deflate').reduce((sum, e) => sum + e.amount, 0);
-      return Math.max(max, d);
-    }, 0) || 0;
-    const bestLineupCoins = p.lineup?.reduce((max, c) => {
-      const co = (c.effects || []).filter(e => e.perRound && e.type === 'coins').reduce((sum, e) => sum + e.amount, 0);
-      return Math.max(max, co);
-    }, 0) || 0;
-    const estCopyValue = Math.max(16.0, (bestLineupDeflate * deflateWeight + bestLineupCoins * coinWeight) * roundsLeft);
+    const realStarters = (p.lineup || []).filter(c => !c.isPracticeSquad && !c.uniqueId?.startsWith('ps_'));
+    let bestLineupDeflate = 0;
+    let bestLineupCoins = 0;
+    realStarters.forEach(c => {
+      (c.effects || []).forEach(e => {
+        if (e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round') {
+          if (e.type === 'deflate') bestLineupDeflate = Math.max(bestLineupDeflate, e.amount || 0);
+          if (e.type === 'coins' && e.amount > 0) bestLineupCoins = Math.max(bestLineupCoins, e.amount || 0);
+        }
+      });
+    });
+    const estCopyPerTurn = (bestLineupDeflate * deflateWeight) + (bestLineupCoins * coinWeight);
+    const estCopyValue = estCopyPerTurn * roundsLeft;
     rawScore += estCopyValue;
   }
 
@@ -1559,7 +1580,7 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
 
   const superstarMult = teamGenome?.superstarPriorityMult || 1.0;
   if (card.phase === 'hof') {
-    rawScore = Math.max(rawScore, 24.0) * superstarMult;
+    rawScore = Math.max(rawScore, 36.0) * superstarMult;
   } else if (card.id === 'patrick_mahomes' || card.id === 'travis_kelce' || card.id === 'christian_mccaffrey') {
     rawScore = Math.max(rawScore, 20.0) * superstarMult;
   } else if (isTier1Elite) {
@@ -2559,12 +2580,16 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
 
   const effectiveTeamId = getEffectiveTeamId(currentPlayer);
 
-  // Universal Superstar Priority: Everyone wants Patrick Mahomes and Travis Kelce!
+  // Universal Superstar Priority: Everyone wants Patrick Mahomes, Travis Kelce, and HOF legends!
   // User directive: Lions only nominates Tier 1 superstars if they are the richest player and can win them!
   const isLionsTeam = effectiveTeamId === 'lions';
   const isRichestPlayer = currentPlayer.coins > richestOpponentCoins;
   if (!isLionsTeam || isRichestPlayer) {
-    const eliteChiefsSuperstar = eligibleCards.find(item => item.card.id === 'patrick_mahomes' || item.card.id === 'travis_kelce');
+    const eliteChiefsSuperstar = eligibleCards.find(item => 
+      item.card.phase === 'hof' || 
+      item.card.id === 'patrick_mahomes' || 
+      item.card.id === 'travis_kelce'
+    );
     if (eliteChiefsSuperstar && currentPlayer.coins >= eliteChiefsSuperstar.card.minBid) {
       return eliteChiefsSuperstar.index;
     }
@@ -3400,43 +3425,64 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     if (affordableTop) return affordableTop.index;
   }
 
-  // Playtest 19 Note 8: Tactical Middle-Player Targeting
-  // When low on coins or cannot compete with the richest opponent for the top card:
-  // Instead of futilely nominating the top superstar (which a richer rival will take),
-  // nominate a quality middle-tier player (ranked #2 or #3 with positive score)
-  // that the CPU CAN comfortably afford to win for cheap!
-  const topCardEffMax = getEffectiveCardMaxBid(eligibleCards[0].card, G.board.activeEvent);
-  if (eligibleCards.length >= 2 && currentPlayer.coins < richestOpponentCoins && currentPlayer.coins < topCardEffMax) {
-    const middleTargets = eligibleCards.filter((item, idx) => {
+  // Brock Purdy Dynamic Timing Filter:
+  // If Purdy's +5/-3 bonus won't trigger yet (more than 2 acquisitions remaining), avoid nominating him early
+  const maxPurchases = (G?.board?.activeEvent?.category === 'double_draft') ? 2 : (G?.board?.maxCardPurchasesPerRound || 1);
+  const totalPossibleWins = Object.keys(G.players || {}).length * maxPurchases;
+  const currentTotalWins = Object.values(G.players || {}).reduce((sum, pl) => sum + (pl.cardsWonThisRound || 0), 0);
+  const remainingAcquisitions = totalPossibleWins - currentTotalWins;
+
+  let nominationPool = eligibleCards;
+  if (remainingAcquisitions > 2 && eligibleCards.length >= 2) {
+    const nonPurdy = eligibleCards.filter(item => item.card.id !== 'brock_purdy');
+    if (nonPurdy.length > 0 && nonPurdy[0].score >= 3.0) {
+      nominationPool = nonPurdy;
+    }
+  }
+
+  // Tactical Middle-Player Targeting:
+  // ONLY down-step if index 0 is a genuine generational superstar (Mahomes, Kelce, HOF, CMC)
+  // that a strictly richer rival is guaranteed to win, AND a viable Tier 2 card exists.
+  // NEVER down-step if index 0 is a standard engine (e.g. 3 coins/turn) that can be opened for minBid!
+  const topCard = nominationPool[0];
+  const isTopGenerationalStar = topCard && (
+    topCard.card.phase === 'hof' || 
+    topCard.card.id === 'patrick_mahomes' || 
+    topCard.card.id === 'travis_kelce' || 
+    topCard.card.id === 'christian_mccaffrey' || 
+    topCard.card.id === 'lamar_jackson'
+  );
+
+  if (nominationPool.length >= 2 && isTopGenerationalStar && currentPlayer.coins < (richestOpponentCoins - 2)) {
+    const middleTargets = nominationPool.filter((item, idx) => {
       if (idx === 0) return false;
       const affordableMin = currentPlayer.coins >= item.card.minBid;
-      const goodQuality = item.score >= 4.0;
-      const affordableExpected = currentPlayer.coins >= Math.min(item.card.maxBid, item.card.minBid + 2);
-      return affordableMin && goodQuality && affordableExpected;
+      const goodQuality = item.score >= 8.0;
+      return affordableMin && goodQuality;
     });
 
-    if (middleTargets.length > 0 && Math.random() < 0.70) {
+    if (middleTargets.length > 0) {
       return middleTargets[0].index;
     }
   }
 
   // Decoy Nomination: only decoy if top affordable card is not already a prime quality target
   const archetype = getCpuArchetype(currentPlayer, currentPlayerId);
-  const decoyChance = archetype === 'opportunist' ? 0.35 : (archetype === 'tycoon' ? 0.30 : 0.15);
+  const decoyChance = archetype === 'opportunist' ? 0.25 : (archetype === 'tycoon' ? 0.20 : 0.10);
 
-  if (activeOpponents.length >= 2 && eligibleCards.length >= 2 && eligibleCards[0].score < 4.0 && Math.random() < decoyChance) {
-    const cheapDecoys = eligibleCards.filter((item, i) => i > 0 && item.card.minBid <= 2 && item.score >= 0);
+  if (activeOpponents.length >= 2 && nominationPool.length >= 2 && nominationPool[0].score < 3.0 && Math.random() < decoyChance) {
+    const cheapDecoys = nominationPool.filter((item, i) => i > 0 && item.card.minBid <= 2 && item.score >= 0);
     if (cheapDecoys.length > 0) {
       return cheapDecoys[0].index;
     }
   }
 
-  // Weighted choice between #1 and #2 so nomination isn't 100% deterministic
-  if (eligibleCards.length >= 2 && eligibleCards[0].score - eligibleCards[1].score < 3 && Math.random() < 0.35) {
-    return eligibleCards[1].index;
+  // Weighted choice between #1 and #2 ONLY if scores are very close (substitute cards within 1.0 score)
+  if (nominationPool.length >= 2 && nominationPool[0].score - nominationPool[1].score <= 1.0 && Math.random() < 0.25) {
+    return nominationPool[1].index;
   }
 
-  return eligibleCards[0].index;
+  return nominationPool[0].index;
 };
 
 export const evaluateBillsDiscardClaim = (G, billsId) => {
@@ -3737,7 +3783,6 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   const isChiefsSuperstar = (card.id === 'patrick_mahomes' || card.id === 'travis_kelce');
   let isSuperstar = (
     card.phase === 'hof' || 
-    effMax >= 17 || 
     isChiefsSuperstar ||
     card.id === 'patrick_mahomes' || 
     card.id === 'travis_kelce' || 
@@ -3749,7 +3794,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     card.id === 'brock_bowers' ||
     card.id === 'drake_london' ||
     card.id === 'trevor_lawrence' ||
-    card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount >= 3) ||
+    (card.id === 'amon_ra_st_brown' && Object.keys(G.players || {}).length >= 5) ||
     card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3)
   );
 
@@ -3972,14 +4017,78 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
-  // Playtest 19 Note 9: Worst Card Outbid Protection
-  // If the human or another team nominates the worst card on the board for 1 coin,
-  // no CPU should outbid them for 2+ coins when better cards are available on the board!
-  if (otherAvailableCards.length > 0 && effectiveTeamId !== 'colts') {
-    const betterAvailableCards = scoredOtherCards.filter(o => o.score > cardScore && o.card.minBid <= nextBid);
-    const isLowestScoringOnBoard = scoredOtherCards.every(o => o.score >= cardScore);
-    
-    if (isLowestScoringOnBoard && nextBid >= 2 && betterAvailableCards.length > 0 && cardScore < 10.0) {
+  // Saints 1-Acquisition Constraint & Centerpiece Preservation:
+  // Saints only gets 1 player per round. If a negative-drawback centerpiece (Hunter Henry, Deshaun Watson, Zeke)
+  // is available on the board and affordable, Saints MUST pass on non-drawback players (like Malik Nabers) to preserve their pick!
+  if (effectiveTeamId === 'saints') {
+    const hasDrawbackCenterpiece = otherAvailableCards.some(c => 
+      c && (c.id === 'hunter_henry' || c.id === 'deshaun_watson' || c.effects?.some(e => (e.type === 'coins' && e.amount < 0) || e.type === 'inflate')) &&
+      currentPlayer.coins >= c.minBid
+    );
+    const currentIsDrawbackCenterpiece = (
+      card.id === 'hunter_henry' || 
+      card.id === 'deshaun_watson' || 
+      card.effects?.some(e => (e.type === 'coins' && e.amount < 0) || e.type === 'inflate')
+    );
+    if (hasDrawbackCenterpiece && !currentIsDrawbackCenterpiece) {
+      return { shouldBid: false, bidAmount: 0 };
+    }
+  }
+
+  // Brock Purdy Dynamic Timing:
+  // Gains +5 coins and -3 PSI only if among the last 2 players acquired in the round.
+  // CPUs wait to acquire him when among the last 2 players unless no other viable cards remain!
+  if (card.id === 'brock_purdy') {
+    const maxPurchases = (G?.board?.activeEvent?.category === 'double_draft') ? 2 : (G?.board?.maxCardPurchasesPerRound || 1);
+    const totalWinsRound = Object.keys(G.players || {}).length * maxPurchases;
+    const winsSoFar = Object.values(G.players || {}).reduce((s, p) => s + (p.cardsWonThisRound || 0), 0);
+    const remainingAcquisitions = totalWinsRound - winsSoFar;
+    if (remainingAcquisitions > 2 && G.board.highestBidder !== null && otherAvailableCards.some(o => scoreCardForPlayer(G, currentPlayerId, o) >= 4.0)) {
+      return { shouldBid: false, bidAmount: 0 };
+    }
+  }
+
+  // Strictly Inferior Card Outbid Protection:
+  // If someone bids minBid on an inferior card (e.g. 2-coin generator), NO CPU should outbid to 2+ coins
+  // when strictly superior cards (e.g. 3-coin generators) are untouched on the board and affordable!
+  if (otherAvailableCards.length > 0 && nextBid >= 2 && !isSuperstar) {
+    const strictlyBetterAvailable = otherAvailableCards.filter(o => {
+      if (!o) return false;
+      const oScore = scoreCardForPlayer(G, currentPlayerId, o);
+      return (oScore >= cardScore + 2.5) && (currentPlayer.coins >= o.minBid);
+    });
+    if (strictlyBetterAvailable.length > 0) {
+      return { shouldBid: false, bidAmount: 0 };
+    }
+  }
+
+  // Commodity & Substitute Card Analysis (Human Player Behavior):
+  // When multiple cards on the board provide identical or equivalent utility (e.g., three 3-coin cards):
+  // A human does NOT raise from 1 to 2 when they can let the current bidder win and take the next substitute for 1.
+  const activeBidders = Object.keys(G.players).filter(
+    id => !G.players[id].hasWonAuction && !G.board.passedAuctionPlayers?.includes(id)
+  );
+  const isTargetingPositionSynergy = (
+    (effectiveTeamId === 'ravens' && isRavensCompletingEngine) ||
+    (effectiveTeamId === 'texans' && card.position === 'QB') ||
+    (effectiveTeamId === 'chargers') // Chargers intentionally farms outbids
+  );
+
+  const equivalentSubstitutes = otherAvailableCards.filter(o => {
+    if (!o) return false;
+    const oScore = scoreCardForPlayer(G, currentPlayerId, o);
+    const isScoreClose = (oScore >= cardScore - 1.5);
+    const sameRecurringCoins = card.effects?.some(e => e.perRound && e.type === 'coins' && e.amount >= 3) &&
+      o.effects?.some(e => e.perRound && e.type === 'coins' && e.amount >= 3);
+    const sameRecurringDeflate = card.effects?.some(e => e.perRound && e.type === 'deflate' && e.amount >= 2) &&
+      o.effects?.some(e => e.perRound && e.type === 'deflate' && e.amount >= 2);
+    return (isScoreClose || sameRecurringCoins || sameRecurringDeflate) && (currentPlayer.coins >= o.minBid);
+  });
+
+  if (G.board.highestBidder !== null && equivalentSubstitutes.length >= 1 && !isTargetingPositionSynergy && !isSuperstar) {
+    // If there are ample substitutes (e.g. >= 2 substitutes, or substitutes >= activeBidders - 1):
+    // Pass instead of bidding 2+! Take the next substitute for 1.
+    if (equivalentSubstitutes.length >= 2 || (activeBidders.length <= equivalentSubstitutes.length + 1)) {
       return { shouldBid: false, bidAmount: 0 };
     }
   }
@@ -4248,6 +4357,12 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   if (isSuperstar) {
     const superstarMult = teamGenome.superstarPriorityMult || 1.0;
     baseValuation = Math.max(baseValuation, Math.min(effMax, Math.round(currentPlayer.coins * Math.min(0.95, 0.85 * superstarMult))));
+  } else {
+    // Tier-based Human Discipline:
+    // In early rounds (R1-R2), a human does NOT spend 10+ coins on an ordinary role player.
+    // Quality engines (Tier 2) are capped around 5-6 coins in early game, and budget depth (Tier 3) around 3 coins.
+    const earlyCap = (G.board?.round || 1) <= 2 ? 6 : 8;
+    baseValuation = Math.min(baseValuation, earlyCap);
   }
 
   // #2 Yellow Threat Reaction (2 Rounds Out): Lower, conservative price bump to avoid blowing purse early

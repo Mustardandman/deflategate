@@ -1218,7 +1218,9 @@ export const DesktopDeflategateBoardArena = ({
                     return (
                       <div 
                         key={i} 
-                        className={`flex items-center justify-between p-2 px-2.5 rounded-xl border shadow-sm transition-all ${
+                        onClick={() => setPeekLineupModal(String(res.id))}
+                        title="Click to view team lineup and players"
+                        className={`flex items-center justify-between p-2 px-2.5 rounded-xl border shadow-sm transition-all cursor-pointer hover:scale-[1.01] hover:brightness-110 select-none ${
                           isMyTeam
                             ? 'bg-blue-950/60 border-blue-500/80 ring-1 ring-blue-500/40'
                             : 'bg-slate-950/80 border-slate-800/90 hover:border-slate-700'
@@ -1279,7 +1281,7 @@ export const DesktopDeflategateBoardArena = ({
               </p>
             </div>
             <div className="mt-3 pt-2 border-t border-indigo-950 flex justify-between items-center text-[10px] text-slate-400 uppercase font-mono">
-              <span>Deck: {G.board.eventDeck ? G.board.eventDeck.length : 0} Left</span>
+              <span>Player Deck: {G.decks?.activePlayers?.length || 0} Left</span>
               <span>Round {G.board.round}/10</span>
             </div>
           </div>
@@ -1479,7 +1481,7 @@ export const DesktopDeflategateBoardArena = ({
                         </div>
                         <h5 className="font-bold text-xs text-white truncate mt-0.5">{card.name}</h5>
                         <div className="scale-90 origin-top-left">
-                          {renderCardEffects(card.effects, null)}
+                          {renderCardEffects(card.effects, card.specialText || card.customText)}
                         </div>
                       </div>
 
@@ -2067,7 +2069,7 @@ export const DesktopDeflategateBoardArena = ({
                       {renderPositionTag(card.position)}
                     </div>
                     <h4 className="font-bold text-sm text-white">{card.name}</h4>
-                    {renderCardEffects(card.effects, card.specialText)}
+                    {renderCardEffects(card.effects, card.specialText || card.customText)}
                   </div>
                   <button
                     disabled={replaceLocked}

@@ -641,7 +641,9 @@ export const MobileDeflategateBoard = ({
       {ctx.gameover && (
         <div className="bg-gradient-to-r from-green-700 to-emerald-700 text-white p-4 rounded-2xl text-center shadow-xl mb-3">
           <h2 className="text-xl font-black">🏆 Game Over!</h2>
-          <p className="text-sm mt-1">Winner: {G.players[ctx.gameover.winner]?.team?.name || `Player ${displayPlayerNumber(ctx.gameover.winner)}`}</p>
+          <p className="text-sm mt-1">
+            Winner: {G.players[ctx.gameover.winner]?.team?.name || `Player ${displayPlayerNumber(ctx.gameover.winner)}`} ({typeof G.players[ctx.gameover.winner]?.psi === 'number' ? G.players[ctx.gameover.winner].psi.toFixed(1) : G.players[ctx.gameover.winner]?.psi} PSI)
+          </p>
         </div>
       )}
 
@@ -1146,6 +1148,10 @@ export const MobileDeflategateBoard = ({
                 <p className="text-xs text-slate-200 mt-1 leading-relaxed">
                   {G.board.activeEvent.effect}
                 </p>
+                <div className="flex items-center justify-between mt-2 pt-2 border-t border-blue-900/40 text-[10px] text-slate-300 font-mono">
+                  <span>Player Deck: {G.decks?.activePlayers?.length || 0} Left</span>
+                  <span>Round {G.board.round}/10</span>
+                </div>
               </div>
             )}
 
