@@ -25,11 +25,11 @@ const DeflategateBoard = (props) => {
   }, []);
 
   if (isMobileView) {
-    return <MobileDeflategateBoard {...props} />;
+    return <MobileDeflategateBoard {...props} onReturnHome={props.onReturnHome} />;
   }
 
   // Always use Arena layout on desktop
-  return <DesktopDeflategateBoardArena {...props} />;
+  return <DesktopDeflategateBoardArena {...props} onReturnHome={props.onReturnHome} />;
 };
 
 const DIFFICULTY_OPTIONS = [
@@ -78,6 +78,9 @@ const App = () => {
   const [cpuDifficulty, setCpuDifficulty] = useState('normal');
   const [difficultyExpanded, setDifficultyExpanded] = useState(true);
 
+  // AI Bidding Engine: 'v2' (Market Engine) or 'v1' (Classic)
+  const [aiEngine, setAiEngine] = useState('v2');
+
   // Calculate actual humans & CPU counts
   let actualNumHumans = 1;
   if (gameMode === 'solo_cpu') {
@@ -104,6 +107,7 @@ const App = () => {
       setupData: { 
         numHumans: actualNumHumans,
         cpuDifficulty: cpuDifficulty,
+        aiEngine: aiEngine,
         forceTeam: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('team') : null
       }
     };
@@ -124,7 +128,7 @@ const App = () => {
     }
 
     return Client(config);
-  }, [numPlayers, gameMode, actualNumHumans, cpuDifficulty]);
+  }, [numPlayers, gameMode, actualNumHumans, cpuDifficulty, aiEngine]);
 
   if (!inGame) {
     const selectedDiffObj = DIFFICULTY_OPTIONS.find(d => d.id === cpuDifficulty) || DIFFICULTY_OPTIONS[1];
@@ -393,6 +397,58 @@ const App = () => {
             )}
           </div>
 
+          {/* AI Bidding Engine Selector */}
+          <div className="text-left bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-slate-300 font-bold uppercase text-[10px] tracking-wider font-sans flex items-center gap-1.5">
+                <span>🧠</span> AI Bidding Model
+              </label>
+              <span className="text-[10px] font-sans text-indigo-400 font-bold">
+                {aiEngine === 'v2' ? 'Market Engine (V2 Default)' : 'Classic (V1)'}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-0.5">
+              <button
+                type="button"
+                id="btn-ai-engine-v1"
+                onClick={() => setAiEngine('v1')}
+                className={`py-2 px-2.5 rounded-xl transition-all cursor-pointer border text-left flex flex-col justify-between ${
+                  aiEngine === 'v1'
+                    ? 'border-blue-400 bg-blue-950/60 text-blue-200 shadow-md shadow-blue-500/20'
+                    : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className="font-bold text-xs">Classic (V1)</span>
+                  {aiEngine === 'v1' && <span className="text-[10px] text-emerald-400 font-black">● Active</span>}
+                </div>
+                <span className="text-[9px] text-slate-400 leading-tight mt-1 font-sans">
+                  Rule-based legacy logic
+                </span>
+              </button>
+              <button
+                type="button"
+                id="btn-ai-engine-v2"
+                onClick={() => setAiEngine('v2')}
+                className={`py-2 px-2.5 rounded-xl transition-all cursor-pointer border text-left flex flex-col justify-between ${
+                  aiEngine === 'v2'
+                    ? 'border-purple-400 bg-purple-950/60 text-purple-200 shadow-md shadow-purple-500/20'
+                    : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className="font-bold text-xs flex items-center gap-1">
+                    Market (V2) <span className="px-1 py-0.2 text-[8px] bg-purple-900 text-purple-300 rounded font-black">BETA</span>
+                  </span>
+                  {aiEngine === 'v2' && <span className="text-[10px] text-emerald-400 font-black">● Active</span>}
+                </div>
+                <span className="text-[9px] text-slate-400 leading-tight mt-1 font-sans">
+                  Opportunity cost & dynamic row valuation
+                </span>
+              </button>
+            </div>
+          </div>
+
           {/* Roster & Auto-Fill Summary Card */}
           <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800/80 text-xs text-slate-400 text-left space-y-1.5">
             <div className="flex justify-between font-mono">
@@ -454,9 +510,11 @@ const App = () => {
       playMode={gameMode === 'with_friends' ? 'online' : 'local_vs_cpu'}
       numHumans={actualNumHumans}
       cpuDifficulty={cpuDifficulty}
+      onReturnHome={() => setInGame(false)}
       setupData={{ 
         numHumans: actualNumHumans,
         cpuDifficulty: cpuDifficulty,
+        aiEngine: aiEngine,
         forceTitans: typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('team') === 'titans'
       }}
     />

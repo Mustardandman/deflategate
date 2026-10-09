@@ -290,7 +290,7 @@ export const MobileDeflategateBoard = ({
   }, [activeCard?.id, activeCard?.uniqueId, G.board.highestBid, nextBid]);
 
   const isCommandersBlockedForBid = activeCard && activeCard.commandersBlocked && String(effectivePlayerID) === String(G.board.firstPlayer);
-  const isDjMooreBlockedForBid = activeCard && activeCard.id === 'dj_moore' && (myPlayer.coins || 0) < 5;
+  const isDjMooreBlockedForBid = Boolean(activeCard && activeCard.id === 'dj_moore' && (myPlayer.coins || 0) > 10);
   const isSoleRemainingZeroCoins = activeCard && G.board.highestBid === null && (myPlayer.coins || 0) === 0;
 
   // -------------------------------------------------------------
@@ -574,11 +574,35 @@ export const MobileDeflategateBoard = ({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Live In-Game AI Engine Switcher (V1 Classic vs V2 Market) */}
+          <button
+            type="button"
+            id="btn-live-toggle-ai-engine-mobile"
+            onClick={() => {
+              const nextEngine = G.aiEngine === 'v2' ? 'v1' : 'v2';
+              if (moves.setAiEngine) moves.setAiEngine(nextEngine);
+            }}
+            className={`px-2 py-1 rounded-xl text-[10px] font-black border transition-all active:scale-95 shadow-sm flex items-center gap-1 cursor-pointer ${
+              G.aiEngine === 'v2'
+                ? 'bg-purple-950/90 text-purple-200 border-purple-500 hover:bg-purple-900'
+                : 'bg-blue-950/90 text-blue-200 border-blue-500 hover:bg-blue-900'
+            }`}
+            title="Tap to toggle CPU AI Bidding Model live during the game"
+          >
+            <span>🧠</span>
+            <span>{G.aiEngine === 'v2' ? 'V2' : 'V1'}</span>
+            <span className={`text-[8px] px-1 py-0.2 rounded font-black uppercase ${
+              G.aiEngine === 'v2' ? 'bg-purple-800 text-purple-100' : 'bg-blue-800 text-blue-100'
+            }`}>
+              {G.aiEngine === 'v2' ? 'BETA' : 'STABLE'}
+            </span>
+          </button>
+
           {G.board.activeEvent && (
             <button
               type="button"
               onClick={() => setShowEventInfoModal(true)}
-              className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/60 hover:border-indigo-400 px-2.5 py-1 rounded-xl text-[10px] font-black text-indigo-300 hover:text-white truncate max-w-[150px] flex items-center cursor-pointer transition-all active:scale-95 shadow-sm"
+              className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/60 hover:border-indigo-400 px-2 py-1 rounded-xl text-[10px] font-black text-indigo-300 hover:text-white truncate max-w-[120px] flex items-center cursor-pointer transition-all active:scale-95 shadow-sm"
               title="Click to view event details"
             >
               <span>{G.board.activeEvent.name}</span>
@@ -644,6 +668,18 @@ export const MobileDeflategateBoard = ({
           <p className="text-sm mt-1">
             Winner: {G.players[ctx.gameover.winner]?.team?.name || `Player ${displayPlayerNumber(ctx.gameover.winner)}`} ({typeof G.players[ctx.gameover.winner]?.psi === 'number' ? G.players[ctx.gameover.winner].psi.toFixed(1) : G.players[ctx.gameover.winner]?.psi} PSI)
           </p>
+          <button
+            onClick={() => {
+              if (typeof props.onReturnHome === 'function') {
+                props.onReturnHome();
+              } else {
+                window.location.href = window.location.origin + window.location.pathname;
+              }
+            }}
+            className="mt-3 w-full py-2.5 rounded-xl font-black text-xs uppercase tracking-wider text-emerald-950 bg-white hover:bg-emerald-50 shadow-lg cursor-pointer"
+          >
+            Finish ➔
+          </button>
         </div>
       )}
 
@@ -861,12 +897,13 @@ export const MobileDeflategateBoard = ({
                     {G.board.auctionPlayers.map((card, idx) => {
                       if (!card) return null;
                       const isCurrentActive = G.board.activeAuctionCardIndex === idx;
+                      const isCardDjMooreBlocked = card.id === 'dj_moore' && (myPlayer?.coins || 0) > 10;
 
                       return (
                         <div
                           key={card.uniqueId || idx}
                           onClick={() => {
-                            if (isMyTurnToNominate && !isCurrentActive) {
+                            if (isMyTurnToNominate && !isCurrentActive && !isCardDjMooreBlocked) {
                               if (nominateLocked) return;
                               moves.selectCard(idx, effectivePlayerID);
                             } else {
@@ -876,9 +913,11 @@ export const MobileDeflategateBoard = ({
                           className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all cursor-pointer shadow-md select-none relative group ${
                             isCurrentActive 
                               ? 'border-yellow-400 bg-yellow-950/30 ring-1 ring-yellow-400' 
-                              : isMyTurnToNominate 
-                                ? (nominateLocked ? 'border-yellow-500/40 bg-slate-900/80 opacity-70' : 'border-yellow-500/70 bg-slate-900/95 hover:border-yellow-400 active:scale-[0.98]') 
-                                : `${getCardPhaseStyleHelper(card)} hover:border-slate-500 active:scale-[0.98]`
+                              : isCardDjMooreBlocked
+                                ? 'border-amber-900/40 bg-slate-900/60 opacity-60'
+                                : isMyTurnToNominate 
+                                  ? (nominateLocked ? 'border-yellow-500/40 bg-slate-900/80 opacity-70' : 'border-yellow-500/70 bg-slate-900/95 hover:border-yellow-400 active:scale-[0.98]') 
+                                  : `${getCardPhaseStyleHelper(card)} hover:border-slate-500 active:scale-[0.98]`
                           }`}
                         >
                           {/* Top Header Row: Position, Phase, and Inspect */}
@@ -928,6 +967,10 @@ export const MobileDeflategateBoard = ({
                             {isCurrentActive ? (
                               <div className="w-full text-center py-1 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 font-black text-[10px] uppercase tracking-wider">
                                 Active
+                              </div>
+                            ) : isCardDjMooreBlocked ? (
+                              <div className="w-full text-center py-1 rounded bg-slate-800 text-amber-400 border border-amber-900/50 font-bold text-[10px] uppercase tracking-wide">
+                                Cap &gt; 10🪙
                               </div>
                             ) : isMyTurnToNominate ? (
                               <button
@@ -1322,19 +1365,32 @@ export const MobileDeflategateBoard = ({
       {/* Trade Rumors Card Picker Modal */}
       {G.board.pendingTradeRumors && !G.board.pendingTradeRumors?.picks?.[effectivePlayerID] && !G.board.eventFlipRevealed && G.board.eventConfirmed && myPlayer.lineup && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border-2 border-blue-500 p-5 rounded-3xl max-w-sm w-full text-center shadow-2xl space-y-3">
+          <div className="bg-slate-900 border-2 border-blue-500 p-5 rounded-3xl max-w-sm w-full text-center shadow-2xl space-y-3 max-h-[90vh] flex flex-col">
             <span className="text-3xl block">🤝</span>
             <h3 className="text-lg font-black text-white uppercase">Trade Rumors Active!</h3>
             <p className="text-xs text-slate-300">Select one active player from your lineup to pass to the right:</p>
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-0.5">
               {myPlayer.lineup.map((card, cidx) => (
                 <button
                   key={card.uniqueId || cidx}
                   onClick={() => moves.tradeRumorsPickCard(cidx, effectivePlayerID)}
-                  className="w-full p-2.5 bg-slate-950 border border-slate-800 hover:border-blue-500 rounded-xl text-left flex items-center justify-between"
+                  className={`w-full p-2.5 rounded-xl border text-left transition-all ${getCardPhaseStyleHelper(card)} border-slate-800 hover:border-blue-500 cursor-pointer active:scale-[0.98] shadow-md`}
                 >
-                  <span className="text-xs font-bold text-white truncate">{card.name}</span>
-                  <span className="text-[10px] bg-blue-900 text-blue-200 px-2 py-0.5 rounded font-black uppercase">Pass ➔</span>
+                  <div className="flex items-center justify-between gap-1 mb-1 text-[10px]">
+                    <span className="bg-slate-950 border border-slate-700 text-cyan-400 font-mono font-black px-1.5 py-0.5 rounded uppercase">
+                      {card.position || 'WR'}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {renderPhaseBadgeHelper(card.phase)}
+                      <span className="text-[10px] bg-blue-900 text-blue-200 px-2 py-0.5 rounded font-black uppercase">
+                        Pass ➔
+                      </span>
+                    </div>
+                  </div>
+                  <h4 className="text-xs font-black text-white truncate mb-1">{card.name}</h4>
+                  <div className="text-[11px]">
+                    {renderCardEffectsHelper(card.effects, card.specialText || card.customText)}
+                  </div>
                 </button>
               ))}
             </div>
@@ -1774,21 +1830,53 @@ export const MobileDeflategateBoard = ({
 
                   {/* Lineup Full Selection */}
                   {isLineupFull && (
-                    <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-1">
-                      <label className="text-[10px] font-bold uppercase text-amber-400 block">
-                        Lineup Full: Select player to replace:
-                      </label>
-                      <select
-                        value={faReplaceIdx}
-                        onChange={(e) => setFaReplaceIdx(parseInt(e.target.value))}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-medium cursor-pointer"
-                      >
-                        {myPlayer.lineup.map((card, idx) => (
-                          <option key={card.uniqueId || idx} value={idx}>
-                            Replace: {card.name} ({card.position})
-                          </option>
-                        ))}
-                      </select>
+                    <div className="bg-slate-950 p-2.5 rounded-2xl border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black uppercase text-amber-400 flex items-center gap-1">
+                          <span>🔄</span>
+                          <span>Lineup Full: Tap player to replace</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {myPlayer.lineup.length} Starters
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-0.5">
+                        {myPlayer.lineup.map((card, idx) => {
+                          const isSelected = faReplaceIdx === idx;
+                          return (
+                            <div
+                              key={card.uniqueId || idx}
+                              onClick={() => setFaReplaceIdx(idx)}
+                              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${getCardPhaseStyleHelper(card)} ${
+                                isSelected
+                                  ? 'border-indigo-400 bg-indigo-950/80 ring-2 ring-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.35)]'
+                                  : 'border-slate-800 bg-slate-900/90 hover:border-indigo-500/60'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1 mb-1 text-[10px]">
+                                <span className="bg-slate-950 border border-slate-700 text-cyan-400 font-mono font-black px-1.5 py-0.5 rounded uppercase">
+                                  {card.position || 'WR'}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  {renderPhaseBadgeHelper(card.phase)}
+                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${
+                                    isSelected
+                                      ? 'bg-indigo-600 text-white'
+                                      : 'bg-slate-800 text-slate-400'
+                                  }`}>
+                                    {isSelected ? '✓ Replace' : 'Select'}
+                                  </span>
+                                </div>
+                              </div>
+                              <h4 className="text-xs font-black text-white truncate mb-1">{card.name}</h4>
+                              <div className="text-[11px]">
+                                {renderCardEffectsHelper(card.effects, card.specialText || card.customText)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 
@@ -1796,9 +1884,13 @@ export const MobileDeflategateBoard = ({
                     <button
                       disabled={!canAfford}
                       onClick={() => moves.freeAgencySign(isLineupFull ? faReplaceIdx : -1, effectivePlayerID)}
-                      className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-black py-2.5 rounded-xl text-xs uppercase disabled:opacity-40 shadow transition-all cursor-pointer"
+                      className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-black py-2.5 rounded-xl text-xs uppercase disabled:opacity-40 shadow transition-all cursor-pointer truncate px-2"
                     >
-                      {canAfford ? `Sign for ${effMaxCost} Coins ✍️` : `Can't Afford (${effMaxCost} Coins)`}
+                      {canAfford
+                        ? (isLineupFull && myPlayer.lineup[faReplaceIdx]
+                            ? `Sign & Replace ${myPlayer.lineup[faReplaceIdx].name} (${effMaxCost}🪙) ✍️`
+                            : `Sign for ${effMaxCost} Coins ✍️`)
+                        : `Can't Afford (${effMaxCost} Coins)`}
                     </button>
                     <button
                       onClick={() => moves.freeAgencyPass(effectivePlayerID)}
@@ -1972,59 +2064,151 @@ export const MobileDeflategateBoard = ({
         </div>
       )}
 
-      {/* Lineup Replacement Modal for Mobile (with 800ms click delay, clean layout) */}
+      {/* Lineup Replacement Modal for Mobile (with 800ms click delay, full card details, position, min/max bids, turn/instant effects) */}
       {isPendingReplacementForMe && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/85 backdrop-blur-md p-2">
-          <div className="bg-slate-900 border-2 border-yellow-500 p-4 rounded-3xl max-w-md w-full shadow-2xl space-y-3 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-200">
-            <div className="text-center">
-              <span className="text-3xl block">🏆</span>
-              <h3 className="text-lg font-black text-white uppercase">Auction Won!</h3>
-              <p className="text-xs text-slate-300 mt-1">
-                Select an active player to replace with <strong className="text-yellow-300">{G.pendingReplacement.wonCard?.name}</strong>:
-              </p>
-            </div>
+          {(() => {
+            const wonCard = G.pendingReplacement?.wonCard;
+            const isBengals = getEffectiveTeamId(myPlayer) === 'bengals';
+            const maxSlots = isBengals ? 3 : (getEffectiveTeamId(myPlayer) === 'seahawks' ? 4 : 3) + (myPlayer?.extraLineupSlots || 0);
 
-            <div className="space-y-2">
-              {myPlayer.lineup.map((card, idx) => (
-                <div
-                  key={card.uniqueId || idx}
-                  onClick={() => {
-                    if (!replaceLocked) moves.replaceLineupCard(idx, effectivePlayerID);
-                  }}
-                  className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
-                    replaceLocked
-                      ? 'border-slate-800 opacity-60 pointer-events-none cursor-not-allowed'
-                      : 'border-slate-800 hover:border-red-500 cursor-pointer bg-slate-950'
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.2 rounded font-mono font-bold uppercase">
-                      {card.position || 'WR'}
+            const renderPositionBadge = (pos) => {
+              const p = (pos || 'WR').toUpperCase();
+              const colors = {
+                QB: 'bg-red-950/90 text-red-300 border-red-500/80',
+                RB: 'bg-emerald-950/90 text-emerald-300 border-emerald-500/80',
+                WR: 'bg-sky-950/90 text-sky-300 border-sky-500/80',
+                TE: 'bg-amber-950/90 text-amber-300 border-amber-500/80',
+              };
+              const colorClass = colors[p] || 'bg-slate-900 text-slate-300 border-slate-700';
+              return (
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-black font-mono uppercase tracking-wider border shadow-sm ${colorClass}`}>
+                  {p}
+                </span>
+              );
+            };
+
+            return (
+              <div className="bg-slate-900 border-2 border-amber-500/90 p-3.5 sm:p-5 rounded-3xl max-w-lg w-full shadow-2xl space-y-3.5 max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-200">
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-1.5 mb-1 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-950 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-700">
+                      Roster Limit Reached (Max {maxSlots})
                     </span>
-                    <h4 className="text-xs font-bold text-white mt-0.5 truncate">{card.name}</h4>
+                    {isBengals && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-orange-950 text-orange-300 px-2.5 py-0.5 rounded-full border border-orange-600 animate-pulse">
+                        🐅 Bengals Ability
+                      </span>
+                    )}
                   </div>
-                  <button
-                    disabled={replaceLocked}
-                    className="bg-red-600/20 text-red-300 border border-red-500/40 text-xs font-bold px-3 py-1 rounded-lg shrink-0"
-                  >
-                    Replace
-                  </button>
+                  <h3 className="text-base sm:text-lg font-black text-white uppercase tracking-tight">
+                    {isBengals ? `Replace Starter or Discard ${wonCard?.name}` : `Replace a Starter with ${wonCard?.name}`}
+                  </h3>
+                  <p className="text-[11px] text-slate-300 mt-0.5">
+                    {isBengals 
+                      ? "Bengals: Instant effects give you +2 coins/deflate! You may discard this won player to preserve your 3 starters, or choose an active starter below to replace."
+                      : "Your roster is full. Review the acquired player below and select an active starter to drop."}
+                  </p>
                 </div>
-              ))}
-            </div>
 
-            {getEffectiveTeamId(myPlayer) === 'bengals' && (
-              <button
-                disabled={replaceLocked}
-                onClick={() => {
-                  if (!replaceLocked) moves.discardWonCard(effectivePlayerID);
-                }}
-                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-2 rounded-xl text-xs uppercase"
-              >
-                🗑️ Discard Won Player
-              </button>
-            )}
-          </div>
+                {/* FEATURED: Newly Acquired Won Card */}
+                {wonCard && (
+                  <div className="bg-slate-950 border-2 border-indigo-500/80 rounded-2xl p-3 text-left shadow-lg space-y-2">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-indigo-500/30 flex-wrap gap-1 text-[10px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 rounded bg-indigo-950 border border-indigo-500 text-indigo-300 font-black uppercase tracking-wider text-[10px]">
+                          ⭐ Won Player
+                        </span>
+                        {renderPhaseBadgeHelper(wonCard.phase)}
+                        {renderPositionBadge(wonCard.position)}
+                      </div>
+                      <div className="flex items-center gap-1 font-mono font-bold text-slate-300 text-[10px]">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700">Min: {wonCard.minBid} 🪙</span>
+                        <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700">Max: {wonCard.maxBid} 🪙</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="text-sm font-black text-white mb-0.5">{wonCard.name}</h4>
+                      <div className="text-xs">
+                        {renderCardEffectsHelper(wonCard.effects, wonCard.specialText || wonCard.customText)}
+                      </div>
+                    </div>
+
+                    {/* Bengals Discard Button Directly on the Won Card */}
+                    {isBengals && (
+                      <div className="pt-1.5 border-t border-slate-800">
+                        <button
+                          type="button"
+                          disabled={replaceLocked}
+                          onClick={() => !replaceLocked && moves.discardWonCard(effectivePlayerID)}
+                          className="w-full py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider text-orange-200 bg-gradient-to-r from-orange-950 via-amber-950 to-orange-950 border-2 border-orange-500 hover:border-orange-400 active:scale-[0.98] shadow-md flex items-center justify-center gap-2"
+                        >
+                          <span>🗑️</span>
+                          <span>Bengals: Discard {wonCard.name}</span>
+                        </button>
+                        <span className="text-[10px] text-orange-400/80 block text-center mt-1 font-medium">
+                          Keep your current 3 starters intact
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* CURRENT ACTIVE LINEUP PLAYERS */}
+                <div className="space-y-1.5 text-left">
+                  <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-300 px-1">
+                    <span>👥 Current Active Starters (Tap to Drop):</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Select 1 to replace</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {myPlayer?.lineup.map((card, idx) => (
+                      <div
+                        key={card.uniqueId || idx}
+                        onClick={() => {
+                          if (!replaceLocked) moves.replaceLineupCard(idx, effectivePlayerID);
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${getCardPhaseStyleHelper(card)} ${
+                          replaceLocked
+                            ? 'border-slate-800 opacity-60 pointer-events-none cursor-not-allowed'
+                            : 'border-slate-800 hover:border-red-500 cursor-pointer bg-slate-950/90 active:scale-[0.98] shadow-md'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-1 text-[10px]">
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 font-mono font-bold">
+                              Slot {idx + 1}
+                            </span>
+                            {renderPositionBadge(card.position)}
+                            {renderPhaseBadgeHelper(card.phase)}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {(card.minBid !== undefined && card.maxBid !== undefined) && (
+                              <span className="text-[10px] font-mono text-slate-400">
+                                {card.minBid}-{card.maxBid} 🪙
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              disabled={replaceLocked}
+                              className="bg-red-600/30 text-red-200 border border-red-500/50 hover:bg-red-600 hover:text-white text-[10px] font-black px-2 py-0.5 rounded-md uppercase shrink-0 transition-colors"
+                            >
+                              Drop & Replace ➔
+                            </button>
+                          </div>
+                        </div>
+                        <h4 className="text-xs font-black text-white truncate mb-0.5">{card.name}</h4>
+                        <div className="text-[11px]">
+                          {renderCardEffectsHelper(card.effects, card.specialText || card.customText)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -2116,57 +2300,72 @@ export const MobileDeflategateBoard = ({
               </button>
             ) : isMyBiddingTurn ? (
               /* Human Bidding Action Controls */
-              <div className={`flex items-center gap-1.5 justify-between transition-opacity ${biddingLocked ? 'opacity-50 pointer-events-none' : ''}`}>
-                <button
-                  onClick={() => moves.pass(effectivePlayerID)}
-                  disabled={biddingLocked || (G.board.highestBidder === null && !isCommandersBlockedForBid)}
-                  className="px-4 py-2.5 min-w-[64px] rounded-xl text-xs font-bold bg-red-950 hover:bg-red-900 border border-red-800 text-red-300 disabled:opacity-40 shrink-0 text-center transition-colors cursor-pointer"
-                >
-                  Pass
-                </button>
-
-                {/* Stepper */}
-                <div className={`flex items-center bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shrink-0 ${!canAffordBid ? 'opacity-40 pointer-events-none' : ''}`}>
+              <div className="space-y-1.5">
+                {isDjMooreBlockedForBid && (
+                  <div className="py-1 px-2 rounded-xl bg-amber-950/90 border border-amber-600 text-center text-[10px] font-bold text-amber-200">
+                    ⛔ DJ Moore Cap Exceeded: Only teams with 10 or fewer coins may bid
+                  </div>
+                )}
+                <div className={`flex items-center gap-1.5 justify-between transition-opacity ${biddingLocked ? 'opacity-50 pointer-events-none' : ''}`}>
                   <button
-                    disabled={biddingLocked || !canAffordBid || customBid <= nextBid}
-                    onClick={() => setCustomBid(Math.max(nextBid, customBid - 1))}
-                    className="text-base px-3 py-2 text-slate-300 hover:text-white font-bold transition-colors cursor-pointer disabled:opacity-40"
+                    onClick={() => moves.pass(effectivePlayerID)}
+                    disabled={biddingLocked || (G.board.highestBidder === null && !isCommandersBlockedForBid)}
+                    className="px-4 py-2.5 min-w-[64px] rounded-xl text-xs font-bold bg-red-950 hover:bg-red-900 border border-red-800 text-red-300 disabled:opacity-40 shrink-0 text-center transition-colors cursor-pointer"
                   >
-                    ◀
+                    Pass
                   </button>
-                  <span className="w-7 text-center font-mono font-bold text-sm text-white">
-                    {customBid}
-                  </span>
+
+                  {/* Stepper */}
+                  <div className={`flex items-center bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shrink-0 ${(!canAffordBid || isDjMooreBlockedForBid) ? 'opacity-40 pointer-events-none' : ''}`}>
+                    <button
+                      disabled={biddingLocked || !canAffordBid || isDjMooreBlockedForBid || customBid <= nextBid}
+                      onClick={() => setCustomBid(Math.max(nextBid, customBid - 1))}
+                      className="text-base px-3 py-2 text-slate-300 hover:text-white font-bold transition-colors cursor-pointer disabled:opacity-40"
+                    >
+                      ◀
+                    </button>
+                    <span className="w-7 text-center font-mono font-bold text-sm text-white">
+                      {customBid}
+                    </span>
+                    <button
+                      disabled={biddingLocked || !canAffordBid || isDjMooreBlockedForBid || customBid >= maxAllowedBid}
+                      onClick={() => setCustomBid(Math.min(maxAllowedBid, customBid + 1))}
+                      className="text-base px-3 py-2 text-slate-300 hover:text-white font-bold transition-colors cursor-pointer disabled:opacity-40"
+                    >
+                      ▶
+                    </button>
+                  </div>
+
                   <button
-                    disabled={biddingLocked || !canAffordBid || customBid >= maxAllowedBid}
-                    onClick={() => setCustomBid(Math.min(maxAllowedBid, customBid + 1))}
-                    className="text-base px-3 py-2 text-slate-300 hover:text-white font-bold transition-colors cursor-pointer disabled:opacity-40"
+                    onClick={() => moves.bid(customBid, effectivePlayerID)}
+                    disabled={
+                      biddingLocked || !canAffordBid || isCommandersBlockedForBid || isDjMooreBlockedForBid || (
+                        isSoleRemainingZeroCoins
+                          ? false
+                          : ((myPlayer.coins || 0) < customBid || customBid < nextBid || customBid > maxAllowedBid)
+                      )
+                    }
+                    className={`flex-1 py-2.5 px-2 rounded-xl font-bold text-xs shadow transition-colors text-center truncate ${
+                      isDjMooreBlockedForBid
+                        ? 'bg-slate-800 text-slate-500 border border-slate-700 opacity-40 cursor-not-allowed'
+                        : 'bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 cursor-pointer'
+                    }`}
                   >
-                    ▶
+                    {isDjMooreBlockedForBid ? "Cap Exceeded (> 10)" : !canAffordBid ? "Can't Afford" : (isSoleRemainingZeroCoins ? 'Acquire (0)' : `Bid ${customBid}`)}
+                  </button>
+
+                  <button
+                    onClick={() => moves.bid(effMaxBid, effectivePlayerID)}
+                    disabled={biddingLocked || !canAffordBid || isCommandersBlockedForBid || isDjMooreBlockedForBid || (myPlayer.coins || 0) < effMaxBid || effMaxBid < nextBid}
+                    className={`px-3.5 py-2.5 min-w-[78px] rounded-xl text-xs font-black shrink-0 text-center transition-colors ${
+                      isDjMooreBlockedForBid
+                        ? 'bg-slate-800 text-slate-500 border border-slate-700 opacity-40 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-black disabled:opacity-40 cursor-pointer'
+                    }`}
+                  >
+                    {isDjMooreBlockedForBid ? 'Locked' : `Max (${effMaxBid})`}
                   </button>
                 </div>
-
-                <button
-                  onClick={() => moves.bid(customBid, effectivePlayerID)}
-                  disabled={
-                    biddingLocked || !canAffordBid || isCommandersBlockedForBid || (
-                      isSoleRemainingZeroCoins
-                        ? false
-                        : (isDjMooreBlockedForBid || (myPlayer.coins || 0) < customBid || customBid < nextBid || customBid > maxAllowedBid)
-                    )
-                  }
-                  className="flex-1 py-2.5 px-2 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 shadow transition-colors cursor-pointer text-center truncate"
-                >
-                  {!canAffordBid ? "Can't Afford" : (isSoleRemainingZeroCoins ? 'Acquire (0)' : `Bid ${customBid}`)}
-                </button>
-
-                <button
-                  onClick={() => moves.bid(effMaxBid, effectivePlayerID)}
-                  disabled={biddingLocked || !canAffordBid || isCommandersBlockedForBid || isDjMooreBlockedForBid || (myPlayer.coins || 0) < effMaxBid || effMaxBid < nextBid}
-                  className="px-3.5 py-2.5 min-w-[78px] rounded-xl text-xs font-black bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-black disabled:opacity-40 shrink-0 text-center transition-colors cursor-pointer"
-                >
-                  Max ({effMaxBid})
-                </button>
               </div>
             ) : isCpuTurn ? (
               /* CPU Turn Progression Controls - Clean full-width stepper */

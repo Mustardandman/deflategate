@@ -171,6 +171,7 @@ export const DesktopDeflategateBoardArena = ({
   const effMaxBid = activeCard ? getEffectiveCardMaxBid(activeCard, G.board.activeEvent) : 0;
   const maxAllowedBid = activeCard && myPlayer ? (isSoleRemainingZeroCoins ? 0 : Math.min(myPlayer.coins, effMaxBid)) : 0;
   const canAffordBid = isSoleRemainingZeroCoins ? true : (activeCard && myPlayer ? (myPlayer.coins >= nextBid && nextBid <= effMaxBid) : false);
+  const isDjMooreBlockedForBid = Boolean(activeCard && activeCard.id === 'dj_moore' && (myPlayer?.coins || 0) > 10);
 
   const activeCardId = activeCard?.uniqueId || G.board.activeAuctionCardIndex;
   const lastActiveCardRef = useRef(null);
@@ -307,12 +308,22 @@ export const DesktopDeflategateBoardArena = ({
     }
   }, [skipMode, activeActingPlayerId, ctx.phase, isCpuTurn, G.pendingReplacement, humanHasWonInRound, effectivePlayerID, moves]);
 
-  // Minimal clean text pill for position
-  const renderPositionTag = (position) => (
-    <span className="px-1.5 py-0.5 rounded text-[11px] font-mono font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
-      {position || 'WR'}
-    </span>
-  );
+  // Clean color-coded badge for position (QB, RB, WR, TE)
+  const renderPositionTag = (position) => {
+    const p = (position || 'WR').toUpperCase();
+    const colors = {
+      QB: 'bg-red-950/90 text-red-300 border-red-500/80',
+      RB: 'bg-emerald-950/90 text-emerald-300 border-emerald-500/80',
+      WR: 'bg-sky-950/90 text-sky-300 border-sky-500/80',
+      TE: 'bg-amber-950/90 text-amber-300 border-amber-500/80',
+    };
+    const colorClass = colors[p] || 'bg-slate-800 text-slate-300 border-slate-700';
+    return (
+      <span className={`px-1.5 py-0.5 rounded text-[11px] font-mono font-black uppercase tracking-wider border shadow-sm ${colorClass}`}>
+        {p}
+      </span>
+    );
+  };
 
   // Formatter for player card effects with high readability
   const renderCardEffects = (effects, specialText) => {
@@ -440,60 +451,83 @@ export const DesktopDeflategateBoardArena = ({
     const winnerId = ctx.gameover.winner;
     const winnerPlayer = G.players[winnerId];
     const isMeWinner = winnerId === effectivePlayerID;
+    const sortedPlayerIds = Object.keys(G.players)
+      .sort((a, b) => G.players[a].psi - G.players[b].psi || G.players[b].coins - G.players[a].coins);
+    const numTeams = sortedPlayerIds.length;
+
+    // Responsive grid columns so all teams are displayed without needing to scroll
+    let standingsGridCols = 'grid-cols-1';
+    let cardMaxWidth = 'max-w-xl';
+    if (numTeams > 16) {
+      standingsGridCols = 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4';
+      cardMaxWidth = 'max-w-4xl';
+    } else if (numTeams > 8) {
+      standingsGridCols = 'grid-cols-2 sm:grid-cols-3';
+      cardMaxWidth = 'max-w-3xl';
+    } else if (numTeams > 4) {
+      standingsGridCols = 'grid-cols-2';
+      cardMaxWidth = 'max-w-2xl';
+    }
+
+    const handleFinish = () => {
+      if (typeof props.onReturnHome === 'function') {
+        props.onReturnHome();
+      } else {
+        window.location.href = window.location.origin + window.location.pathname;
+      }
+    };
 
     return (
-      <div className="h-screen w-screen overflow-y-auto bg-slate-950 flex flex-col items-center justify-center p-6 text-center select-none font-sans">
-        <div className="max-w-2xl w-full p-8 rounded-3xl border-2 border-indigo-500/70 shadow-2xl bg-slate-900/95 relative overflow-hidden">
-          <div className="text-6xl mb-3 animate-bounce">🏆</div>
-          <span className="text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full bg-blue-950 text-blue-300 border border-blue-700">
+      <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-3 sm:p-5 text-center select-none font-sans overflow-y-auto">
+        <div className={`w-full ${cardMaxWidth} p-5 sm:p-7 rounded-3xl border-2 border-indigo-500/70 shadow-2xl bg-slate-900/95 relative my-auto`}>
+          <div className="text-4xl sm:text-5xl mb-2 animate-bounce">🏆</div>
+          <span className="text-[11px] font-bold uppercase tracking-widest px-3 py-1 rounded-full bg-blue-950 text-blue-300 border border-blue-700">
             Championship Clinched
           </span>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white uppercase tracking-tight mt-3">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white uppercase tracking-tight mt-2">
             {winnerPlayer?.team?.name || `Player ${displayPlayerNumber(winnerId)}`} Champions!
           </h1>
-          <p className="text-base text-slate-300 mt-2 font-medium">
+          <p className="text-xs sm:text-sm text-slate-300 mt-1 font-medium">
             {isMeWinner ? "Congratulations, Coach! You executed the strategy to perfection." : "Defeated! Better luck next season."}
           </p>
 
-          <div className="grid grid-cols-2 gap-4 my-6">
-            <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800">
-              <span className="text-xs uppercase font-bold text-slate-400 block">Final Ball Pressure</span>
-              <span className="text-3xl font-mono font-bold text-emerald-400">
+          <div className="grid grid-cols-2 gap-3 my-4">
+            <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Final Ball Pressure</span>
+              <span className="text-2xl sm:text-3xl font-mono font-bold text-emerald-400">
                 {winnerPlayer?.psi.toFixed(1)} PSI
               </span>
             </div>
             <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800">
-              <span className="text-xs uppercase font-bold text-slate-400 block">Remaining Treasury</span>
-              <span className="text-3xl font-mono font-bold text-yellow-300">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Remaining Treasury</span>
+              <span className="text-2xl sm:text-3xl font-mono font-bold text-yellow-300">
                 {winnerPlayer?.coins} Coins
               </span>
             </div>
           </div>
 
-          <div className="border-t border-slate-800/80 pt-4 text-left">
-            <h3 className="text-xs font-bold uppercase text-slate-400 mb-2">Final Standings</h3>
-            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-              {Object.keys(G.players)
-                .sort((a, b) => G.players[a].psi - G.players[b].psi || G.players[b].coins - G.players[a].coins)
-                .map((pId, idx) => (
-                  <div key={pId} className="flex justify-between items-center text-xs p-2 rounded-xl bg-slate-950/50 border border-slate-800">
-                    <span className="font-bold flex items-center gap-2">
-                      <span className="text-slate-500 font-mono">#{idx + 1}</span>
-                      <span>{G.players[pId].team?.name || `Player ${displayPlayerNumber(pId)}`}</span>
-                    </span>
-                    <span className="font-mono font-bold text-slate-300">
-                      {G.players[pId].psi.toFixed(1)} PSI | {G.players[pId].coins} 🪙
-                    </span>
-                  </div>
-                ))}
+          <div className="border-t border-slate-800/80 pt-3 text-left">
+            <h3 className="text-[10px] font-bold uppercase text-slate-400 mb-2 tracking-wider">Final Standings</h3>
+            <div className={`grid ${standingsGridCols} gap-1.5`}>
+              {sortedPlayerIds.map((pId, idx) => (
+                <div key={pId} className="flex justify-between items-center text-[11px] sm:text-xs py-1.5 px-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <span className="font-bold flex items-center gap-1.5 truncate pr-1">
+                    <span className="text-slate-500 font-mono text-[10px]">#{idx + 1}</span>
+                    <span className="truncate">{G.players[pId].team?.name || `Player ${displayPlayerNumber(pId)}`}</span>
+                  </span>
+                  <span className="font-mono font-bold text-slate-300 whitespace-nowrap text-[10px] sm:text-[11px]">
+                    {G.players[pId].psi.toFixed(1)} PSI | {G.players[pId].coins} 🪙
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
           <button
-            onClick={() => window.location.reload()}
-            className="mt-6 w-full py-3.5 rounded-xl font-bold text-base uppercase tracking-wider text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-xl cursor-pointer"
+            onClick={handleFinish}
+            className="mt-5 w-full py-3 rounded-xl font-black text-sm sm:text-base uppercase tracking-wider text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-indigo-500 shadow-xl cursor-pointer transition-all hover:scale-[1.01] active:scale-[0.99]"
           >
-            Play Again 🏈
+            Finish ➔
           </button>
         </div>
       </div>
@@ -837,6 +871,30 @@ export const DesktopDeflategateBoardArena = ({
             </button>
           )}
 
+          {/* Live In-Game AI Engine Switcher (V1 Classic vs V2 Market) */}
+          <button
+            type="button"
+            id="btn-live-toggle-ai-engine"
+            onClick={() => {
+              const nextEngine = G.aiEngine === 'v2' ? 'v1' : 'v2';
+              if (moves.setAiEngine) moves.setAiEngine(nextEngine);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer shadow-sm ${
+              G.aiEngine === 'v2'
+                ? 'bg-purple-950/90 hover:bg-purple-900 border-purple-500 text-purple-200'
+                : 'bg-blue-950/90 hover:bg-blue-900 border-blue-500 text-blue-200'
+            }`}
+            title="Click to toggle CPU AI Bidding Model between Classic V1 and Market V2 live during the game"
+          >
+            <span className="text-[12px]">🧠</span>
+            <span>AI: {G.aiEngine === 'v2' ? 'Market V2' : 'Classic V1'}</span>
+            <span className={`text-[9px] px-1.5 py-0.2 rounded font-black uppercase tracking-wider ${
+              G.aiEngine === 'v2' ? 'bg-purple-800 text-purple-100 border border-purple-400' : 'bg-blue-800 text-blue-100 border border-blue-400'
+            }`}>
+              {G.aiEngine === 'v2' ? 'V2 BETA' : 'V1'}
+            </span>
+          </button>
+
           {/* Rules Guide */}
           <button
             onClick={() => setShowRules(true)}
@@ -1074,9 +1132,9 @@ export const DesktopDeflategateBoardArena = ({
                     );
                   }
                   const isNominated = idx === G.board.activeAuctionCardIndex;
-                  const isSelectedForNomination = G.board.activeAuctionCardIndex === null && selectedNominationIndex === idx;
+                  const isCardDjMooreBlocked = card.id === 'dj_moore' && (myPlayer?.coins || 0) > 10;
                   const canAffordCard = (isSoleRemainingZeroCoins) || (myPlayer?.coins >= card.minBid);
-                  const canNominate = isMyTurnToNominate && G.board.activeAuctionCardIndex === null && canAffordCard;
+                  const canNominate = isMyTurnToNominate && G.board.activeAuctionCardIndex === null && canAffordCard && !isCardDjMooreBlocked;
 
                   return (
                     <div
@@ -1164,21 +1222,30 @@ export const DesktopDeflategateBoardArena = ({
               </div>
 
               {/* Nomination Action when waiting for human nominator */}
-              {G.board.activeAuctionCardIndex === null && isMyTurnToNominate && G.board.auctionPlayers?.[selectedNominationIndex] && (
-                <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-4">
-                  <span className="text-xs text-slate-300">
-                    Ready to nominate <strong className="text-white">{G.board.auctionPlayers[selectedNominationIndex]?.name}</strong>:
-                  </span>
-                  <button
-                    onClick={() => {
-                      moves.selectCard(selectedNominationIndex, effectivePlayerID);
-                    }}
-                    className="py-2.5 px-6 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-500 shadow-lg cursor-pointer"
-                  >
-                    Nominate {G.board.auctionPlayers[selectedNominationIndex]?.name} 🏈
-                  </button>
-                </div>
-              )}
+              {G.board.activeAuctionCardIndex === null && isMyTurnToNominate && G.board.auctionPlayers?.[selectedNominationIndex] && (() => {
+                const nomCard = G.board.auctionPlayers[selectedNominationIndex];
+                const isSelectedDjMooreBlocked = nomCard?.id === 'dj_moore' && (myPlayer?.coins || 0) > 10;
+                return (
+                  <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-4">
+                    <span className="text-xs text-slate-300">
+                      Ready to nominate <strong className="text-white">{nomCard?.name}</strong>:
+                    </span>
+                    <button
+                      disabled={isSelectedDjMooreBlocked}
+                      onClick={() => {
+                        moves.selectCard(selectedNominationIndex, effectivePlayerID);
+                      }}
+                      className={`py-2.5 px-6 rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg ${
+                        isSelectedDjMooreBlocked
+                          ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-50'
+                          : 'text-white bg-blue-600 hover:bg-blue-500 cursor-pointer'
+                      }`}
+                    >
+                      {isSelectedDjMooreBlocked ? 'Cap Exceeded (> 10🪙)' : `Nominate ${nomCard?.name} 🏈`}
+                    </button>
+                  </div>
+                );
+              })()}
 
             </div>
           )}
@@ -1523,7 +1590,11 @@ export const DesktopDeflategateBoardArena = ({
               
               {/* 1. Status "your turn to bid" at the top of the box */}
               <div>
-                {isMyTurnToBid ? (
+                {isDjMooreBlockedForBid ? (
+                  <div className="py-1 px-2 rounded-xl bg-amber-950/90 border border-amber-600 text-center text-xs font-bold text-amber-200 shadow">
+                    ⛔ DJ Moore: Over 10🪙 Cap
+                  </div>
+                ) : isMyTurnToBid ? (
                   <div className="py-1 px-2 rounded-xl bg-emerald-950/90 border border-emerald-500 text-center text-xs font-black uppercase text-emerald-300 tracking-wider shadow animate-pulse">
                     🚨 Your Turn to Bid
                   </div>
@@ -1558,12 +1629,12 @@ export const DesktopDeflategateBoardArena = ({
                 </div>
 
                 {/* Bid + and - buttons to alter your bid in the middle of the middle */}
-                <div className={`flex flex-col items-center ${!canAffordBid ? 'opacity-40 pointer-events-none' : ''}`}>
+                <div className={`flex flex-col items-center ${(!canAffordBid || isDjMooreBlockedForBid) ? 'opacity-40 pointer-events-none' : ''}`}>
                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Your Bid</div>
                   <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl p-0.5 shadow-inner">
                     <button
                       onClick={() => setCustomBid(b => Math.max(nextBid, b - 1))}
-                      disabled={!isMyTurnToBid || !canAffordBid || customBid <= nextBid}
+                      disabled={!isMyTurnToBid || !canAffordBid || isDjMooreBlockedForBid || customBid <= nextBid}
                       className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-slate-800 hover:bg-slate-750 active:scale-95 text-white font-black text-lg flex items-center justify-center disabled:opacity-30 cursor-pointer border border-slate-700 transition-all"
                       title="Decrease bid"
                     >
@@ -1574,7 +1645,7 @@ export const DesktopDeflategateBoardArena = ({
                     </span>
                     <button
                       onClick={() => setCustomBid(b => Math.min(maxAllowedBid, b + 1))}
-                      disabled={!isMyTurnToBid || !canAffordBid || customBid >= maxAllowedBid}
+                      disabled={!isMyTurnToBid || !canAffordBid || isDjMooreBlockedForBid || customBid >= maxAllowedBid}
                       className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-slate-800 hover:bg-slate-750 active:scale-95 text-white font-black text-lg flex items-center justify-center disabled:opacity-30 cursor-pointer border border-slate-700 transition-all"
                       title="Increase bid"
                     >
@@ -1598,19 +1669,31 @@ export const DesktopDeflategateBoardArena = ({
                 {/* Bottom Middle: Bid X */}
                 <button
                   onClick={() => moves.bid(customBid, effectivePlayerID)}
-                  disabled={!isMyTurnToBid || !canAffordBid || customBid < nextBid || customBid > maxAllowedBid}
-                  className="py-2 rounded-xl font-bold text-xs uppercase text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-30 shadow cursor-pointer transition-transform hover:scale-102 truncate"
+                  disabled={!isMyTurnToBid || !canAffordBid || isDjMooreBlockedForBid || customBid < nextBid || customBid > maxAllowedBid}
+                  className={`py-2 rounded-xl font-bold text-xs uppercase shadow transition-transform truncate ${
+                    isDjMooreBlockedForBid
+                      ? 'bg-slate-800 text-slate-500 border border-slate-700 opacity-40 cursor-not-allowed'
+                      : !isMyTurnToBid || !canAffordBid
+                      ? 'bg-blue-600 text-white opacity-30 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-500 text-white cursor-pointer hover:scale-102'
+                  }`}
                 >
-                  {!canAffordBid ? "Can't Afford" : `Bid ${customBid}🪙`}
+                  {isDjMooreBlockedForBid ? "Cap Exceeded (> 10🪙)" : !canAffordBid ? "Can't Afford" : `Bid ${customBid}🪙`}
                 </button>
 
                 {/* Bottom Right: Buy Max */}
                 <button
                   onClick={() => moves.bid(effMaxBid, effectivePlayerID)}
-                  disabled={!isMyTurnToBid || !canAffordBid || myPlayer?.coins < effMaxBid || effMaxBid < nextBid}
-                  className="py-2 rounded-xl font-bold text-xs uppercase text-black bg-amber-400 hover:bg-amber-300 disabled:opacity-30 shadow cursor-pointer transition-transform hover:scale-102"
+                  disabled={!isMyTurnToBid || !canAffordBid || isDjMooreBlockedForBid || myPlayer?.coins < effMaxBid || effMaxBid < nextBid}
+                  className={`py-2 rounded-xl font-bold text-xs uppercase shadow transition-transform ${
+                    isDjMooreBlockedForBid
+                      ? 'bg-slate-800 text-slate-500 border border-slate-700 opacity-40 cursor-not-allowed'
+                      : !isMyTurnToBid || !canAffordBid || myPlayer?.coins < effMaxBid || effMaxBid < nextBid
+                      ? 'bg-amber-400 text-black opacity-30 cursor-not-allowed'
+                      : 'bg-amber-400 hover:bg-amber-300 text-black cursor-pointer hover:scale-102'
+                  }`}
                 >
-                  Buy Max
+                  {isDjMooreBlockedForBid ? "Locked" : "Buy Max"}
                 </button>
               </div>
 
@@ -2042,61 +2125,139 @@ export const DesktopDeflategateBoardArena = ({
 
       {/* Replacement Modal with 800ms protection */}
       {isPendingReplacementForMe && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border-2 border-red-500 p-6 rounded-3xl max-w-2xl w-full text-center shadow-2xl space-y-4">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-widest bg-red-950 text-red-300 px-3 py-1 rounded-full border border-red-800">
-                Roster Limit Reached
-              </span>
-              <h2 className="text-2xl font-bold text-white uppercase mt-2">
-                Replace a Player with {G.pendingReplacement?.wonCard?.name}
-              </h2>
-              <p className="text-xs text-slate-400">Select which active player to send to the discard pile.</p>
-            </div>
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          {(() => {
+            const wonCard = G.pendingReplacement?.wonCard;
+            const isBengals = getEffectiveTeamId(myPlayer) === 'bengals';
+            const maxSlots = isBengals ? 3 : (getEffectiveTeamId(myPlayer) === 'seahawks' ? 4 : 3) + (myPlayer?.extraLineupSlots || 0);
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
-              {myPlayer?.lineup.map((card, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => !replaceLocked && moves.replaceLineupCard(idx, effectivePlayerID)}
-                  className={`p-3 rounded-xl border-2 transition-all flex flex-col justify-between ${
-                    replaceLocked ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:border-red-400 hover:scale-102'
-                  } ${getCardPhaseStyle(card)}`}
-                >
-                  <div>
-                    <div className="flex justify-between items-center text-xs font-mono font-bold mb-1">
-                      <span>Slot {idx + 1}</span>
-                      {renderPositionTag(card.position)}
-                    </div>
-                    <h4 className="font-bold text-sm text-white">{card.name}</h4>
-                    {renderCardEffects(card.effects, card.specialText || card.customText)}
+            return (
+              <div className="bg-slate-900 border-2 border-amber-500/80 p-5 sm:p-7 rounded-3xl max-w-4xl w-full text-center shadow-2xl space-y-4 my-auto max-h-[92vh] overflow-y-auto">
+                <div>
+                  <div className="flex items-center justify-center gap-2 mb-1.5 flex-wrap">
+                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest bg-amber-950 text-amber-300 px-3 py-1 rounded-full border border-amber-700">
+                      Roster Limit Reached (Max {maxSlots})
+                    </span>
+                    {isBengals && (
+                      <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest bg-orange-950 text-orange-300 px-3 py-1 rounded-full border border-orange-600 animate-pulse">
+                        🐅 Bengals Special Franchise Ability
+                      </span>
+                    )}
                   </div>
-                  <button
-                    disabled={replaceLocked}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!replaceLocked) moves.replaceLineupCard(idx, effectivePlayerID);
-                    }}
-                    className="mt-3 w-full py-1.5 rounded-lg text-xs font-bold uppercase text-white bg-red-600 hover:bg-red-500 disabled:opacity-40 cursor-pointer"
-                  >
-                    Replace This Player
-                  </button>
+                  <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">
+                    {isBengals ? `Choose: Replace Active Starter or Discard ${wonCard?.name}` : `Replace a Starter with ${wonCard?.name}`}
+                  </h2>
+                  <p className="text-xs text-slate-300 mt-1 max-w-2xl mx-auto">
+                    {isBengals 
+                      ? "Bengals Ability: Instant effects give you +2 coins/deflate! You may either send an existing active starter to the discard pile, OR discard this won player to preserve your active lineup."
+                      : "Your roster is full. Review the newly acquired player below and select which active starter to send to the discard pile."}
+                  </p>
                 </div>
-              ))}
-            </div>
 
-            {getEffectiveTeamId(myPlayer) === 'bengals' && (
-              <div className="pt-2 border-t border-slate-800">
-                <button
-                  disabled={replaceLocked}
-                  onClick={() => !replaceLocked && moves.discardWonCard(effectivePlayerID)}
-                  className="py-2.5 px-6 rounded-xl text-xs font-bold uppercase text-amber-300 bg-amber-950 border border-amber-700 hover:bg-amber-900 cursor-pointer shadow"
-                >
-                  Bengals: Discard Won Card
-                </button>
+                {/* FEATURED: Newly Acquired Player Card */}
+                {wonCard && (
+                  <div className="bg-slate-950/90 border-2 border-indigo-500/80 rounded-2xl p-4 text-left shadow-xl relative overflow-hidden">
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-indigo-500/30 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-indigo-950 border border-indigo-500 text-indigo-300 font-black text-xs uppercase tracking-wider">
+                          ⭐ Newly Acquired Player
+                        </span>
+                        {renderPhaseBadge(wonCard.phase)}
+                        {renderPositionTag(wonCard.position)}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-300">
+                        <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700">Min: {wonCard.minBid} 🪙</span>
+                        <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700">Max: {wonCard.maxBid} 🪙</span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1 flex-1">
+                        <h3 className="text-lg font-black text-white">{wonCard.name}</h3>
+                        {renderCardEffects(wonCard.effects, wonCard.specialText || wonCard.customText)}
+                      </div>
+
+                      {/* Bengals Discard Button (Prominently placed on the won card) */}
+                      {isBengals && (
+                        <div className="sm:max-w-xs w-full shrink-0">
+                          <button
+                            type="button"
+                            disabled={replaceLocked}
+                            onClick={() => !replaceLocked && moves.discardWonCard(effectivePlayerID)}
+                            className="w-full py-3 px-4 rounded-xl font-black text-xs uppercase tracking-wider text-orange-200 bg-gradient-to-r from-orange-950 via-amber-950 to-orange-950 border-2 border-orange-500 hover:border-orange-400 hover:from-orange-900 hover:to-amber-900 shadow-xl cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                          >
+                            <span>🗑️</span>
+                            <span>Bengals: Discard {wonCard.name}</span>
+                          </button>
+                          <span className="text-[10px] text-orange-400/80 block text-center mt-1 font-medium">
+                            Keep your current 3 starters intact
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* CURRENT ACTIVE LINEUP PLAYERS */}
+                <div className="text-left pt-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                      <span>👥</span> Current Active Lineup (Select which player to drop):
+                    </h4>
+                    <span className="text-[11px] text-slate-400">Click a player to replace</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {myPlayer?.lineup.map((card, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => !replaceLocked && moves.replaceLineupCard(idx, effectivePlayerID)}
+                        className={`p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                          replaceLocked ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:border-red-400 hover:shadow-red-500/20 hover:scale-[1.02]'
+                        } ${getCardPhaseStyle(card)}`}
+                      >
+                        <div>
+                          <div className="flex justify-between items-center text-xs font-mono font-bold mb-1.5 flex-wrap gap-1">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-950/80 border border-slate-700 text-slate-300">
+                              Slot {idx + 1}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              {renderPositionTag(card.position)}
+                              {renderPhaseBadge(card.phase)}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <h4 className="font-extrabold text-sm text-white truncate">{card.name}</h4>
+                            {(card.minBid !== undefined && card.maxBid !== undefined) && (
+                              <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                                {card.minBid}-{card.maxBid} 🪙
+                              </span>
+                            )}
+                          </div>
+
+                          {renderCardEffects(card.effects, card.specialText || card.customText)}
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={replaceLocked}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!replaceLocked) moves.replaceLineupCard(idx, effectivePlayerID);
+                          }}
+                          className="mt-3 w-full py-2 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 border border-red-500/50 shadow-md transition-all cursor-pointer flex items-center justify-center gap-1"
+                        >
+                          <span>Drop & Replace</span>
+                          <span>➔</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
+            );
+          })()}
         </div>
       )}
 
@@ -2249,21 +2410,63 @@ export const DesktopDeflategateBoardArena = ({
                 })()}
 
                 {getEffectiveTeamId(myPlayer) !== 'colts' && myPlayer?.lineup?.length >= (getEffectiveTeamId(myPlayer) === 'seahawks' ? 4 : 3) + (myPlayer?.extraLineupSlots || 0) && (
-                  <div className="text-left">
-                    <p className="text-xs text-slate-400 mb-2 font-bold">Select an active player to replace if you sign:</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {myPlayer.lineup.map((c, i) => (
-                        <button
-                          key={c.uniqueId || i}
-                          type="button"
-                          onClick={() => setSelectedReplaceIdx(i)}
-                          className={`p-2 rounded-lg border text-[11px] font-bold ${
-                            selectedReplaceIdx === i ? 'border-purple-500 bg-purple-950/60 text-white ring-2 ring-purple-400' : 'border-slate-800 bg-slate-950 text-slate-400'
-                          }`}
-                        >
-                          {c.name}
-                        </button>
-                      ))}
+                  <div className="text-left bg-slate-950/80 p-3 rounded-2xl border border-slate-800 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
+                        <span>🔄</span>
+                        <span>Lineup Full: Click a player to replace upon signing</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {myPlayer.lineup.length} Active Starters
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                      {myPlayer.lineup.map((c, i) => {
+                        const isSelected = selectedReplaceIdx === i;
+                        return (
+                          <div
+                            key={c.uniqueId || i}
+                            onClick={() => setSelectedReplaceIdx(i)}
+                            className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer relative ${getCardPhaseStyle(c)} ${
+                              isSelected
+                                ? 'border-purple-400 bg-purple-950/80 ring-2 ring-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.35)] scale-[1.02]'
+                                : 'border-slate-800 bg-slate-900/90 hover:border-purple-500/60 hover:bg-slate-900'
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-1 mb-1 text-[10px]">
+                                {renderPositionTag(c.position)}
+                                {renderPhaseBadge(c.phase)}
+                              </div>
+                              <h4 className="text-xs font-black text-white truncate mb-1">{c.name}</h4>
+                              <div className="text-[11px]">
+                                {renderCardEffects(c.effects, c.specialText || c.customText)}
+                              </div>
+                            </div>
+
+                            <div className="mt-2 pt-1.5 border-t border-slate-800/80 flex items-center justify-between">
+                              <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-purple-300' : 'text-slate-400'}`}>
+                                {isSelected ? '✓ Will Replace' : 'Click to Replace'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedReplaceIdx(i);
+                                }}
+                                className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase transition-colors cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-purple-600 text-white'
+                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                }`}
+                              >
+                                {isSelected ? 'Selected' : 'Replace'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -2271,6 +2474,8 @@ export const DesktopDeflategateBoardArena = ({
                   {(() => {
                     const cost = getEffectiveCardMaxBid(G.board.pendingFreeAgency.card, G.board.activeEvent);
                     const canAfford = (myPlayer?.coins || 0) >= cost;
+                    const isLineupFull = getEffectiveTeamId(myPlayer) !== 'colts' && myPlayer?.lineup?.length >= (getEffectiveTeamId(myPlayer) === 'seahawks' ? 4 : 3) + (myPlayer?.extraLineupSlots || 0);
+                    const replacingPlayer = isLineupFull && myPlayer?.lineup?.[selectedReplaceIdx];
                     return (
                       <>
                         <button
@@ -2280,7 +2485,9 @@ export const DesktopDeflategateBoardArena = ({
                             canAfford ? 'bg-purple-600 hover:bg-purple-500 text-white cursor-pointer shadow' : 'bg-slate-800 text-slate-600 cursor-not-allowed'
                           }`}
                         >
-                          Sign ({cost} Coins)
+                          {canAfford
+                            ? (replacingPlayer ? `Sign & Replace ${replacingPlayer.name} (${cost} Coins)` : `Sign (${cost} Coins)`)
+                            : `Can't Afford (${cost} Coins)`}
                         </button>
                         <button
                           onClick={() => moves.freeAgencyPass(effectivePlayerID)}

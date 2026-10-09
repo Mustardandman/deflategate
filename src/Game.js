@@ -1,6 +1,7 @@
 import { INVALID_MOVE, ActivePlayers } from 'boardgame.io/dist/cjs/core.js';
 import { TEAMS, EVENTS, PRACTICE_SQUAD_CARD, PHASE_1_PLAYERS, PHASE_2_PLAYERS, HOF_PLAYERS } from './GameData.js';
 import { DEFAULT_GENOME, BASELINE_TEAM_GENOMES, ACTIVE_TEAM_GENOMES } from './ai/teamGenomes.js';
+import { chooseCpuNominationCardV2, evaluateCpuAuctionBidV2 } from './ai/v2/auctionTactics.js';
 
 export const fisherYatesShuffle = (array) => {
   const result = [...array];
@@ -240,6 +241,280 @@ export const getEffectiveCardMaxBid = (card, activeEvent) => {
   return max;
 };
 
+export const calculate49ersIncomingCoins = (player, G, incomingCard = null) => {
+  let incoming = 0;
+  const ev = G?.board?.activeEvent;
+  (player?.lineup || []).forEach(card => {
+    if (!card || card.isPracticeSquad || card.uniqueId?.startsWith('ps_')) return;
+    let coinMult = 1;
+    if (ev?.category === 'double_all') coinMult *= 2;
+    if (ev?.category === 'double_phase1' && card.phase === 1) coinMult *= 2;
+    if (ev?.category === 'double_wr' && card.position === 'WR') coinMult *= 2;
+    if (ev?.category === 'double_te' && card.position === 'TE') coinMult *= 2;
+    if (card.ramsDoubleToken) coinMult *= 2;
+
+    card.effects?.forEach(eff => {
+      if (eff.perRound && eff.type === 'coins') {
+        incoming += eff.amount * coinMult;
+      }
+    });
+  });
+
+  if (incomingCard) {
+    let coinMult = 1;
+    if (ev?.category === 'double_all') coinMult *= 2;
+    if (ev?.category === 'double_phase1' && incomingCard.phase === 1) coinMult *= 2;
+    if (ev?.category === 'double_wr' && incomingCard.position === 'WR') coinMult *= 2;
+    if (ev?.category === 'double_te' && incomingCard.position === 'TE') coinMult *= 2;
+    incomingCard.effects?.forEach(eff => {
+      if (eff.perRound && eff.type === 'coins') {
+        incoming += eff.amount * coinMult;
+      }
+    });
+  }
+  return incoming;
+};
+
+export const scoreStarterReplacementValue = (c, p, G, acquiredCard = null) => {
+  if (!c) return -9999;
+  const effectiveTeamId = getEffectiveTeamId(p);
+  const isSaints = effectiveTeamId === 'saints';
+
+  // 1. Toxic recurring penalties (inflation or negative coins)
+  // For non-Saints teams, these cards actively damage the team every turn!
+  // They MUST be purged before benign/neutral Practice Squad placeholders (-1000).
+  const recInflate = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && e.type === 'inflate').reduce((sum, e) => sum + e.amount, 0) || 0;
+  const recNegCoins = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0).reduce((sum, e) => sum + Math.abs(e.amount), 0) || 0;
+
+  if (!isSaints) {
+    if (c.id === 'deshaun_watson') {
+      if (effectiveTeamId === 'texans') {
+        return -25;
+      } else {
+        return -2500;
+      }
+    }
+    if (recInflate > 0 || recNegCoins > 0) {
+      return -2000 - (recInflate * 50) - (recNegCoins * 30);
+    }
+  }
+
+  // 2. Practice squad placeholder: always replace before harmless cards!
+  if (c.isPracticeSquad || c.id === 'practice_squad' || c.uniqueId?.startsWith('ps_')) {
+    return -1000;
+  }
+
+  // 3. Pure instant / consumed cards with zero recurring effects:
+  // Once acquired, their instant effect is finished. In lineup they generate 0 coins and 0 deflate.
+  const hasRecurring = c.effects && c.effects.some(e => e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round' || e.type === 'deflate_every_round');
+  if (!hasRecurring) {
+    return -500;
+  }
+
+  // 4. Calculate every turn coins and every turn deflate
+  let perTurnCoins = 0;
+  let perTurnDeflate = 0;
+  const isRamsDoubled = Boolean(c.ramsDoubleToken);
+  const tokenMult = isRamsDoubled ? 2 : 1;
+
+  c.effects?.forEach(e => {
+    const isRec = e.perRound || e.trigger === 'refresh' || e.trigger === 'end_round' || e.type === 'every_round' || e.type === 'deflate_every_round';
+    if (!isRec) return;
+    if (e.type === 'coins') {
+      if (e.amount > 0) {
+        perTurnCoins += e.amount * tokenMult;
+      } else if (!isSaints) {
+        perTurnCoins += e.amount * tokenMult;
+      }
+    } else if (e.type === 'deflate' || e.type === 'deflate_every_round') {
+      perTurnDeflate += e.amount * tokenMult;
+    } else if (e.type === 'inflate') {
+      if (!isSaints) {
+        perTurnDeflate -= e.amount * tokenMult;
+      }
+    }
+  });
+
+  // Special card recurring effects
+  if (c.id === 'amon_ra_st_brown' || c.id === 'amon_st_brown') {
+    const oppCount = Math.max(1, Object.keys(G?.players || {}).length - 1);
+    perTurnCoins += oppCount;
+  }
+
+  // 5. Team ability synergies
+  // Texans: +2 coins and +2 deflate per QB
+  if (effectiveTeamId === 'texans' && c.position === 'QB') {
+    perTurnCoins += 2;
+    perTurnDeflate += 2;
+  }
+
+  // 49ers: low coins doubles deflation
+  if (effectiveTeamId === '49ers' && ((p.coins || 0) + calculate49ersIncomingCoins(p, G)) < 5) {
+    perTurnDeflate *= 2;
+  }
+
+  // 6. Round-based weights
+  // General rule: Deflation is the ultimate win condition. Deflation is weighted significantly above coins!
+  const currentRound = G?.board?.round || 1;
+  let deflateWeight = 2.2;
+  let coinWeight = 0.9;
+
+  if (currentRound >= 8) {
+    deflateWeight = 4.0;
+    coinWeight = 0.2;
+  } else if (currentRound >= 5) {
+    deflateWeight = 3.0;
+    coinWeight = 0.6;
+  } else {
+    deflateWeight = 2.2;
+    coinWeight = 0.9;
+  }
+
+  // Lean adjustments
+  if (p.psi <= 8) {
+    deflateWeight = Math.max(deflateWeight, 4.5);
+    coinWeight = Math.min(coinWeight, 0.1);
+  } else if ((p.coins || 0) > 15 && perTurnDeflate < 4) {
+    deflateWeight *= 1.3;
+    coinWeight *= 0.7;
+  } else if (currentRound <= 4 && (p.coins || 0) <= 1 && perTurnCoins === 0) {
+    coinWeight *= 1.25;
+  }
+
+  let totalValue = (perTurnDeflate * deflateWeight) + (perTurnCoins * coinWeight);
+
+  // 7. Hall of Fame & Premier Card Protection
+  // Calvin Johnson (7 deflate/round, HOF), Barry Sanders, Jerry Rice, etc.
+  if (c.phase === 'hof') {
+    totalValue += 25;
+  }
+  // Protect Tier 1 & Tier 2 recurring deflation engines (Bowers, Kittle, Olsen, CMC, Tyreek, Jefferson, etc.)
+  if (perTurnDeflate >= 3) {
+    totalValue += 16;
+  } else if (perTurnDeflate >= 2) {
+    totalValue += 8;
+  }
+  if (isRamsDoubled) {
+    totalValue += 15;
+  }
+  if (effectiveTeamId === 'packers' && c.phase === 1) {
+    const allP1 = (p.lineup || []).every(card => card.phase === 1);
+    if (allP1 && (!acquiredCard || acquiredCard.phase !== 1)) {
+      totalValue += 10;
+    }
+  }
+
+  return totalValue;
+};
+
+export const chooseWorstStarterIndex = (p, G, acquiredCard = null) => {
+  if (!p || !p.lineup || p.lineup.length === 0) return 0;
+  const effectiveTeamId = getEffectiveTeamId(p);
+
+  // Ravens special case: 3-position diversity
+  if (effectiveTeamId === 'ravens' && acquiredCard && !p.lineup.some(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'))) {
+    let bestTotalScore = -Infinity;
+    let bestCandidateIdx = 0;
+    const currentRound = G?.board?.round || 1;
+    const roundsLeft = Math.max(1, 10 - currentRound);
+    const abilityValue = (currentRound >= 8 ? 1.0 : 3.0) * Math.min(5, roundsLeft);
+
+    p.lineup.forEach((c, idx) => {
+      const candidateLineup = p.lineup.map((oldCard, i) => (i === idx ? acquiredCard : oldCard));
+      const candDistinct = new Set(candidateLineup.map(x => x.position));
+      const candHasAbility = candDistinct.size >= 3;
+
+      let score = 0;
+      candidateLineup.forEach(x => {
+        score += scoreStarterReplacementValue(x, p, G);
+      });
+      if (candHasAbility) {
+        score += abilityValue;
+      }
+      if (score > bestTotalScore) {
+        bestTotalScore = score;
+        bestCandidateIdx = idx;
+      }
+    });
+    return bestCandidateIdx;
+  }
+
+  let worstScore = Infinity;
+  let worstIdx = 0;
+
+  p.lineup.forEach((c, idx) => {
+    const score = scoreStarterReplacementValue(c, p, G, acquiredCard);
+    if (score < worstScore) {
+      worstScore = score;
+      worstIdx = idx;
+    }
+  });
+
+  return worstIdx;
+};
+
+export const addAcquiredCardEffects = (G, playerID, card, effMax, isMaxBid = false) => {
+  const p = G.players[playerID];
+  if (!p || !card) return;
+  const effectiveTeamId = getEffectiveTeamId(p);
+
+  // Brandon Aiyuk Custom Mechanic: If acquired for maximum price, upgrades per-round earnings from 2 to 4 coins/round
+  if (card.id === 'brandon_aiyuk' && isMaxBid) {
+    card.effects = [{ type: 'coins', amount: 4, perRound: true }];
+    addLog(G, `Brandon Aiyuk Max Bid Bonus: Upgraded to 4 coins per round!`);
+  }
+
+  // Packers Ability: Gain 1 coin on Phase 1 acquisition
+  if (effectiveTeamId === 'packers' && card.phase === 1) {
+    applyCoinsGained(G, playerID, 1);
+    addLog(G, `Packers Ability: Acquired Phase 1 player, gained +1 coin.`);
+  }
+
+  // Broncos Ability: Flag card acquired this round so its recurring effects are ignored in the first refresh
+  if (effectiveTeamId === 'broncos') {
+    card.broncosRoundAcquired = G.board.round;
+    addLog(G, `Broncos Ability: ${card.name} acquired this round; its recurring effects will be ignored in this round's refresh.`);
+  }
+
+  // Apply one-time / immediate card effects
+  if (card.effects) {
+    let instantMult = 1;
+    if (G.board.activeEvent?.category === 'double_all') instantMult *= 2;
+    if (G.board.activeEvent?.category === 'double_phase1' && card.phase === 1) instantMult *= 2;
+
+    const qbChoice = G.board.qbChoices?.[card.uniqueId];
+    const isQbChoiceEvent = G.board.activeEvent?.category === 'qb_choice' && card.position === 'QB';
+
+    card.effects.forEach(eff => {
+      if (!eff.perRound) {
+        if (isQbChoiceEvent && qbChoice && eff.type !== qbChoice) {
+          return;
+        }
+        let effAmount = eff.amount * instantMult;
+        if (effectiveTeamId === 'bengals') {
+          effAmount += 2;
+          addLog(G, `Bengals Ability: +2 boost to instant ${eff.type}!`);
+          triggerAbilityNotification(G, playerID, 'bengals', 'Bengals Instant Boost', `Instant ${eff.type} boosted by +2!`);
+        }
+        if (eff.type === 'coins' && effectiveTeamId !== 'browns') {
+          if (effectiveTeamId === 'vikings' && p.psi < 27) {
+            effAmount *= 2;
+            addLog(G, `⚔️ Vikings Ability: Under 27 PSI! Instant coin reward doubled to ${effAmount}.`);
+            triggerAbilityNotification(G, playerID, 'vikings', 'Vikings: Under 27 PSI Boost', `Under 27 PSI! Instant coins doubled to +${effAmount}!`);
+          }
+          applyCoinsGained(G, playerID, effAmount);
+        }
+        if (eff.type === 'deflate') {
+          applyPsiDeflated(G, playerID, effAmount);
+        }
+        if (eff.type === 'inflate') {
+          applyPsiInflated(G, playerID, effAmount);
+        }
+      }
+    });
+  }
+};
+
 export const resolveAuctionWin = (G, playerID, card) => {
   const p = G.players[playerID];
   if (!p) return;
@@ -418,11 +693,6 @@ export const resolveAuctionWin = (G, playerID, card) => {
           applyCoinsGained(G, playerID, effAmount);
         }
         if (eff.type === 'deflate') {
-          if (effectiveTeamId === 'vikings' && p.psi < 27) {
-            effAmount *= 2;
-            addLog(G, `⚔️ Vikings Ability: Under 27 PSI! Instant deflation doubled to ${effAmount}.`);
-            triggerAbilityNotification(G, playerID, 'vikings', 'Vikings: Double Deflate Boost', `Under 27 PSI! Instant deflation doubled to -${effAmount} PSI!`);
-          }
           applyPsiDeflated(G, playerID, effAmount);
         }
         if (eff.type === 'inflate') {
@@ -502,167 +772,7 @@ export const resolveAuctionWin = (G, playerID, card) => {
         }
       }
 
-      let replaceIdx = 0;
-      let worstScore = Infinity;
-
-      const isTexans = effectiveTeamId === 'texans';
-      const isRavens = effectiveTeamId === 'ravens';
-      const isSaints = effectiveTeamId === 'saints';
-      const hasPracticeSquad = p.lineup.some(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
-
-      // Priority 0: Universal Negative Recurring Replacement
-      // If a non-Saints CPU team has any starter with negative recurring effects (e.g. Deshaun Watson [+4 inflate/rd],
-      // Ezekiel Elliott [-2 coins/rd], Hunter Henry [+3 inflate/rd]), replace that player FIRST
-      // (even before replacing Practice Squad players) so the penalty is only suffered for 1 turn not the entire game!
-      let toxicStarterIdx = -1;
-      if (!isSaints) {
-        let worstToxicPenalty = -Infinity;
-        p.lineup.forEach((c, idx) => {
-          if (!c || c.isPracticeSquad || c.uniqueId?.startsWith('ps_')) return;
-          const recInflate = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate').reduce((s, e) => s + e.amount, 0) || 0;
-          const recNegCoins = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0) || 0;
-          if (recInflate > 0 || recNegCoins > 0) {
-            const penalty = (recInflate * 3.0) + recNegCoins;
-            if (penalty > worstToxicPenalty) {
-              worstToxicPenalty = penalty;
-              toxicStarterIdx = idx;
-            }
-          }
-        });
-      }
-
-      if (toxicStarterIdx !== -1) {
-        replaceIdx = toxicStarterIdx;
-      } else if (isTexans) {
-        // Priority 1: Always replace Practice Squad first
-        const psIdx = p.lineup.findIndex(c => c.isPracticeSquad || c.uniqueId?.startsWith('ps_'));
-        if (psIdx !== -1) {
-          replaceIdx = psIdx;
-        } else {
-          // User directive: "I wouldn't say they should never replace a qb with a non qb. YOu can replace watson, in a vacumm travis kelce or a hof player would be better than a qb in your lineup so you can replace a qb for them. But generally yes you want to keep the qbs. Just add a value of 2 every turn coins and 2 every turn deflation to qb cards when evaluating what to replace."
-          const currentRound = G.board?.round || 1;
-          const roundsLeft = Math.max(1, 10 - currentRound);
-          const deflateWeight = p.genome?.deflateWeight || 1.6;
-          const coinWeight = p.genome?.coinWeight || 1.2;
-
-          let worstScore = Infinity;
-          let worstIdx = 0;
-
-          const evaluateLineupCard = (c) => {
-            const hasRecurringInflation = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
-            const hasRecurringNegativeCoins = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0);
-            if (hasRecurringInflation || hasRecurringNegativeCoins) {
-              return -300; // Toxic recurring damage card: replace immediately!
-            }
-            const hasPerRound = c.effects ? c.effects.some(e => e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round') : false;
-            if (!hasPerRound) {
-              return -100; // Consumed instant / cycle card: designate as revolving cycle spot!
-            }
-            if (c.id === 'deshaun_watson') {
-              // Watson evaluation: half as bad as other teams (negative score, replaced naturally)
-              return scoreCardForPlayer(G, playerID, c);
-            }
-            let defPerRound = 0;
-            let coinPerRound = 0;
-            (c.effects || []).forEach(e => {
-              const isRec = e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round';
-              if (isRec) {
-                if (e.type === 'deflate' || e.type === 'deflate_every_round') defPerRound += (e.amount || 0);
-                if (e.type === 'coins') coinPerRound += (e.amount || 0);
-                if (e.type === 'inflate') defPerRound -= (e.amount || 0);
-              }
-            });
-
-            // "Just add a value of 2 every turn coins and 2 every turn deflation to qb cards when evaluating what to replace."
-            if (c.position === 'QB') {
-              defPerRound += 2;
-              coinPerRound += 2;
-            }
-
-            let s = ((defPerRound * deflateWeight) + (coinPerRound * coinWeight)) * roundsLeft;
-            const effMax = getEffectiveCardMaxBid(c, G.board?.activeEvent);
-            const isSuperstar = (c.phase === 'hof' || effMax >= 16 || c.id === 'patrick_mahomes' || c.id === 'travis_kelce' || c.id === 'christian_mccaffrey' || c.id === 'lamar_jackson' || c.id === 'justin_jefferson');
-            if (c.phase === 'hof') {
-              s = Math.max(s, 24.0) * 1.2;
-            } else if (isSuperstar) {
-              s = Math.max(s, 20.0) * 1.2;
-            }
-            return s;
-          };
-
-          p.lineup.forEach((c, idx) => {
-            const score = evaluateLineupCard(c);
-            if (score < worstScore) {
-              worstScore = score;
-              replaceIdx = idx;
-            }
-          });
-        }
-      } else if (isRavens && !hasPracticeSquad) {
-        let bestTotalLineupScore = -Infinity;
-        let bestCandidateIdx = 0;
-        const roundsLeft = Math.max(1, 10 - (G.board?.round || 1));
-        const coinWeight = p.genome?.coinWeight || 1.1;
-        const abilityValue = 3.0 * coinWeight * Math.min(5, roundsLeft);
-
-        p.lineup.forEach((c, idx) => {
-          const candidateLineup = p.lineup.map((oldCard, i) => (i === idx ? card : oldCard));
-          const candDistinct = new Set(candidateLineup.map(x => x.position));
-          const candHasAbility = candDistinct.size >= 3;
-
-          let candidateScore = 0;
-          candidateLineup.forEach(x => {
-            const hasRecurringInflation = x.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
-            const hasRecurringNegativeCoins = x.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0);
-            if (hasRecurringInflation || hasRecurringNegativeCoins) {
-              candidateScore -= 300;
-            } else if (x === card) {
-              candidateScore += scoreCardForPlayer(G, playerID, x);
-            } else {
-              const hasPerRound = x.effects ? x.effects.some(e => e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round') : false;
-              if (!hasPerRound) {
-                candidateScore += 0; // Consumed instant card has 0 future recurring value
-              } else {
-                candidateScore += scoreCardForPlayer(G, playerID, x);
-              }
-            }
-          });
-          if (candHasAbility) {
-            candidateScore += abilityValue;
-          }
-
-          if (candidateScore > bestTotalLineupScore) {
-            bestTotalLineupScore = candidateScore;
-            bestCandidateIdx = idx;
-          }
-        });
-        replaceIdx = bestCandidateIdx;
-      } else {
-        p.lineup.forEach((c, idx) => {
-          let score = 0;
-          const hasRecurringInflation = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'inflate');
-          const hasRecurringNegativeCoins = c.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount < 0);
-          const isPracticeSquad = c.isPracticeSquad || c.id === 'practice_squad' || c.uniqueId?.startsWith('ps_');
-
-          if (!isSaints && (hasRecurringInflation || hasRecurringNegativeCoins)) {
-            score = -300; // Toxic recurring damage card: replace immediately!
-          } else if (isPracticeSquad) {
-            score = -200; // Practice Squad placeholder: replace as soon as real cards are acquired!
-          } else {
-            const hasPerRound = c.effects ? c.effects.some(e => e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round') : false;
-            if (!hasPerRound) {
-              score = -100; // Consumed instant / cycle card: designate as revolving cycle spot!
-            } else {
-              score = scoreCardForPlayer(G, playerID, c);
-            }
-          }
-          if (score < worstScore) {
-            worstScore = score;
-            replaceIdx = idx;
-          }
-        });
-      }
-
+      const replaceIdx = chooseWorstStarterIndex(p, G, card);
       const discarded = p.lineup[replaceIdx];
       p.lineup[replaceIdx] = card;
       if (!G.decks.discard) G.decks.discard = [];
@@ -856,40 +966,6 @@ export const calculateEstimatedGameEndRound = (G) => {
   }
 
   return Math.max(currentRound + 1, Math.min(10, estimatedEnd));
-};
-
-export const calculate49ersIncomingCoins = (player, G, incomingCard = null) => {
-  let incoming = 0;
-  const ev = G?.board?.activeEvent;
-  (player?.lineup || []).forEach(card => {
-    if (!card || card.isPracticeSquad || card.uniqueId?.startsWith('ps_')) return;
-    let coinMult = 1;
-    if (ev?.category === 'double_all') coinMult *= 2;
-    if (ev?.category === 'double_phase1' && card.phase === 1) coinMult *= 2;
-    if (ev?.category === 'double_wr' && card.position === 'WR') coinMult *= 2;
-    if (ev?.category === 'double_te' && card.position === 'TE') coinMult *= 2;
-    if (card.ramsDoubleToken) coinMult *= 2;
-
-    card.effects?.forEach(eff => {
-      if (eff.perRound && eff.type === 'coins') {
-        incoming += eff.amount * coinMult;
-      }
-    });
-  });
-
-  if (incomingCard) {
-    let coinMult = 1;
-    if (ev?.category === 'double_all') coinMult *= 2;
-    if (ev?.category === 'double_phase1' && incomingCard.phase === 1) coinMult *= 2;
-    if (ev?.category === 'double_wr' && incomingCard.position === 'WR') coinMult *= 2;
-    if (ev?.category === 'double_te' && incomingCard.position === 'TE') coinMult *= 2;
-    incomingCard.effects?.forEach(eff => {
-      if (eff.perRound && eff.type === 'coins') {
-        incoming += eff.amount * coinMult;
-      }
-    });
-  }
-  return incoming;
 };
 
 export const isRamsDoublingSuperstar = (card) => {
@@ -1528,14 +1604,29 @@ export const scoreCardForPlayer = (arg1, arg2, arg3) => {
     }
   }
 
-  // Playtest 20: Isaiah Pacheco Expected Value (Draws fresh card from active era deck)
+  // Isaiah Pacheco Expected Value (Draws fresh random card from player deck)
+  // User directive: Normal value between 1-5 coins range. If avoiding a negative card on board, ~7ish coins.
   if (card.id === 'isaiah_pacheco') {
-    if (currentRound >= 7) {
-      rawScore += 40.0; // HOF deck
-    } else if (currentRound >= 4) {
-      rawScore += 28.0; // Phase 2 deck
+    const boardCards = (G?.board?.auctionPlayers || []).filter(c => c && c.id !== 'isaiah_pacheco');
+    const isNegativeCard = (c) => {
+      if (!c) return false;
+      if (effectiveTeamId !== 'saints' && c.effects?.some(e => e.type === 'inflate' && e.amount > 0)) return true;
+      if (c.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins' && e.amount < 0)) return true;
+      if (c.effects?.some(e => e.type === 'freeze')) return true;
+      return false;
+    };
+    const hasNegativeCardOnBoard = boardCards.some(isNegativeCard);
+
+    if (hasNegativeCardOnBoard) {
+      rawScore += 9.5; // Avoidance value: scales valuation up toward ~7 coins
     } else {
-      rawScore += 18.0; // Phase 1 deck
+      if (currentRound >= 7) {
+        rawScore += 6.5; // ~4-5 coins
+      } else if (currentRound >= 4) {
+        rawScore += 5.0; // ~3-4 coins
+      } else {
+        rawScore += 3.8; // ~2-3 coins
+      }
     }
   }
 
@@ -3308,18 +3399,40 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
   // Steelers Nomination Strategy:
   // - If NOT yet coin leader (e.g. Rounds 1-2): Bait rivals by nominating high-cost or high-demand cards
   //   that competitors will fight over, draining their purses so Steelers can overtake them!
-  // - If IS coin leader: Nominate recurring coin cards to solidify dominance, or cheap utility cards
-  //   that Steelers can win comfortably within their spendable surplus.
+  // - If IS coin leader:
+  //   * Endgame / Late-Game (Round >= 7 or PSI <= 18): Prioritize game-ending deflation or superstars
+  //     (Aaron Jones, Christian McCaffrey, Randy Moss, HOF, recDeflate >= 3) to clinch victory!
+  //   * Early / Mid-Game: Nominate recurring coin cards to solidify dominance, or cheap utility cards
+  //     that Steelers can win comfortably within their spendable surplus.
   if (effectiveTeamId === 'steelers') {
-    const isLeadingCoins = currentPlayer.coins > richestOpponentCoins;
-    if (!isLeadingCoins) {
-      const baitCard = eligibleCards.find(item => item.card.maxBid >= 8 || item.card.phase >= 2 || item.card.effects?.some(e => e.type === 'deflate' && e.amount >= 3));
-      if (baitCard) return baitCard.index;
+    const isLateGame = (G.board?.round || 1) >= 7 || (currentPlayer.psi || 42) <= 18;
+    if (isLateGame) {
+      const closerNuke = eligibleCards.find(item => {
+        const instDeflate = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return instDeflate >= (currentPlayer.psi || 42) && currentPlayer.coins >= item.card.minBid;
+      });
+      if (closerNuke) return closerNuke.index;
+
+      const topDeflateStar = eligibleCards.find(item => {
+        const recDeflate = item.card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        const instDeflate = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return (item.card.phase === 'hof' || recDeflate >= 3 || instDeflate >= 5 || item.card.id === 'aaron_jones' || item.card.id === 'christian_mccaffrey' || item.card.id === 'randy_moss') && currentPlayer.coins >= item.card.minBid;
+      });
+      if (topDeflateStar) return topDeflateStar.index;
+
+      const topLateTarget = eligibleCards.find(item => currentPlayer.coins >= item.card.minBid);
+      if (topLateTarget) return topLateTarget.index;
     } else {
-      const coinCard = eligibleCards.find(item => item.card.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins' && e.amount >= 2));
-      if (coinCard) return coinCard.index;
-      const cheapTarget = eligibleCards.find(item => item.card.minBid <= 2 && item.card.effects?.some(e => e.type === 'deflate' || e.type === 'coins'));
-      if (cheapTarget) return cheapTarget.index;
+      const isLeadingCoins = currentPlayer.coins > richestOpponentCoins;
+      if (!isLeadingCoins) {
+        const baitCard = eligibleCards.find(item => item.card.maxBid >= 8 || item.card.phase >= 2 || item.card.effects?.some(e => e.type === 'deflate' && e.amount >= 3));
+        if (baitCard) return baitCard.index;
+      } else {
+        const coinCard = eligibleCards.find(item => item.card.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins' && e.amount >= 2));
+        if (coinCard) return coinCard.index;
+        const cheapTarget = eligibleCards.find(item => item.card.minBid <= 2 && item.card.effects?.some(e => e.type === 'deflate' || e.type === 'coins'));
+        if (cheapTarget) return cheapTarget.index;
+      }
     }
   }
 
@@ -3374,18 +3487,25 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
   // Bears Nomination Strategy:
   // - "The 1-Coin Opening Bully":
   //   * Rounds 1-2: Nominate Tier 1 centerpieces (Kelce, Bowers, Mahomes, Kittle, Cousins, HOF) to bully with 13 coins + 2-coin raise wall.
-  //   * Endgame (PSI <= 18): Nominate instant deflation nukes (deflate >= 3) to cross 0 PSI.
+  //   * Endgame (PSI <= 18 or Round >= 7): Nominate instant deflation nukes or premier deflation engines (Derrick Henry, CMC, HOF) to cross 0 PSI.
   //   * 1-Coin Steal Bully: Nominate high-value 1-coin minBid cards (score >= 10.0), forcing rivals to leap immediately to 3 coins or let Chicago steal for 1 coin.
+  //     (Only in early/mid game when not sacrificing a vastly superior available engine!)
   if (effectiveTeamId === 'bears' && eligibleCards.length > 0) {
     const currentRound = G.board.round || 1;
-    const isEndgame = (currentPlayer.psi || 42) <= 18;
+    const isEndgame = (currentPlayer.psi || 42) <= 18 || currentRound >= 7;
 
     if (isEndgame) {
       const closerNuke = eligibleCards.find(item => {
         const instDeflate = item.card.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
-        return instDeflate >= 3 && currentPlayer.coins >= item.card.minBid;
+        return (instDeflate >= 3 || instDeflate >= (currentPlayer.psi || 42)) && currentPlayer.coins >= item.card.minBid;
       });
       if (closerNuke) return closerNuke.index;
+
+      const premierDeflate = eligibleCards.find(item => {
+        const recDeflate = item.card.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return (recDeflate >= 3 || item.card.phase === 'hof' || item.card.id === 'derrick_henry' || item.card.id === 'christian_mccaffrey' || item.card.id === 'randy_moss') && currentPlayer.coins >= item.card.minBid;
+      });
+      if (premierDeflate) return premierDeflate.index;
     }
 
     if (currentRound <= 2) {
@@ -3401,7 +3521,10 @@ export const chooseCpuNominationCard = (G, currentPlayerId) => {
     }
 
     const bullySteal = eligibleCards.find(item => item.card.minBid === 1 && item.score >= 10.0 && currentPlayer.coins >= 1);
-    if (bullySteal) return bullySteal.index;
+    const topCardScore = eligibleCards[0]?.score || 0;
+    if (bullySteal && (bullySteal.score >= topCardScore - 3.0 || currentRound <= 4)) {
+      return bullySteal.index;
+    }
   }
 
   // Tactical Nomination Engine for General Human Heuristic Franchises:
@@ -3789,13 +3912,19 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     card.id === 'christian_mccaffrey' || 
     card.id === 'lamar_jackson' || 
     card.id === 'justin_jefferson' || 
+    card.id === 'jamarr_chase' || 
+    card.id === 'ceedee_lamb' || 
+    card.id === 'aaron_jones' || 
+    card.id === 'randy_moss' || 
     card.id === 'adrian_peterson' || 
     card.id === 'derrick_henry' ||
     card.id === 'brock_bowers' ||
     card.id === 'drake_london' ||
     card.id === 'trevor_lawrence' ||
     (card.id === 'amon_ra_st_brown' && Object.keys(G.players || {}).length >= 5) ||
-    card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3)
+    card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate' && e.amount >= 3) ||
+    card.effects?.some(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'coins' && e.amount >= 4) ||
+    card.effects?.some(e => !e.perRound && e.type === 'deflate' && e.amount >= 6)
   );
 
   const isPatriotsR1Premier = (
@@ -3943,6 +4072,25 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  // Late-Game Closer Discipline:
+  // If team has NOT yet won a player this round, and the active card provides ZERO deflation (pure coin/scrap e.g. DK Metcalf),
+  // but high-impact deflation cards (instDeflate >= 4 or recDeflate >= 2, e.g. Aaron Jones, CMC, HOF) are waiting on the board:
+  // PASS! Winning an ordinary coin card locks the team out of winning game-closing deflation!
+  if ((G.board.round >= 7 || (currentPlayer.psi || 36) <= 18) && (currentPlayer.cardsWonThisRound || 0) === 0) {
+    const cardProvidesDeflation = card.effects?.some(e => e.type === 'deflate');
+    if (!cardProvidesDeflation) {
+      const hasMajorDeflationWaiting = otherAvailableCards.some(c => {
+        if (!c || currentPlayer.coins < c.minBid) return false;
+        const cInst = c.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        const cRec = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+        return (cInst >= 4 || cRec >= 2 || c.phase === 'hof');
+      });
+      if (hasMajorDeflationWaiting) {
+        return { shouldBid: false, bidAmount: 0 };
+      }
+    }
+  }
+
   // Dynamic Poison-Pill Taxing
   // If card is toxic (cardScore <= 0.5 or gives inflate >= 2), but an immune rival (Saints or score >= 15) is bidding/active:
   // Safely price-tax up to 2 coins (nextBid <= 2) knowing they will outbid, but NEVER bid >= 3!
@@ -4074,8 +4222,11 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     (effectiveTeamId === 'chargers') // Chargers intentionally farms outbids
   );
 
+  const cardIsRec = card.effects?.some(e => e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round');
   const equivalentSubstitutes = otherAvailableCards.filter(o => {
     if (!o) return false;
+    const oIsRec = o.effects?.some(e => e.perRound || e.trigger === 'refresh' || e.type === 'every_round' || e.type === 'deflate_every_round');
+    if (cardIsRec && !oIsRec) return false; // A pure instant card is NOT an equivalent substitute for a recurring engine!
     const oScore = scoreCardForPlayer(G, currentPlayerId, o);
     const isScoreClose = (oScore >= cardScore - 1.5);
     const sameRecurringCoins = card.effects?.some(e => e.perRound && e.type === 'coins' && e.amount >= 3) &&
@@ -4180,15 +4331,25 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     const isJaguarsHighTarget = (effectiveTeamId === 'jaguars' && cardScore >= 16.0);
     const isTitansAnchor = (effectiveTeamId === 'titans' && (G.board.round || 1) === 1 && (card.effects?.some(e => e.perRound && (e.type === 'deflate' || e.type === 'coins'))));
 
+    const isMajorEngine = isSuperstar || (cardScore >= 16.0) || card.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins' && e.amount >= 4);
+
     const isExemptFromHorizonCap = isDolphinsBailout || is49ersDroppingBelow5 || isPackersPhase1Pursuit ||
       isPatriotsR1PremierCard || isRavensEngineCard || isJetsMaxBuyout ||
       isBengalsInstantBuyout || isBrownsDeflateCard || isTexansQbCard ||
       isColtsCleanEngine || isSteelersSafeSpend || isBroncosAnchor ||
-      isChiefsHighTarget || isJaguarsHighTarget || isTitansAnchor;
+      isChiefsHighTarget || isJaguarsHighTarget || isTitansAnchor || isMajorEngine;
 
     if (!isExemptFromHorizonCap) {
       if (G.board.round === 3) savingsReserve = Math.max(savingsReserve, 5);
-      else if (G.board.round === 6) savingsReserve = Math.max(savingsReserve, 6);
+      else if (G.board.round === 6) {
+        // In Round 6, if the team has NOT yet won a card this round, do not hoard 100% of their purse leaving 0 spendable coins!
+        const needsPlayerThisRound = (currentPlayer.cardsWonThisRound || 0) === 0;
+        if (needsPlayerThisRound && otherAvailableCards.length <= 1) {
+          savingsReserve = Math.min(savingsReserve, Math.max(0, currentPlayer.coins - 3));
+        } else {
+          savingsReserve = Math.max(savingsReserve, 6);
+        }
+      }
       else if (G.board.round <= 2) savingsReserve = Math.max(savingsReserve, 2);
     }
   }
@@ -4363,6 +4524,35 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     // Quality engines (Tier 2) are capped around 5-6 coins in early game, and budget depth (Tier 3) around 3 coins.
     const earlyCap = (G.board?.round || 1) <= 2 ? 6 : 8;
     baseValuation = Math.min(baseValuation, earlyCap);
+  }
+
+  // Isaiah Pacheco Valuation Discipline:
+  // User directive: "should be between 1-5 coins range. Unless there is a negative card they are avoiding, then it could be about 7ish coins."
+  if (card.id === 'isaiah_pacheco') {
+    const isNegativeCardToAvoid = (c) => {
+      if (!c || c.id === 'isaiah_pacheco') return false;
+      if (effectiveTeamId !== 'saints' && c.effects?.some(e => e.type === 'inflate' && e.amount > 0)) return true;
+      if (c.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins' && e.amount < 0)) return true;
+      if (c.effects?.some(e => e.type === 'freeze')) return true;
+      const sc = scoreCardForPlayer(G, currentPlayerId, c);
+      if (sc < 0) return true;
+      return false;
+    };
+    const hasNegativeCardToAvoid = otherAvailableCards.some(isNegativeCardToAvoid);
+
+    if (hasNegativeCardToAvoid) {
+      // Escape hatch: willing to bid up to 7ish coins to avoid getting stuck with a negative card
+      const pachecoEscapeCap = Math.min(effMax, Math.min(spendableCoins, 7));
+      baseValuation = Math.max(card.minBid, Math.min(baseValuation, pachecoEscapeCap));
+    } else {
+      // Normal valuation: 1-5 coins range
+      const currentRound = G.board?.round || 1;
+      let pachecoNormalCap = 3;
+      if (currentRound >= 7) pachecoNormalCap = 5;
+      else if (currentRound >= 4) pachecoNormalCap = 4;
+      else pachecoNormalCap = (currentPlayer.coins >= 10 ? 4 : 3);
+      baseValuation = Math.max(card.minBid, Math.min(baseValuation, pachecoNormalCap));
+    }
   }
 
   // #2 Yellow Threat Reaction (2 Rounds Out): Lower, conservative price bump to avoid blowing purse early
@@ -4811,12 +5001,43 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
     // 1. Endgame Closer Pivot
     const closerThreshold = teamGenome.closerPsiThreshold !== undefined ? teamGenome.closerPsiThreshold : 18;
+    const isImmediateChampionshipWin = (cardInstDeflate >= currentPlayer.psi);
+
+    if (isImmediateChampionshipWin) {
+      if (nextBid <= currentPlayer.coins) {
+        return { shouldBid: true, bidAmount: nextBid, isChampionshipBid: true };
+      }
+    }
+
+    // Check for premier centerpieces / HOF legends on the board that Steelers must not forfeit
+    const otherBoardCards = (G.board.auctionPlayers || []).filter((c, idx) => c !== null && idx !== cardIndex);
+    const superiorCenterpieceOnBoard = otherBoardCards.find(c => {
+      if (!c) return false;
+      const isHof = c.phase === 'hof';
+      const cRecDeflate = c.effects?.filter(e => (e.perRound || e.trigger === 'refresh' || e.type === 'every_round') && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      const cInstDeflate = c.effects?.filter(e => !e.perRound && e.type === 'deflate').reduce((s, e) => s + e.amount, 0) || 0;
+      const roundsRemaining = Math.max(1, 10 - currentRound);
+      const cTotalDeflate = cInstDeflate + (cRecDeflate * roundsRemaining);
+      const thisTotalDeflate = cardInstDeflate + (cardRecDeflate * roundsRemaining);
+      return (isHof && card.phase !== 'hof') || (cTotalDeflate >= thisTotalDeflate + 3) || (cRecDeflate >= 3 && cardRecDeflate <= 1);
+    });
+
     if (currentPlayer.psi <= closerThreshold || currentRound >= 7) {
       const roundsLeft = Math.max(1, 10 - currentRound);
       const totalDeflate = cardInstDeflate + (cardRecDeflate * roundsLeft);
-      if (totalDeflate >= 3 || cardInstDeflate >= currentPlayer.psi) {
-        if (nextBid <= currentPlayer.coins) {
-          return { shouldBid: true, bidAmount: nextBid, isChampionshipBid: (cardInstDeflate >= currentPlayer.psi) };
+      if (totalDeflate >= 3) {
+        // If a strictly superior centerpiece is available and affordable, DO NOT blow treasury on this secondary card!
+        if (superiorCenterpieceOnBoard && currentPlayer.coins >= superiorCenterpieceOnBoard.minBid) {
+          // Preserve funds to win the premier centerpiece (e.g. Randy Moss)
+          const reserveForSuperior = Math.max(superiorCenterpieceOnBoard.minBid + 2, Math.min(currentPlayer.coins - 2, Math.round(superiorCenterpieceOnBoard.maxBid * 0.70)));
+          const maxAllowedOnSecondary = Math.max(card.minBid, currentPlayer.coins - reserveForSuperior);
+          if (nextBid <= maxAllowedOnSecondary) {
+            return { shouldBid: true, bidAmount: nextBid };
+          } else {
+            return { shouldBid: false, bidAmount: 0 };
+          }
+        } else if (nextBid <= currentPlayer.coins) {
+          return { shouldBid: true, bidAmount: nextBid };
         }
       }
     }
@@ -5262,6 +5483,21 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
     }
   }
 
+  if (card.id === 'isaiah_pacheco') {
+    const isNegativeCardToAvoid = (c) => {
+      if (!c || c.id === 'isaiah_pacheco') return false;
+      if (effectiveTeamId !== 'saints' && c.effects?.some(e => e.type === 'inflate' && e.amount > 0)) return true;
+      if (c.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins' && e.amount < 0)) return true;
+      if (c.effects?.some(e => e.type === 'freeze')) return true;
+      const sc = scoreCardForPlayer(G, currentPlayerId, c);
+      if (sc < 0) return true;
+      return false;
+    };
+    const hasNegativeCardToAvoid = otherAvailableCards.some(isNegativeCardToAvoid);
+    const pachecoMax = hasNegativeCardToAvoid ? 7 : 5;
+    valuation = Math.max(card.minBid, Math.min(valuation, pachecoMax));
+  }
+
   // Falcons Bidding Discipline & Late-Auction Leverage (User Directive):
   // User insight: Falcons' ability is strongest late in the auction (when only 1 or 2 teams remain, or 3 in 10P).
   // In early bidding (when multiple active bidders remain):
@@ -5357,6 +5593,9 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
 
   // Playtest 19 Note 15 & Playtest 34: Strategic Price Bumping on Opponent Preferences & Threat Levels
   if (nextBid > valuation) {
+    if (card.id === 'isaiah_pacheco') {
+      return { shouldBid: false, bidAmount: 0 };
+    }
     // Chargers Outbid Farming on Coin/Player Cards:
     // If Chargers' own valuation is lower than nextBid, BUT Chargers projects that an active rival
     // will outbid them (rival willingness >= nextBid + 1 and rival has coins):
@@ -5439,6 +5678,25 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   let targetBid = nextBid;
   let isJumpBid = false;
 
+  const remainingBoardCards = (G.board.auctionPlayers || []).filter(c => c !== null);
+  const eligibleBidders = Object.keys(G.players).filter(id => !G.players[id].hasWonAuction);
+  const isLastTwoContest = (remainingBoardCards.length <= 2 && eligibleBidders.length <= 2);
+
+  if (isLastTwoContest && otherAvailableCards.length >= 1) {
+    const otherCard = otherAvailableCards[0];
+    const otherCardScore = otherCard ? scoreCardForPlayer(G, currentPlayerId, otherCard) : 0;
+    // Both cards are positive / viable options
+    if (otherCardScore > 0) {
+      // Differential valuation: The most anyone should pay over minBid is determined by how much better
+      // this card is than the other card! If the cards are very similar (or this card is worse),
+      // DO NOT spend 9 coins! Start low and let the opponent pay or take the other card for minBid.
+      const valueDifferential = Math.max(0, cardScore - otherCardScore);
+      const differentialPremium = Math.round(valueDifferential * 0.75);
+      const lastTwoValuationCap = Math.max(card.minBid, Math.min(valuation, (otherCard?.minBid || 1) + differentialPremium + 1));
+      valuation = Math.min(valuation, lastTwoValuationCap);
+    }
+  }
+
   const isChargersRichestFarm = (
     effectiveTeamId === 'chargers' && 
     currentPlayer.coins > richestContenderCoins && 
@@ -5454,7 +5712,8 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   // Instead of starting at 1 and slowly incrementing (which lets Chargers farm +1 outbids over and over),
   // opponents are 40% more likely than normal to bid the max they think they can win a player for!
   // If they think they can win the player for 4 and no one will outbid them, they start at 4.
-  if (isChargersInGame && effectiveTeamId !== 'chargers' && valuation >= nextBid && spendableCoins >= nextBid) {
+  // Exception: When only 2 cards and 2 bidders remain, do NOT jump bid! Bid incrementally.
+  if (!isLastTwoContest && isChargersInGame && effectiveTeamId !== 'chargers' && valuation >= nextBid && spendableCoins >= nextBid) {
     const rivalContenders = activeContenders.map(id => {
       const opp = G.players[id];
       const oppScore = scoreCardForPlayer(G, id, card);
@@ -5477,7 +5736,7 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
         isJumpBid = true;
       }
     }
-  } else if (!isChargersRichestFarm) {
+  } else if (!isLastTwoContest && !isChargersRichestFarm) {
     const generalLockoutDiscount = (effectiveTeamId === 'bears') ? 1 : 0;
     const generalLockoutTarget = Math.max(nextBid, richestContenderCoins - generalLockoutDiscount);
     if (generalLockoutTarget >= nextBid && 
@@ -5490,6 +5749,21 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
         isJumpBid = (targetBid > nextBid);
       }
     }
+  }
+
+  if (card.id === 'isaiah_pacheco') {
+    const isNegativeCardToAvoid = (c) => {
+      if (!c || c.id === 'isaiah_pacheco') return false;
+      if (effectiveTeamId !== 'saints' && c.effects?.some(e => e.type === 'inflate' && e.amount > 0)) return true;
+      if (c.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins' && e.amount < 0)) return true;
+      if (c.effects?.some(e => e.type === 'freeze')) return true;
+      const sc = scoreCardForPlayer(G, currentPlayerId, c);
+      if (sc < 0) return true;
+      return false;
+    };
+    const hasNegativeCardToAvoid = otherAvailableCards.some(isNegativeCardToAvoid);
+    const pachecoCeiling = hasNegativeCardToAvoid ? 7 : 5;
+    targetBid = Math.min(targetBid, pachecoCeiling);
   }
 
   // Dolphins Franchise Mechanics: Exact-Zero Calibration, 1-3 Coins Buffer All-In, & High Demand Knockout Bids
@@ -5663,6 +5937,21 @@ export const evaluateCpuAuctionBid = (G, currentPlayerId) => {
   }
 
   // Final safety checks: bidAmount must never exceed player coins or effective maximum bid!
+  if (card.id === 'isaiah_pacheco') {
+    const isNegativeCardToAvoid = (c) => {
+      if (!c || c.id === 'isaiah_pacheco') return false;
+      if (effectiveTeamId !== 'saints' && c.effects?.some(e => e.type === 'inflate' && e.amount > 0)) return true;
+      if (c.effects?.some(e => (e.perRound || e.trigger === 'refresh') && e.type === 'coins' && e.amount < 0)) return true;
+      if (c.effects?.some(e => e.type === 'freeze')) return true;
+      const sc = scoreCardForPlayer(G, currentPlayerId, c);
+      if (sc < 0) return true;
+      return false;
+    };
+    const hasNegativeCardToAvoid = otherAvailableCards.some(isNegativeCardToAvoid);
+    const pachecoCeiling = hasNegativeCardToAvoid ? 7 : 5;
+    targetBid = Math.min(targetBid, pachecoCeiling);
+  }
+
   targetBid = Math.min(currentPlayer.coins || 0, Math.min(effMax, targetBid));
   if (targetBid < nextBid) {
     return { shouldBid: false, bidAmount: 0 };
@@ -5747,7 +6036,9 @@ const executeCpuMoveInternal = (G, ctx, events) => {
       }
     }
 
-    const cardIdx = chooseCpuNominationCard(G, currentPlayerId);
+    const cardIdx = (G.aiEngine === 'v2') 
+      ? chooseCpuNominationCardV2(G, currentPlayerId) 
+      : chooseCpuNominationCard(G, currentPlayerId);
 
     if (cardIdx !== -1) {
       const card = G.board.auctionPlayers[cardIdx];
@@ -5776,15 +6067,26 @@ const executeCpuMoveInternal = (G, ctx, events) => {
         } else {
           G.board.highestBid = card.minBid;
         }
+      } else if (effectiveTeamId === 'jets' && G.aiEngine === 'v2' && effMax <= 4 && currentPlayer.coins >= effMax) {
+        // Jets V2 opening: Immediately open at Max on Small Max Gems to trigger -4 PSI
+        G.board.highestBid = effMax;
       } else if (isChargersInGame && effectiveTeamId !== 'chargers') {
-        // Anti-Chargers Opponent Nomination Strategy:
-        // When Chargers are in the game, opponents don't start at minBid (e.g. 1) and increase by 1 each time.
-        // If they think they can win the player for 4 and no one will outbid them, they start at 4!
-        const nomDecision = evaluateCpuAuctionBid(G, currentPlayerId);
-        if (nomDecision && nomDecision.shouldBid && nomDecision.bidAmount > card.minBid) {
-          G.board.highestBid = Math.min(currentPlayer.coins, Math.min(effMax, nomDecision.bidAmount));
-        } else {
+        const remainingBoardCardsCount = G.board.auctionPlayers.filter(c => c !== null).length;
+        const remainingBiddersCount = eligibleBidders.length;
+        if (remainingBoardCardsCount <= 2 && remainingBiddersCount <= 2) {
+          // When only 2 cards and 2 bidders remain, do NOT jump bid at opening! Open at minBid.
           G.board.highestBid = (isSoleRemainingBidder && currentPlayer.coins === 0) ? 0 : card.minBid;
+        } else {
+          // Anti-Chargers Opponent Nomination Strategy:
+          // When Chargers are in the game, opponents don't start at minBid (e.g. 1) and increase by 1 each time.
+          const nomDecision = (G.aiEngine === 'v2')
+            ? evaluateCpuAuctionBidV2(G, currentPlayerId)
+            : evaluateCpuAuctionBid(G, currentPlayerId);
+          if (nomDecision && nomDecision.shouldBid && nomDecision.bidAmount > card.minBid) {
+            G.board.highestBid = Math.min(currentPlayer.coins, Math.min(effMax, nomDecision.bidAmount));
+          } else {
+            G.board.highestBid = (isSoleRemainingBidder && currentPlayer.coins === 0) ? 0 : card.minBid;
+          }
         }
       } else {
         G.board.highestBid = (isSoleRemainingBidder && currentPlayer.coins === 0) ? 0 : card.minBid;
@@ -5847,7 +6149,9 @@ const executeCpuMoveInternal = (G, ctx, events) => {
     }
   } else if (G.board.highestBidder !== currentPlayerId) {
     const card = G.board.auctionPlayers[G.board.activeAuctionCardIndex];
-    const decision = evaluateCpuAuctionBid(G, currentPlayerId);
+    const decision = (G.aiEngine === 'v2') 
+      ? evaluateCpuAuctionBidV2(G, currentPlayerId) 
+      : evaluateCpuAuctionBid(G, currentPlayerId);
 
     if (decision.shouldBid) {
       const nextBid = decision.bidAmount;
@@ -6294,7 +6598,6 @@ export const calculateRefreshResults = (G) => {
       if (ev?.category === 'double_all') deflateMult *= 2;
       if (ev?.category === 'double_phase1' && card.phase === 1) deflateMult *= 2;
       if (is49ersDoubleDeflate) deflateMult *= 2;
-      if (effectiveTeamId === 'vikings' && p.psi < 27) deflateMult *= 2;
       if (card.ramsDoubleToken) deflateMult *= 2;
 
       const cardEffects = [...(card.effects || [])];
@@ -7057,8 +7360,18 @@ export const executeCpuEagles = (G, eaglesId) => {
   }
 
   let timesToUse = 0;
-  if (!isSaintsTop && round >= 3) {
-    timesToUse = (usedThisRound === 0 && eaglesPlayer.coins >= 8) ? 2 : (eaglesPlayer.coins >= 5 ? 1 : 0);
+  const allOppPsi = Object.keys(G.players).filter(id => id !== eaglesId).map(id => G.players[id]?.psi || 40);
+  const minOppPsi = allOppPsi.length > 0 ? Math.min(...allOppPsi) : 40;
+  const isDangerZone = minOppPsi <= 15 || round >= 7;
+
+  if (!isSaintsTop) {
+    if (isDangerZone) {
+      // High urgency: strike to suppress leading rivals when purse is safe
+      timesToUse = (usedThisRound === 0 && eaglesPlayer.coins >= 9) ? 2 : (eaglesPlayer.coins >= 6 ? 1 : 0);
+    } else if (round >= 5 && eaglesPlayer.coins >= 12) {
+      // Mid-game poke only when rich
+      timesToUse = 1;
+    }
   }
 
   if (timesToUse > 0) {
@@ -7210,20 +7523,7 @@ export const executeActiveEvent = (G) => {
     Object.keys(G.players).forEach(id => {
       const p = G.players[id];
       if (p.isCpu && p.lineup.length > 0) {
-        let bestIdx = 0;
-        let lowestScore = Infinity;
-        p.lineup.forEach((c, idx) => {
-          let score = 0;
-          if (c.isPracticeSquad) score = -10;
-          else if (c.effects) {
-            c.effects.forEach(e => score += (e.type === 'deflate' ? e.amount * 2 : e.amount));
-          }
-          if (score < lowestScore) {
-            lowestScore = score;
-            bestIdx = idx;
-          }
-        });
-        G.board.pendingTradeRumors.picks[id] = bestIdx;
+        G.board.pendingTradeRumors.picks[id] = chooseWorstStarterIndex(p, G);
       }
     });
     const allPicked = Object.keys(G.players).every(id => G.board.pendingTradeRumors?.picks?.[id] !== undefined);
@@ -7246,19 +7546,14 @@ export const executeActiveEvent = (G) => {
       if (p.isCpu && G.decks.activePlayers.length > 0) {
         const cpuCard = G.decks.activePlayers.pop();
         if (p.coins >= cpuCard.maxBid) {
-          let worstIdx = 0;
-          let worstScore = Infinity;
-          p.lineup.forEach((c, idx) => {
-            let score = c.isPracticeSquad ? -5 : (c.effects ? c.effects.reduce((a, e) => a + e.amount, 0) : 0);
-            if (score < worstScore) {
-              worstScore = score;
-              worstIdx = idx;
-            }
-          });
-          const discarded = p.lineup[worstIdx];
+          const isColts = getEffectiveTeamId(p) === 'colts';
+          const maxSlots = isColts ? 999 : ((getEffectiveTeamId(p) === 'seahawks' ? 4 : 3) + (p.extraLineupSlots || 0));
+          let discarded = null;
           p.coins -= cpuCard.maxBid;
           checkDolphinsEmergencyCoins(G, id);
-          if (p.lineup.length > 0 && worstIdx < p.lineup.length) {
+          if (!isColts && p.lineup.length >= maxSlots) {
+            const worstIdx = chooseWorstStarterIndex(p, G, cpuCard);
+            discarded = p.lineup[worstIdx];
             p.lineup[worstIdx] = cpuCard;
           } else {
             p.lineup.push(cpuCard);
@@ -7267,6 +7562,7 @@ export const executeActiveEvent = (G) => {
             if (!G.decks.discard) G.decks.discard = [];
             G.decks.discard.push(discarded);
           }
+          addAcquiredCardEffects(G, id, cpuCard, cpuCard.maxBid, true);
           addLog(G, `Free Agency: CPU Player ${parseInt(id) + 1} signed ${cpuCard.name} for ${cpuCard.maxBid} coins${discarded ? `, replacing ${discarded.name}` : ''}!`);
         } else {
           if (!G.decks.discard) G.decks.discard = [];
@@ -7334,6 +7630,7 @@ export const DeflategateGame = {
       vsCpu: numHumans < numPlayers,
       numHumans,
       cpuDifficulty: setupData?.cpuDifficulty || 'normal',
+      aiEngine: setupData?.aiEngine || 'v2',
       teamGenomes: setupData?.teamGenomes || null,
       forcedTeams: setupData?.forcedTeams || null,
       pendingReplacement: null,
@@ -7429,6 +7726,9 @@ export const DeflategateGame = {
     },
     setCpuDifficulty: ({ G }, difficulty) => {
       G.cpuDifficulty = difficulty;
+    },
+    setAiEngine: ({ G }, engine) => {
+      G.aiEngine = engine;
     },
     setNumHumans: ({ G }, count) => {
       if (typeof count !== 'number' || count < 0) return;
@@ -7790,7 +8090,7 @@ export const DeflategateGame = {
     },
     freeAgencySign: ({ G, playerID, events }, replaceIndex, actingPlayerId) => {
       if (!G.board.pendingFreeAgency || !G.board.pendingFreeAgency.card) return INVALID_MOVE;
-      const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]));
+      const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : G.board.pendingFreeAgency.playerID || Object.keys(G.players)[0]));
       const actualReplaceIdx = (typeof replaceIndex === 'number') ? replaceIndex : -1;
       if (G.board.pendingFreeAgency.playerID && String(actualTargetId) !== String(G.board.pendingFreeAgency.playerID)) {
         return INVALID_MOVE;
@@ -7805,7 +8105,16 @@ export const DeflategateGame = {
       checkDolphinsEmergencyCoins(G, actualTargetId);
       const displayId = parseInt(actualTargetId) + 1;
       const isColts = getEffectiveTeamId(p) === 'colts';
-      if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
+      const maxSlots = isColts ? 999 : ((getEffectiveTeamId(p) === 'seahawks' ? 4 : 3) + (p.extraLineupSlots || 0));
+
+      if (!isColts && p.lineup.length >= maxSlots) {
+        const validIdx = (actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) ? actualReplaceIdx : chooseWorstStarterIndex(p, G, card);
+        const discarded = p.lineup[validIdx];
+        p.lineup[validIdx] = card;
+        if (!G.decks.discard) G.decks.discard = [];
+        G.decks.discard.push(discarded);
+        addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins, replacing ${discarded.name}!`);
+      } else if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
         const discarded = p.lineup[actualReplaceIdx];
         p.lineup[actualReplaceIdx] = card;
         if (!G.decks.discard) G.decks.discard = [];
@@ -7837,7 +8146,7 @@ export const DeflategateGame = {
     },
     freeAgencyBuy: ({ G, playerID, events }, replaceIndex, actingPlayerId) => {
       if (!G.board.pendingFreeAgency || !G.board.pendingFreeAgency.card) return INVALID_MOVE;
-      const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]));
+      const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : G.board.pendingFreeAgency.playerID || Object.keys(G.players)[0]));
       const actualReplaceIdx = (typeof replaceIndex === 'number') ? replaceIndex : -1;
       const p = G.players[actualTargetId];
       if (!p) return INVALID_MOVE;
@@ -7849,7 +8158,16 @@ export const DeflategateGame = {
       checkDolphinsEmergencyCoins(G, actualTargetId);
       const displayId = parseInt(actualTargetId) + 1;
       const isColts = getEffectiveTeamId(p) === 'colts';
-      if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
+      const maxSlots = isColts ? 999 : ((getEffectiveTeamId(p) === 'seahawks' ? 4 : 3) + (p.extraLineupSlots || 0));
+
+      if (!isColts && p.lineup.length >= maxSlots) {
+        const validIdx = (actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) ? actualReplaceIdx : chooseWorstStarterIndex(p, G, card);
+        const discarded = p.lineup[validIdx];
+        p.lineup[validIdx] = card;
+        if (!G.decks.discard) G.decks.discard = [];
+        G.decks.discard.push(discarded);
+        addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins, replacing ${discarded.name}!`);
+      } else if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
         const discarded = p.lineup[actualReplaceIdx];
         p.lineup[actualReplaceIdx] = card;
         if (!G.decks.discard) G.decks.discard = [];
@@ -8138,6 +8456,9 @@ export const DeflategateGame = {
       moves: {
         setCpuDifficulty: ({ G }, difficulty) => {
           G.cpuDifficulty = difficulty;
+        },
+        setAiEngine: ({ G }, engine) => {
+          G.aiEngine = engine;
         },
         setTeamGenome: ({ G }, teamId, genome) => {
           if (!G.teamGenomes) G.teamGenomes = {};
@@ -8650,7 +8971,7 @@ export const DeflategateGame = {
         },
         freeAgencySign: ({ G, playerID, events }, replaceIndex, actingPlayerId) => {
           if (!G.board.pendingFreeAgency || !G.board.pendingFreeAgency.card) return INVALID_MOVE;
-          const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]));
+          const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : G.board.pendingFreeAgency.playerID || Object.keys(G.players)[0]));
           const actualReplaceIdx = (typeof replaceIndex === 'number') ? replaceIndex : -1;
           if (G.board.pendingFreeAgency.playerID && String(actualTargetId) !== String(G.board.pendingFreeAgency.playerID)) {
             return INVALID_MOVE;
@@ -8665,7 +8986,16 @@ export const DeflategateGame = {
           checkDolphinsEmergencyCoins(G, actualTargetId);
           const displayId = parseInt(actualTargetId) + 1;
           const isColts = getEffectiveTeamId(p) === 'colts';
-          if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
+          const maxSlots = isColts ? 999 : ((getEffectiveTeamId(p) === 'seahawks' ? 4 : 3) + (p.extraLineupSlots || 0));
+
+          if (!isColts && p.lineup.length >= maxSlots) {
+            const validIdx = (actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) ? actualReplaceIdx : chooseWorstStarterIndex(p, G, card);
+            const discarded = p.lineup[validIdx];
+            p.lineup[validIdx] = card;
+            if (!G.decks.discard) G.decks.discard = [];
+            G.decks.discard.push(discarded);
+            addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins, replacing ${discarded.name}!`);
+          } else if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
             const discarded = p.lineup[actualReplaceIdx];
             p.lineup[actualReplaceIdx] = card;
             if (!G.decks.discard) G.decks.discard = [];
@@ -8697,7 +9027,7 @@ export const DeflategateGame = {
         },
         freeAgencyBuy: ({ G, playerID, events }, replaceIndex, actingPlayerId) => {
           if (!G.board.pendingFreeAgency || !G.board.pendingFreeAgency.card) return INVALID_MOVE;
-          const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]));
+          const actualTargetId = (typeof replaceIndex === 'string' && !actingPlayerId) ? replaceIndex : (actingPlayerId || (G.players[playerID] ? playerID : G.board.pendingFreeAgency.playerID || Object.keys(G.players)[0]));
           const actualReplaceIdx = (typeof replaceIndex === 'number') ? replaceIndex : -1;
           const p = G.players[actualTargetId];
           if (!p) return INVALID_MOVE;
@@ -8709,7 +9039,16 @@ export const DeflategateGame = {
           checkDolphinsEmergencyCoins(G, actualTargetId);
           const displayId = parseInt(actualTargetId) + 1;
           const isColts = getEffectiveTeamId(p) === 'colts';
-          if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
+          const maxSlots = isColts ? 999 : ((getEffectiveTeamId(p) === 'seahawks' ? 4 : 3) + (p.extraLineupSlots || 0));
+
+          if (!isColts && p.lineup.length >= maxSlots) {
+            const validIdx = (actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) ? actualReplaceIdx : chooseWorstStarterIndex(p, G, card);
+            const discarded = p.lineup[validIdx];
+            p.lineup[validIdx] = card;
+            if (!G.decks.discard) G.decks.discard = [];
+            G.decks.discard.push(discarded);
+            addLog(G, `Free Agency: Player ${displayId} signed ${card.name} for ${effMax} coins, replacing ${discarded.name}!`);
+          } else if (!isColts && actualReplaceIdx >= 0 && actualReplaceIdx < p.lineup.length) {
             const discarded = p.lineup[actualReplaceIdx];
             p.lineup[actualReplaceIdx] = card;
             if (!G.decks.discard) G.decks.discard = [];
