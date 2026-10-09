@@ -30,6 +30,7 @@ export const TEAMS = [
   { id: 'rams', name: 'Rams', initialPsi: 49, coins: 11, ability: 'Once per game, you may put a x2 token on one of your non-Phase 1 players' },
   { id: '49ers', name: '49ers', initialPsi: 44, coins: 8, ability: 'If you have less than 5 coins during the Refresh Phase, your players generate double deflation.' },
   { id: 'seahawks', name: 'Seahawks', initialPsi: 46, coins: 12, ability: 'Start the game with 4 Practice Squad Players on your team' },
+  { id: 'giants', name: 'Giants', initialPsi: 44, coins: 11, ability: 'When you acquire a player for under 5 coins, gain a Highlight Reel token. Place tokens on revealed auction players: if you win a player with a Highlight Reel token, gain 5 coins immediately. (Unclaimed tokens are discarded)' },
 ];
 
 export const EVENTS = [

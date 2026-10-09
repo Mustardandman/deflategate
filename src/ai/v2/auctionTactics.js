@@ -4,7 +4,7 @@
 // board-wide opportunity cost, opponent synergy awareness, and soft tax-bidding.
 
 import { calculateMarginalRosterDelta, evaluateCardProduction } from './rosterValuation.js';
-import { buildMarketRadar, isCardToxicToTeam } from './marketRadar.js';
+import { buildMarketRadar, isCardToxicToTeam, calculateRivalOutbidProbability } from './marketRadar.js';
 import { getEffectiveTeamId, getEffectiveCardMaxBid } from '../../Game.js';
 
 /**
@@ -94,6 +94,23 @@ export const chooseCpuNominationCardV2 = (G, playerId) => {
       return card.phase === 'hof' || prod.recDeflate >= 3 || prod.instDeflate >= 5 || card.id === 'derrick_henry' || card.id === 'christian_mccaffrey';
     });
     if (premierDeflation !== undefined) return premierDeflation;
+  }
+
+  // 2b. COIN-POOR BAIT NOMINATION (Treasury Drain Tactic):
+  // When cash-poor (coins <= 4) and at least one opponent is rich (coins >= 8),
+  // nominate a high-demand superstar or high-synergy card that wealthy rivals will fight over.
+  // This burns opponent coins and consumes their single auction win for the round!
+  const richestRivalCoins = Math.max(0, ...Object.values(G.players).filter(p => p !== player).map(p => p.coins || 0));
+  if ((player.coins || 0) <= 4 && richestRivalCoins >= 8 && !isCloserTriggered) {
+    const baitIndex = affordableIndices.find(idx => {
+      const card = auctionCards[idx];
+      const cardMarket = radar[idx];
+      if (cardMarket?.leaderThreatPlayerId) return false; // Never hand opponent an instant win
+      const highRivalDemand = (cardMarket?.highestRivalWilling || 0) >= 6 || cardMarket?.highSynergyRival;
+      const isSuperstar = card.phase === 'hof' || card.id === 'patrick_mahomes' || card.id === 'travis_kelce' || card.id === 'derrick_henry' || card.id === 'christian_mccaffrey';
+      return highRivalDemand || isSuperstar;
+    });
+    if (baitIndex !== undefined) return baitIndex;
   }
 
   // 3. Franchise-Specific Signature Nomination Priorities:
@@ -245,6 +262,22 @@ export const chooseCpuNominationCardV2 = (G, playerId) => {
     if (pureDeflateIdx !== undefined) return pureDeflateIdx;
   }
 
+  // Giants Highlight Reel Priority:
+  if (effectiveTeamId === 'giants') {
+    // 1. If any affordable card has our Highlight Reel tokens, prioritize nominating it to cash in +5 coins!
+    const tokenCardIdx = affordableIndices.find(idx => (auctionCards[idx]?.giantsHighlightTokens || 0) > 0);
+    if (tokenCardIdx !== undefined) return tokenCardIdx;
+
+    // 2. In early rounds (Rounds 1-3), if we have fewer than 2 tokens, prioritize cheap cards (< 5 coins)
+    if (round <= 3 && (player.highlightReelTokens || 0) < 2) {
+      const bargainIdx = affordableIndices.find(idx => {
+        const c = auctionCards[idx];
+        return c && c.minBid <= 3 && !isCardToxicToTeam(c, 'giants', round);
+      });
+      if (bargainIdx !== undefined) return bargainIdx;
+    }
+  }
+
   // Cowboys Round 1 Centerpiece Conviction:
   if (effectiveTeamId === 'cowboys' && round === 1) {
     const centerpieceIdx = affordableIndices.find(idx => {
@@ -325,12 +358,14 @@ export const evaluateCpuAuctionBidV2 = (G, playerId) => {
     return { shouldBid: true, bidAmount: Math.max(nextBid, winBid), isChampionshipBid: true };
   }
 
-  // 2. LEADER CLINCH THREAT (Hate Bidding): If an opponent would win the championship with this card
+  // 2. LEADER CLINCH THREAT (Hate Bidding / Sudden-Death Denial):
+  // If an opponent would win the championship immediately by winning this card,
+  // unspent coins have ZERO value if the game ends right here!
+  // Uncap defense up to our full wallet / card effMax to deny the opponent's instant clinch.
   if (cardMarket?.leaderThreatPlayerId && G.board.highestBidder === cardMarket.leaderThreatPlayerId) {
-    // If the card is toxic to ME, NEVER hate-bid high (cap at 3 to prevent self-destruction)
-    const maxDefense = isToxicToMe ? 3 : Math.min(effMax, Math.round(cardDelta * 0.9) + 2);
-    const threatDefenseCap = Math.min(player.coins, maxDefense);
-    if (threatDefenseCap >= nextBid) {
+    const wouldBustUs = isToxicToMe && ((cardProd.instInflate || 0) >= 6 || (player.psi || 0) >= 46);
+    const maxDefense = wouldBustUs ? 3 : Math.min(effMax, player.coins || 0);
+    if (maxDefense >= nextBid) {
       return { shouldBid: true, bidAmount: nextBid, isHateBid: true };
     }
   }
@@ -406,17 +441,22 @@ export const evaluateCpuAuctionBidV2 = (G, playerId) => {
     }
   }
 
-  // 5. SUPERIOR CENTERPIECE PROTECTION (Opportunity Cost):
+  // 5. SUPERIOR CENTERPIECE PROTECTION (Single-Win Lockout Prevention):
+  // Winning ANY auction locks a player out of all remaining auctions this round (p.hasWonAuction = true).
+  // If a superior centerpiece is waiting on the board and we can legitimately contend for it,
+  // do NOT buy this inferior/secondary card and lock ourselves out!
   const superiorCenterpieceWaiting = otherCards.find(c => {
-    if (!c || player.coins < c.minBid) return false;
+    if (!c || (player.coins || 0) < c.minBid) return false;
     const otherDelta = calculateMarginalRosterDelta(G, player, c);
-    return (otherDelta >= cardDelta + 6.0 || c.phase === 'hof');
+    return (otherDelta >= cardDelta + 5.0 || (c.phase === 'hof' && card.phase !== 'hof'));
   });
 
   if (superiorCenterpieceWaiting) {
-    const centerpieceNeededReserve = Math.max(superiorCenterpieceWaiting.minBid, Math.min(player.coins, 10));
-    const maxSpendableOnSecondary = Math.max(card.minBid, player.coins - centerpieceNeededReserve);
-    if (nextBid > maxSpendableOnSecondary) {
+    const otherIdx = (G.board.auctionPlayers || []).indexOf(superiorCenterpieceWaiting);
+    const otherMarket = radar[otherIdx];
+    const rivalCeiling = otherMarket?.highestRivalWilling || superiorCenterpieceWaiting.minBid;
+    const canContend = (player.coins || 0) >= Math.min(rivalCeiling, Math.max(4, superiorCenterpieceWaiting.minBid));
+    if (canContend) {
       return { shouldBid: false, bidAmount: 0 };
     }
   }
@@ -507,6 +547,17 @@ export const evaluateCpuAuctionBidV2 = (G, playerId) => {
     }
   }
 
+  // Giants Highlight Reel Rebate & Bargain Hunting:
+  if (effectiveTeamId === 'giants' && !isToxicToMe) {
+    const tokensOnCard = card.giantsHighlightTokens || 0;
+    if (tokensOnCard > 0) {
+      const rebate = tokensOnCard * 5;
+      valuation = Math.min(player.coins, valuation + rebate);
+    } else if (card.minBid <= 4 && nextBid < 5 && (player.highlightReelTokens || 0) < 3) {
+      valuation = Math.max(valuation, Math.min(4, Math.max(card.minBid, 3)));
+    }
+  }
+
   // Bears Outbid Barrier (Playtest 60): Opponents must outbid Bears by 2 coins
   if (effectiveTeamId === 'bears') {
     valuation = Math.min(player.coins, valuation + 1);
@@ -546,42 +597,37 @@ export const evaluateCpuAuctionBidV2 = (G, playerId) => {
     valuation = Math.min(valuation, hasDrawbacksOnBoard ? 7 : 5);
   }
 
-  // 7. OPPONENT AWARENESS & SAFE PRICE-BUMPING (ANTI-SYNERGY TAXING):
+  // 7. OPPONENT AWARENESS & SMART PRICE-BUMPING (ANTI-SYNERGY TAXING):
   // When nextBid exceeds our valuation, check if we should tax an opponent:
-  // User Rule: Do NOT let opponents steal cards for min bid (bump to 3-5 coins).
-  // But NEVER hate-draft or overbid on toxic cards (cap toxic tax at 3-4 coins, non-toxic at 4-5 coins).
-  // Evaluated flexibly as a situational tactic, not a rigid hard rule.
+  // User Rule: Price bumping is kept, but must be smarter — strictly accounting for rival wallets
+  // (e.g. if a rival only has 2 coins, they can only bid 2) and willingness.
+  // Gated strictly behind calculateRivalOutbidProbability >= 0.90.
   if (nextBid > valuation) {
+    if (isLastTwoContest) {
+      return { shouldBid: false, bidAmount: 0 };
+    }
+
     const targetRival = cardMarket?.highSynergyRival || (cardMarket?.rivalProfiles && cardMarket.rivalProfiles[0]);
-    const passedBidders = G.board.passedAuctionPlayers || [];
-
-    const rivalCanRebid = targetRival && 
-                          !passedBidders.includes(targetRival.playerId) && 
-                          (targetRival.coins >= nextBid + 1) &&
-                          (targetRival.maxWilling >= nextBid + 1);
-
     const currentHighBid = G.board.highestBid || 0;
     const currentHighBidder = G.board.highestBidder;
     const rivalIsHighBidder = targetRival && currentHighBidder === targetRival.playerId;
 
     // Ceilings for safe taxing:
     // Toxic cards: cap at 3 (or 4 if rival is wealthy >= 8 coins).
-    // Safe/normal cards: cap at 4 (or 5 if rival is wealthy and bidder has reserve).
-    const maxSafeTaxBid = isToxicToMe ? ((targetRival?.coins >= 8) ? 4 : 3) : 5;
-
+    // Safe/normal cards: cap at 5 (or 6 if rival is wealthy).
+    const maxSafeTaxBid = isToxicToMe ? ((targetRival?.coins >= 8) ? 4 : 3) : ((targetRival?.coins >= 8) ? 6 : 5);
     const isUnderTaxCap = nextBid <= maxSafeTaxBid;
     const bidderHasReserve = (player.coins || 0) >= (isToxicToMe ? nextBid + 3 : nextBid + 2);
-    const isSafeToTax = rivalCanRebid && isUnderTaxCap && bidderHasReserve && !isLastTwoContest;
 
-    if (isSafeToTax) {
-      // If rival is already paying fair price (>= 3 on toxic, >= 4 on safe), stop bumping!
-      if (rivalIsHighBidder && currentHighBid >= (isToxicToMe ? 3 : 4)) {
+    if (isUnderTaxCap && bidderHasReserve) {
+      // If rival is already paying fair/high price (>= 3 on toxic, >= 5 on safe), stop bumping!
+      if (rivalIsHighBidder && currentHighBid >= (isToxicToMe ? 3 : 5)) {
         return { shouldBid: false, bidAmount: 0 };
       }
 
-      // Situational probability: Chargers loves outbid wars (0.85); others (0.70)
-      const taxProbability = (effectiveTeamId === 'chargers') ? 0.85 : 0.70;
-      if (Math.random() < taxProbability) {
+      // Check exact outbid probability (taking into account rival coins & willingness)
+      const outbidProb = calculateRivalOutbidProbability(cardMarket, nextBid, G);
+      if (outbidProb >= 0.90) {
         return { shouldBid: true, bidAmount: nextBid, isPriceBump: true };
       }
     }

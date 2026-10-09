@@ -155,3 +155,52 @@ export const buildMarketRadar = (G, actingPlayerId) => {
   return cardMarketData;
 };
 
+/**
+ * Calculates the exact probability that at least one active rival will outbid a proposed bid.
+ * Takes into account the rival's actual coins and true willingness to pay.
+ */
+export const calculateRivalOutbidProbability = (cardMarket, proposedBid, G) => {
+  if (!cardMarket || !cardMarket.rivalProfiles || cardMarket.rivalProfiles.length === 0) {
+    return 0;
+  }
+
+  const passedBidders = G?.board?.passedAuctionPlayers || [];
+  let probNoneOutbid = 1.0;
+
+  cardMarket.rivalProfiles.forEach(rival => {
+    if (passedBidders.includes(rival.playerId)) return;
+
+    // Hard constraint: If rival doesn't have at least proposedBid + 1 coins, they CANNOT outbid
+    const rivalCoins = rival.coins || 0;
+    const rivalMaxWilling = rival.maxWilling || 0;
+    const minNeededToOutbid = proposedBid + 1;
+
+    if (rivalCoins < minNeededToOutbid || rivalMaxWilling < minNeededToOutbid) {
+      return; // 0% chance this rival outbids
+    }
+
+    // Surplus capacity above the proposed bid
+    const surplusCoins = rivalCoins - proposedBid;
+    const surplusWilling = rivalMaxWilling - proposedBid;
+    const effectiveSurplus = Math.min(surplusCoins, surplusWilling);
+
+    // Probability estimation:
+    let rivalProb = 0;
+    if (effectiveSurplus >= 3) {
+      // Rival has substantial headroom (3+ coins above proposed bid)
+      rivalProb = 0.95;
+    } else if (effectiveSurplus === 2) {
+      // Rival has 2 coins headroom: high if active bidder or strong synergy
+      const isCurrentHighBidder = G?.board?.highestBidder === rival.playerId;
+      rivalProb = isCurrentHighBidder ? 0.92 : 0.85;
+    } else if (effectiveSurplus === 1) {
+      // Rival has exactly 1 coin headroom: marginal
+      rivalProb = 0.40;
+    }
+
+    probNoneOutbid *= (1.0 - rivalProb);
+  });
+
+  return 1.0 - probNoneOutbid;
+};
+

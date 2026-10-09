@@ -616,6 +616,26 @@ export const resolveAuctionWin = (G, playerID, card) => {
     G.board.commandersMarkedIndices = [];
   }
 
+  // Giants Ability: Highlight Reel Payout & Token Accumulation
+  const highlightTokensOnCard = card.giantsHighlightTokens || 0;
+  if (highlightTokensOnCard > 0) {
+    if (effectiveTeamId === 'giants') {
+      const rewardCoins = highlightTokensOnCard * 5;
+      applyCoinsGained(G, playerID, rewardCoins);
+      addLog(G, `🗽 Giants Ability: Player ${displayId} (${p.team?.name || 'Giants'}) acquired ${card.name} with ${highlightTokensOnCard} Highlight Reel token(s)! Gained +${rewardCoins} coins immediately!`);
+      triggerAbilityNotification(G, playerID, 'giants', 'Giants: Highlight Reel Payout!', `Won ${card.name} with ${highlightTokensOnCard} Highlight Reel token(s)! Gained +${rewardCoins} coins!`);
+    } else {
+      addLog(G, `🗽 Giants Ability: ${card.name} was won by Player ${displayId} (${p.team?.name || 'Rival'}). ${highlightTokensOnCard} unclaimed Highlight Reel token(s) discarded.`);
+    }
+    card.giantsHighlightTokens = 0;
+  }
+
+  if (effectiveTeamId === 'giants' && bidCost < 5) {
+    p.highlightReelTokens = (p.highlightReelTokens || 0) + 1;
+    addLog(G, `🗽 Giants Ability: Acquired ${card.name} for ${bidCost} coins (< 5 coins)! Gained a Highlight Reel token (Total: ${p.highlightReelTokens}).`);
+    triggerAbilityNotification(G, playerID, 'giants', 'Giants: Highlight Reel Token Earned', `Acquired ${card.name} for ${bidCost} coins (< 5 coins)! Gained 1 Highlight Reel token.`);
+  }
+
   // Pass nominator rights clockwise to next player with fewest wins if nominator won or is now maxed
   const numP = Object.keys(G.players).length;
   const eligiblePlayers = Object.keys(G.players).filter(id => (G.players[id].cardsWonThisRound || 0) < maxWinsThisRound);
@@ -852,7 +872,7 @@ export const GENERAL_HUMAN_HEURISTIC_TEAMS = new Set([
   'cardinals', 'rams', '49ers', 'seahawks',
   'bills', 'dolphins', 'patriots', 'jets', 'ravens',
   'bengals', 'browns', 'steelers', 'texans', 'colts',
-  'jaguars', 'titans', 'broncos', 'chiefs'
+  'jaguars', 'titans', 'broncos', 'chiefs', 'giants'
 ]);
 
 export const getCpuArchetype = (player, playerId) => {
@@ -6775,6 +6795,7 @@ export const BUCCANEERS_ABILITY_TIERS = {
   jets: { tier: 'A', tierScore: 42, reason: 'Deflates 4 PSI on max bid purchases' },
 
   // B-Tier (Solid / Situational)
+  giants: { tier: 'B', tierScore: 32, reason: 'Highlight Reel: +5 coin bounties on won marked players' },
   chargers: { tier: 'B', tierScore: 30, reason: 'Outbid coin bonus' },
   raiders: { tier: 'B', tierScore: 28, reason: 'Give 1 PSI to opponent before auction every round' },
   bears: { tier: 'B', tierScore: 26, reason: '+2 coin outbid barrier' },
@@ -6849,10 +6870,12 @@ export const checkPreAuctionCompletion = (G, events) => {
       !G.board.pendingCardinals &&
       !G.board.pendingChiefs &&
       !G.board.pendingCommanders &&
+      !G.board.pendingGiants &&
       (!G.board.pendingRaidersQueue || G.board.pendingRaidersQueue.length === 0) &&
       (!G.board.pendingCardinalsQueue || G.board.pendingCardinalsQueue.length === 0) &&
       (!G.board.pendingChiefsQueue || G.board.pendingChiefsQueue.length === 0) &&
-      (!G.board.pendingCommandersQueue || G.board.pendingCommandersQueue.length === 0)) {
+      (!G.board.pendingCommandersQueue || G.board.pendingCommandersQueue.length === 0) &&
+      (!G.board.pendingGiantsQueue || G.board.pendingGiantsQueue.length === 0)) {
     G.board.preAuctionComplete = true;
     if (events && events.setPhase) {
       events.setPhase('auctionPhase');
@@ -7245,6 +7268,94 @@ export const advanceCommandersQueue = (G, events) => {
     }
   }
   G.board.pendingCommanders = null;
+  if (G.board.pendingGiantsQueue && G.board.pendingGiantsQueue.length > 0 && !G.board.pendingGiants) {
+    advanceGiantsQueue(G, events);
+  } else {
+    checkPreAuctionCompletion(G, events);
+  }
+};
+
+export const chooseCpuGiantsTokenPlacements = (G, giantsId) => {
+  const player = G.players[giantsId];
+  if (!player || (player.highlightReelTokens || 0) <= 0) return [];
+  const tokensAvailable = player.highlightReelTokens;
+  const auctionCards = G.board.auctionPlayers || [];
+
+  const validIndices = [];
+  auctionCards.forEach((c, idx) => {
+    if (c) validIndices.push(idx);
+  });
+  if (validIndices.length === 0) return [];
+
+  const scored = validIndices.map(idx => {
+    const c = auctionCards[idx];
+    const score = scoreCardForPlayer(G, giantsId, c);
+    return { idx, score, card: c };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+
+  const placements = [];
+  let remainingTokens = tokensAvailable;
+
+  if (scored.length > 0 && remainingTokens > 0) {
+    const topIdx = scored[0].idx;
+    const tokensOnTop = Math.min(remainingTokens, 2);
+    placements.push({ cardIndex: topIdx, count: tokensOnTop });
+    remainingTokens -= tokensOnTop;
+  }
+  if (scored.length > 1 && remainingTokens > 0) {
+    const secondIdx = scored[1].idx;
+    placements.push({ cardIndex: secondIdx, count: remainingTokens });
+    remainingTokens = 0;
+  } else if (remainingTokens > 0 && placements.length > 0) {
+    placements[0].count += remainingTokens;
+    remainingTokens = 0;
+  }
+
+  return placements;
+};
+
+export const executeCpuGiants = (G, giantsId) => {
+  const player = G.players[giantsId];
+  if (!player || (player.highlightReelTokens || 0) <= 0) return;
+  const placements = chooseCpuGiantsTokenPlacements(G, giantsId);
+  const displayId = parseInt(giantsId) + 1;
+  const teamTitle = player?.team?.id === 'buccaneers' ? 'Bucs (Giants Ability)' : 'Giants';
+
+  let totalPlaced = 0;
+  placements.forEach(({ cardIndex, count }) => {
+    const card = G.board.auctionPlayers[cardIndex];
+    if (card && count > 0) {
+      card.giantsHighlightTokens = (card.giantsHighlightTokens || 0) + count;
+      totalPlaced += count;
+      addLog(G, `🗽 ${teamTitle} Ability: CPU Player ${displayId} placed ${count} Highlight Reel token(s) on ${card.name}!`);
+    }
+  });
+
+  player.highlightReelTokens = Math.max(0, player.highlightReelTokens - totalPlaced);
+  if (totalPlaced > 0) {
+    triggerAbilityNotification(G, giantsId, 'giants', 'Highlight Reel Tokens Placed', `Placed ${totalPlaced} Highlight Reel token(s) on revealed auction players!`);
+  }
+};
+
+export const advanceGiantsQueue = (G, events) => {
+  if (G.board.pendingRaiders || G.board.pendingCardinals || G.board.pendingChiefs || G.board.pendingCommanders) return;
+  if (!G.board.pendingGiantsQueue) G.board.pendingGiantsQueue = [];
+  while (G.board.pendingGiantsQueue.length > 0) {
+    const nextItem = G.board.pendingGiantsQueue.shift();
+    const giantsId = String(nextItem.playerID);
+    const giantsPlayer = G.players[giantsId];
+    if (!giantsPlayer || (giantsPlayer.highlightReelTokens || 0) <= 0) continue;
+
+    if (giantsPlayer.isCpu) {
+      executeCpuGiants(G, giantsId);
+    } else {
+      G.board.pendingGiants = { playerID: giantsId };
+      return;
+    }
+  }
+  G.board.pendingGiants = null;
   checkPreAuctionCompletion(G, events);
 };
 
@@ -7617,7 +7728,8 @@ export const DeflategateGame = {
         eaglesUsedCount: 0,
         ramsTokenAttached: false,
         extraLineupSlots: 0,
-        cardsWonThisRound: 0
+        cardsWonThisRound: 0,
+        highlightReelTokens: 0
       };
     }
 
@@ -7689,6 +7801,8 @@ export const DeflategateGame = {
         pendingChiefsQueue: [],
         pendingCommanders: null,
         pendingCommandersQueue: [],
+        pendingGiants: null,
+        pendingGiantsQueue: [],
         pendingBills: null,
         pendingBillsQueue: [],
         pendingEagles: null,
@@ -9211,6 +9325,8 @@ export const DeflategateGame = {
         G.board.commandersMarkedIndices = [];
         G.board.pendingCommanders = null;
         G.board.pendingCommandersQueue = [];
+        G.board.pendingGiants = null;
+        G.board.pendingGiantsQueue = [];
 
         Object.values(G.players).forEach(p => {
           p.hasWonAuction = false;
@@ -9241,6 +9357,14 @@ export const DeflategateGame = {
         const commandersTeams = Object.keys(G.players).filter(id => getEffectiveTeamId(G.players[id]) === 'commanders');
         commandersTeams.sort((a, b) => (G.players[a].team?.id === 'commanders' ? 0 : 1) - (G.players[b].team?.id === 'commanders' ? 0 : 1));
         G.board.pendingCommandersQueue = commandersTeams.map(id => ({ playerID: id }));
+
+        // Check Giants Ability (queue teams with highlightReelTokens > 0)
+        const giantsTeams = Object.keys(G.players).filter(id => {
+          const p = G.players[id];
+          return getEffectiveTeamId(p) === 'giants' && (p.highlightReelTokens || 0) > 0;
+        });
+        giantsTeams.sort((a, b) => (G.players[a].team?.id === 'giants' ? 0 : 1) - (G.players[b].team?.id === 'giants' ? 0 : 1));
+        G.board.pendingGiantsQueue = giantsTeams.map(id => ({ playerID: id }));
 
         advanceRaidersQueue(G, events);
         if (G.board.preAuctionComplete) {
@@ -9396,6 +9520,40 @@ export const DeflategateGame = {
           addLog(G, `🎖️ ${teamTitle} Ability: Player ${displayId} chose to pass.`);
           advanceCommandersQueue(G, events);
         },
+        giantsPlaceTokens: ({ G, playerID, events }, auctionCardIndex, count, actingPlayerId) => {
+          if (!G.board.pendingGiants) return INVALID_MOVE;
+          const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : G.board.pendingGiants.playerID);
+          if (String(G.board.pendingGiants.playerID) !== String(targetPlayerId)) return INVALID_MOVE;
+          const player = G.players[targetPlayerId];
+          if (!player || (player.highlightReelTokens || 0) <= 0) return INVALID_MOVE;
+
+          if (auctionCardIndex < 0 || auctionCardIndex >= (G.board.auctionPlayers || []).length) return INVALID_MOVE;
+          const card = G.board.auctionPlayers[auctionCardIndex];
+          if (!card) return INVALID_MOVE;
+
+          const placeCount = Math.min(player.highlightReelTokens, Math.max(1, count || 1));
+          card.giantsHighlightTokens = (card.giantsHighlightTokens || 0) + placeCount;
+          player.highlightReelTokens -= placeCount;
+
+          const displayId = parseInt(targetPlayerId) + 1;
+          const teamTitle = player?.team?.id === 'buccaneers' ? 'Bucs (Giants Ability)' : 'Giants';
+          addLog(G, `🗽 ${teamTitle} Ability: Player ${displayId} placed ${placeCount} Highlight Reel token(s) on ${card.name}! (${player.highlightReelTokens} token(s) remaining)`);
+          triggerAbilityNotification(G, targetPlayerId, 'giants', 'Highlight Reel Token Placed', `Placed ${placeCount} token(s) on ${card.name}!`);
+
+          if (player.highlightReelTokens <= 0) {
+            advanceGiantsQueue(G, events);
+          }
+        },
+        giantsDonePlacingTokens: ({ G, playerID, events }, actingPlayerId) => {
+          if (!G.board.pendingGiants) return INVALID_MOVE;
+          const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : G.board.pendingGiants.playerID);
+          if (String(G.board.pendingGiants.playerID) !== String(targetPlayerId)) return INVALID_MOVE;
+          const player = G.players[targetPlayerId];
+          const displayId = parseInt(targetPlayerId) + 1;
+          const teamTitle = player?.team?.id === 'buccaneers' ? 'Bucs (Giants Ability)' : 'Giants';
+          addLog(G, `🗽 ${teamTitle} Ability: Player ${displayId} finished placing Highlight Reel tokens.`);
+          advanceGiantsQueue(G, events);
+        },
         proceedToAuction: ({ G, events }) => {
           G.board.pendingRaiders = null;
           G.board.pendingRaidersQueue = [];
@@ -9405,6 +9563,8 @@ export const DeflategateGame = {
           G.board.pendingChiefsQueue = [];
           G.board.pendingCommanders = null;
           G.board.pendingCommandersQueue = [];
+          G.board.pendingGiants = null;
+          G.board.pendingGiantsQueue = [];
           G.board.preAuctionComplete = true;
           if (events && events.setPhase) {
             events.setPhase('auctionPhase');
@@ -9723,6 +9883,10 @@ export const DeflategateGame = {
               resolveAuctionWin(G, G.board.highestBidder, G.board.auctionPlayers[G.board.activeAuctionCardIndex]);
             } else {
               const card = G.board.auctionPlayers[G.board.activeAuctionCardIndex];
+              if (card && card.giantsHighlightTokens > 0) {
+                addLog(G, `🗽 Giants Ability: ${card.name} discarded with ${card.giantsHighlightTokens} unclaimed Highlight Reel token(s).`);
+                card.giantsHighlightTokens = 0;
+              }
               addLog(G, `All players passed on ${card.name}. Card is discarded.`);
               if (!G.decks.discard) G.decks.discard = [];
               G.decks.discard.push(card);
@@ -9806,6 +9970,16 @@ export const DeflategateGame = {
       turn: { activePlayers: ActivePlayers.ALL },
       onBegin: ({ G }) => {
         G.board.postAuctionComplete = false;
+
+        // Discard any unclaimed Highlight Reel tokens remaining on unbought auction cards
+        if (G.board.auctionPlayers) {
+          G.board.auctionPlayers.forEach(c => {
+            if (c && c.giantsHighlightTokens > 0) {
+              addLog(G, `🗽 Giants Ability: ${c.name} remained unbought. ${c.giantsHighlightTokens} unclaimed Highlight Reel token(s) discarded.`);
+              c.giantsHighlightTokens = 0;
+            }
+          });
+        }
 
         // 1. Check Bills Ability (queue multi-teams: real Bills acts before Buccaneers)
         const billsTeams = Object.keys(G.players).filter(id => getEffectiveTeamId(G.players[id]) === 'bills');

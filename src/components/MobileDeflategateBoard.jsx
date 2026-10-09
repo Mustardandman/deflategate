@@ -149,6 +149,8 @@ export const MobileDeflategateBoard = ({
     activeTurnPlayerId = String(G.board.pendingChiefs.playerID);
   } else if (G.board.pendingCommanders) {
     activeTurnPlayerId = String(G.board.pendingCommanders.playerID);
+  } else if (G.board.pendingGiants) {
+    activeTurnPlayerId = String(G.board.pendingGiants.playerID);
   } else if (ctx.phase === 'auctionPhase') {
     if (G.board.activeAuctionCardIndex === null) {
       activeTurnPlayerId = String(G.board.nominator);
@@ -893,6 +895,11 @@ export const MobileDeflategateBoard = ({
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5">
+                        {activeCard.giantsHighlightTokens > 0 && (
+                          <span className="text-[10px] bg-blue-700 text-amber-300 px-1.5 py-0.5 rounded font-bold border border-blue-400">
+                            🎬 {activeCard.giantsHighlightTokens}x (+{activeCard.giantsHighlightTokens * 5}🪙)
+                          </span>
+                        )}
                         {renderPhaseBadgeHelper(activeCard.phase)}
                         <button
                           type="button"
@@ -1001,6 +1008,11 @@ export const MobileDeflategateBoard = ({
                               {card.position || 'WR'}
                             </span>
                             <div className="flex items-center gap-1">
+                              {card.giantsHighlightTokens > 0 && (
+                                <span className="text-[9px] bg-blue-700 text-amber-300 px-1 py-0.2 rounded font-bold">
+                                  🎬 {card.giantsHighlightTokens}x
+                                </span>
+                              )}
                               {renderPhaseBadgeHelper(card.phase)}
                               <button
                                 type="button"
@@ -1680,6 +1692,61 @@ export const MobileDeflategateBoard = ({
                 );
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Giants Highlight Reel Token Placement Modal */}
+      {G.board.pendingGiants && String(G.board.pendingGiants.playerID) === String(effectivePlayerID) && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3">
+          <div className="bg-slate-900 border-2 border-blue-500/90 p-4 rounded-3xl max-w-sm w-full shadow-2xl space-y-3 max-h-[90vh] flex flex-col">
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+              <span className="text-2xl">🗽</span>
+              <div className="flex-1">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-black text-blue-400 uppercase tracking-wide">Giants Highlight Reel</h3>
+                  <span className="bg-blue-950 text-amber-300 font-mono font-bold text-[10px] px-2 py-0.5 rounded border border-blue-800">
+                    🎬 {G.players[effectivePlayerID]?.highlightReelTokens || 0}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-300">Place tokens on auction players: if won, gain +5🪙 per token!</p>
+              </div>
+            </div>
+            <div className="space-y-1.5 overflow-y-auto flex-1 pr-1 text-left">
+              {G.board.auctionPlayers && G.board.auctionPlayers.map((card, idx) => {
+                if (!card) return null;
+                const tokensOnCard = card.giantsHighlightTokens || 0;
+                const playerTokens = G.players[effectivePlayerID]?.highlightReelTokens || 0;
+                return (
+                  <div key={card.uniqueId || idx} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] text-slate-400 font-mono">{card.position} • Min: {card.minBid}</span>
+                        {tokensOnCard > 0 && (
+                          <span className="text-[9px] bg-blue-700 text-amber-300 px-1.5 py-0.2 rounded font-bold">
+                            🎬 {tokensOnCard}x
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-black text-white truncate">{card.name}</h4>
+                    </div>
+                    <button
+                      disabled={playerTokens <= 0}
+                      onClick={() => moves.giantsPlaceTokens(idx, 1, effectivePlayerID)}
+                      className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-black py-1.5 px-2.5 rounded-lg text-[10px] uppercase shrink-0"
+                    >
+                      +1 Token 🎬
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => moves.giantsDonePlacingTokens(effectivePlayerID)}
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-xl text-xs uppercase"
+            >
+              Done Placing Tokens →
+            </button>
           </div>
         </div>
       )}
