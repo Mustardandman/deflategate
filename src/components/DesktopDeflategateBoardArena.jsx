@@ -650,6 +650,30 @@ export const DesktopDeflategateBoardArena = ({
       }
     };
 
+    if (!isChoosing) {
+      const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
+      const bucsPlayer = bucsPlayerId ? G.players[bucsPlayerId] : null;
+      return (
+        <div className="h-screen w-screen overflow-hidden flex flex-col bg-slate-950 text-white font-sans p-6 items-center justify-center">
+          <div className="max-w-md w-full p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl text-center space-y-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-500 mx-auto"></div>
+            <h2 className="text-xl font-bold uppercase text-white">Buccaneers Franchise Perk</h2>
+            <p className="text-slate-400 text-xs">Waiting for Buccaneers ({bucsPlayer ? (bucsPlayer.isCpu ? 'CPU' : 'Player') : 'Opponent'}) to copy a franchise ability...</p>
+            <button
+              onClick={() => {
+                const target = Object.values(G.players).find(p => p.team && p.team.id !== 'buccaneers')?.team?.id || 'chiefs';
+                if (moves.copyAbility) moves.copyAbility(target, bucsPlayerId);
+                else if (moves.buccaneersPickTeam) moves.buccaneersPickTeam(target, bucsPlayerId);
+              }}
+              className="py-2.5 px-6 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 cursor-pointer shadow-md transition-all"
+            >
+              Continue ➔
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="h-screen w-screen overflow-hidden flex flex-col bg-slate-950 text-white font-sans p-6 items-center justify-center">
         <div className="max-w-3xl w-full p-6 rounded-3xl bg-slate-900 border-2 border-red-600 shadow-2xl text-center">
@@ -704,10 +728,20 @@ export const DesktopDeflategateBoardArena = ({
       const draftingTeamName = draftingPlayer?.team?.name || 'Titans';
       return (
         <div className="h-screen w-screen bg-slate-950 flex items-center justify-center p-4 text-white">
-          <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 max-w-md w-full text-center shadow-2xl">
+          <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 max-w-md w-full text-center shadow-2xl space-y-4">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
             <h2 className="text-2xl font-bold text-white mb-2">{draftingTeamName} Drafting Opening Player</h2>
-            <p className="text-slate-400 text-sm">Waiting for {draftingTeamName} to choose an opening player card...</p>
+            <p className="text-slate-400 text-sm mb-4">Waiting for {draftingTeamName} to choose an opening player card...</p>
+            <button
+              onClick={() => {
+                if (moves.titansPickCard && G.board.pendingTitansDraft) {
+                  moves.titansPickCard(0, G.board.pendingTitansDraft.playerID);
+                }
+              }}
+              className="py-2.5 px-6 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 cursor-pointer shadow-md transition-all"
+            >
+              Continue ➔
+            </button>
           </div>
         </div>
       );
@@ -1096,7 +1130,7 @@ export const DesktopDeflategateBoardArena = ({
               </div>
 
               <button
-                onClick={() => moves.proceedToAuction()}
+                onClick={() => (moves.proceedToAuction ? moves.proceedToAuction() : null)}
                 className="py-2 px-6 rounded-xl font-bold text-sm uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-500 shadow-lg cursor-pointer"
               >
                 Proceed to Auction Phase 🔨

@@ -385,12 +385,23 @@ export const MobileDeflategateBoard = ({
   if (ctx.phase === 'buccaneersCopy') {
     const isBucs = myPlayer.team && myPlayer.team.id === 'buccaneers';
     if (!isBucs || myPlayer.copiedTeam) {
+      const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-white text-center">
-          <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 max-w-sm w-full space-y-3 shadow-2xl">
+          <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 max-w-sm w-full space-y-4 shadow-2xl">
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-amber-500 mx-auto"></div>
             <h2 className="text-xl font-bold">Buccaneers Drafting Ability</h2>
             <p className="text-slate-400 text-xs">Waiting for Buccaneers to copy a team ability...</p>
+            <button
+              onClick={() => {
+                const target = Object.values(G.players).find(p => p.team && p.team.id !== 'buccaneers')?.team?.id || 'chiefs';
+                if (moves.copyAbility) moves.copyAbility(target, bucsPlayerId);
+                else if (moves.buccaneersPickTeam) moves.buccaneersPickTeam(target, bucsPlayerId);
+              }}
+              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold py-2.5 rounded-xl text-xs uppercase cursor-pointer transition-all"
+            >
+              Continue ➔
+            </button>
           </div>
         </div>
       );
@@ -434,12 +445,24 @@ export const MobileDeflategateBoard = ({
   if ((ctx.phase === 'titansDraft' || G.board.pendingTitansDraft) && !G.board.titansDraftComplete) {
     const isMyDraftTurn = G.board.pendingTitansDraft && String(G.board.pendingTitansDraft.playerID) === String(effectivePlayerID);
     if (!isMyDraftTurn) {
+      const draftingPlayer = G.board.pendingTitansDraft ? G.players[G.board.pendingTitansDraft.playerID] : null;
+      const draftingTeamName = draftingPlayer?.team?.name || 'Titans';
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-white text-center">
-          <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 max-w-sm w-full space-y-3 shadow-2xl">
+          <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 max-w-sm w-full space-y-4 shadow-2xl">
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
-            <h2 className="text-xl font-bold">Titans Opening Draft</h2>
-            <p className="text-slate-400 text-xs">Waiting for Titans to draft starting player...</p>
+            <h2 className="text-xl font-bold">{draftingTeamName} Opening Draft</h2>
+            <p className="text-slate-400 text-xs">Waiting for {draftingTeamName} to draft starting player...</p>
+            <button
+              onClick={() => {
+                if (moves.titansPickCard && G.board.pendingTitansDraft) {
+                  moves.titansPickCard(0, G.board.pendingTitansDraft.playerID);
+                }
+              }}
+              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold py-2.5 rounded-xl text-xs uppercase cursor-pointer transition-all"
+            >
+              Continue ➔
+            </button>
           </div>
         </div>
       );
@@ -477,6 +500,58 @@ export const MobileDeflategateBoard = ({
             </div>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // PHASE 3.5: PRE-AUCTION REVEAL
+  // -------------------------------------------------------------
+  if (ctx.phase === 'preAuctionPhase') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white p-4 font-sans max-w-md mx-auto flex flex-col justify-between">
+        <div>
+          <div className="text-center mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-950/80 text-amber-300 px-3 py-1 rounded-full border border-amber-700">
+              Pre-Auction Phase
+            </span>
+            <h2 className="text-lg font-bold text-white uppercase mt-2">
+              Revealed Players • Round {G.board.round}
+            </h2>
+            <p className="text-xs text-slate-400">Review upcoming talent before bidding begins.</p>
+          </div>
+
+          <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1">
+            {G.board.auctionPlayers && G.board.auctionPlayers.map((card, idx) => {
+              if (!card) return null;
+              return (
+                <div
+                  key={card.uniqueId || idx}
+                  className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex justify-between items-center"
+                >
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-xs font-bold text-white">{card.name}</span>
+                      <span className="text-[9px] uppercase px-1 rounded bg-slate-800 text-slate-300 font-mono">{card.position}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">{card.team || 'NFL'}</p>
+                  </div>
+                  <div className="text-right font-mono text-xs">
+                    <span className="text-yellow-400 font-bold">{card.minBid} 🪙</span>
+                    <span className="text-[10px] text-slate-500 block">Min Bid</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <button
+          onClick={() => (moves.proceedToAuction ? moves.proceedToAuction() : null)}
+          className="mt-4 w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-500 shadow-lg cursor-pointer"
+        >
+          Proceed to Auction Phase 🔨
+        </button>
       </div>
     );
   }

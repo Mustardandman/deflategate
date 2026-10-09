@@ -6844,7 +6844,7 @@ export const selectCpuBucsTeamToCopy = (availableTeams) => {
   return scored[0].team;
 };
 
-export const checkPreAuctionCompletion = (G) => {
+export const checkPreAuctionCompletion = (G, events) => {
   if (!G.board.pendingRaiders &&
       !G.board.pendingCardinals &&
       !G.board.pendingChiefs &&
@@ -6854,6 +6854,11 @@ export const checkPreAuctionCompletion = (G) => {
       (!G.board.pendingChiefsQueue || G.board.pendingChiefsQueue.length === 0) &&
       (!G.board.pendingCommandersQueue || G.board.pendingCommandersQueue.length === 0)) {
     G.board.preAuctionComplete = true;
+    if (events && events.setPhase) {
+      events.setPhase('auctionPhase');
+    } else if (events && events.endPhase) {
+      events.endPhase();
+    }
   }
 };
 
@@ -6897,7 +6902,7 @@ export const executeCpuRaiders = (G, raidersId) => {
   }
 };
 
-export const advanceRaidersQueue = (G) => {
+export const advanceRaidersQueue = (G, events) => {
   while (G.board.pendingRaidersQueue && G.board.pendingRaidersQueue.length > 0) {
     const nextItem = G.board.pendingRaidersQueue.shift();
     const nextPlayer = G.players[nextItem.playerID];
@@ -6911,13 +6916,13 @@ export const advanceRaidersQueue = (G) => {
   }
   G.board.pendingRaiders = null;
   if (G.board.pendingCardinalsQueue && G.board.pendingCardinalsQueue.length > 0 && !G.board.pendingCardinals) {
-    advanceCardinalsQueue(G);
+    advanceCardinalsQueue(G, events);
   } else if (G.board.pendingChiefsQueue && G.board.pendingChiefsQueue.length > 0 && !G.board.pendingChiefs) {
-    advanceChiefsQueue(G);
+    advanceChiefsQueue(G, events);
   } else if (G.board.pendingCommandersQueue && G.board.pendingCommandersQueue.length > 0 && !G.board.pendingCommanders) {
-    advanceCommandersQueue(G);
+    advanceCommandersQueue(G, events);
   }
-  checkPreAuctionCompletion(G);
+  checkPreAuctionCompletion(G, events);
 };
 
 export const executeCpuCardinals = (G, cardinalsId) => {
@@ -7055,7 +7060,7 @@ export const executeCpuCardinals = (G, cardinalsId) => {
   }
 };
 
-export const advanceCardinalsQueue = (G) => {
+export const advanceCardinalsQueue = (G, events) => {
   if (G.board.pendingRaiders) return;
   while (G.board.pendingCardinalsQueue && G.board.pendingCardinalsQueue.length > 0) {
     const nextItem = G.board.pendingCardinalsQueue.shift();
@@ -7073,11 +7078,11 @@ export const advanceCardinalsQueue = (G) => {
   }
   G.board.pendingCardinals = null;
   if (G.board.pendingChiefsQueue && G.board.pendingChiefsQueue.length > 0 && !G.board.pendingChiefs) {
-    advanceChiefsQueue(G);
+    advanceChiefsQueue(G, events);
   } else if (G.board.pendingCommandersQueue && G.board.pendingCommandersQueue.length > 0 && !G.board.pendingCommanders) {
-    advanceCommandersQueue(G);
+    advanceCommandersQueue(G, events);
   }
-  checkPreAuctionCompletion(G);
+  checkPreAuctionCompletion(G, events);
 };
 
 export const executeCpuChiefs = (G, chiefsId) => {
@@ -7174,7 +7179,7 @@ export const executeCpuChiefs = (G, chiefsId) => {
   }
 };
 
-export const advanceChiefsQueue = (G) => {
+export const advanceChiefsQueue = (G, events) => {
   if (G.board.pendingRaiders || G.board.pendingCardinals) return;
   if (!G.board.pendingChiefsQueue) G.board.pendingChiefsQueue = [];
   while (G.board.pendingChiefsQueue.length > 0) {
@@ -7190,9 +7195,9 @@ export const advanceChiefsQueue = (G) => {
   }
   G.board.pendingChiefs = null;
   if (G.board.pendingCommandersQueue && G.board.pendingCommandersQueue.length > 0 && !G.board.pendingCommanders) {
-    advanceCommandersQueue(G);
+    advanceCommandersQueue(G, events);
   }
-  checkPreAuctionCompletion(G);
+  checkPreAuctionCompletion(G, events);
 };
 
 export const executeCpuCommanders = (G, commandersId) => {
@@ -7216,7 +7221,7 @@ export const executeCpuCommanders = (G, commandersId) => {
   }
 };
 
-export const advanceCommandersQueue = (G) => {
+export const advanceCommandersQueue = (G, events) => {
   if (G.board.pendingRaiders || G.board.pendingCardinals || G.board.pendingChiefs) return;
   if (!G.board.pendingCommandersQueue) G.board.pendingCommandersQueue = [];
   while (G.board.pendingCommandersQueue.length > 0) {
@@ -7240,7 +7245,7 @@ export const advanceCommandersQueue = (G) => {
     }
   }
   G.board.pendingCommanders = null;
-  checkPreAuctionCompletion(G);
+  checkPreAuctionCompletion(G, events);
 };
 
 export const executeCpuBills = (G, billsId) => {
@@ -8368,13 +8373,34 @@ export const DeflategateGame = {
         G.board.postAuctionComplete = true;
       }
     },
-    proceedToRefresh: ({ G }) => {
+    proceedToRefresh: ({ G, events }) => {
       G.board.pendingBills = null;
       G.board.pendingBillsQueue = [];
       G.board.pendingEagles = null;
       G.board.pendingEaglesQueue = [];
       G.pendingReplacement = null;
       G.board.postAuctionComplete = true;
+      if (events && events.setPhase) {
+        events.setPhase('refreshPhase');
+      } else if (events && events.endPhase) {
+        events.endPhase();
+      }
+    },
+    proceedToAuction: ({ G, events }) => {
+      G.board.pendingRaiders = null;
+      G.board.pendingRaidersQueue = [];
+      G.board.pendingCardinals = null;
+      G.board.pendingCardinalsQueue = [];
+      G.board.pendingChiefs = null;
+      G.board.pendingChiefsQueue = [];
+      G.board.pendingCommanders = null;
+      G.board.pendingCommandersQueue = [];
+      G.board.preAuctionComplete = true;
+      if (events && events.setPhase) {
+        events.setPhase('auctionPhase');
+      } else if (events && events.endPhase) {
+        events.endPhase();
+      }
     },
     dismissLegendNotification: ({ G }) => {
       G.board.legendNotification = null;
@@ -8544,6 +8570,13 @@ export const DeflategateGame = {
           }
 
           const allSelected = Object.values(G.players).every(pl => pl.team !== null);
+          if (allSelected) {
+            if (events && events.setPhase) {
+              events.setPhase('buccaneersCopy');
+            } else if (events && events.endPhase) {
+              events.endPhase();
+            }
+          }
         }
       },
       endIf: ({ G }) => Object.values(G.players).every(p => p.team !== null),
@@ -8557,6 +8590,11 @@ export const DeflategateGame = {
         const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
         if (!bucsPlayerId) {
           G.board.bucsCopyComplete = true;
+          if (events && events.setPhase) {
+            events.setPhase('titansDraft');
+          } else if (events && events.endPhase) {
+            events.endPhase();
+          }
           return;
         }
 
@@ -8580,10 +8618,15 @@ export const DeflategateGame = {
             text: msg
           });
           G.board.bucsCopyComplete = true;
+          if (events && events.setPhase) {
+            events.setPhase('titansDraft');
+          } else if (events && events.endPhase) {
+            events.endPhase();
+          }
         }
       },
       moves: {
-        copyAbility: ({ G, playerID }, targetTeamId, actingPlayerId) => {
+        copyAbility: ({ G, playerID, events }, targetTeamId, actingPlayerId) => {
           const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
           const targetPlayerId = actingPlayerId || (G.players[playerID]?.team?.id === 'buccaneers' ? playerID : bucsPlayerId || Object.keys(G.players)[0]);
           const p = G.players[targetPlayerId];
@@ -8607,8 +8650,13 @@ export const DeflategateGame = {
             text: msg
           });
           G.board.bucsCopyComplete = true;
+          if (events && events.setPhase) {
+            events.setPhase('titansDraft');
+          } else if (events && events.endPhase) {
+            events.endPhase();
+          }
         },
-        buccaneersPickTeam: ({ G, playerID }, targetTeamId, actingPlayerId) => {
+        buccaneersPickTeam: ({ G, playerID, events }, targetTeamId, actingPlayerId) => {
           const bucsPlayerId = Object.keys(G.players).find(id => G.players[id].team && G.players[id].team.id === 'buccaneers');
           const targetPlayerId = actingPlayerId || (G.players[playerID]?.team?.id === 'buccaneers' ? playerID : bucsPlayerId || Object.keys(G.players)[0]);
           const p = G.players[targetPlayerId];
@@ -8632,6 +8680,11 @@ export const DeflategateGame = {
             text: msg
           });
           G.board.bucsCopyComplete = true;
+          if (events && events.setPhase) {
+            events.setPhase('titansDraft');
+          } else if (events && events.endPhase) {
+            events.endPhase();
+          }
         }
       },
       endIf: ({ G }) => G.board.bucsCopyComplete === true,
@@ -9189,7 +9242,14 @@ export const DeflategateGame = {
         commandersTeams.sort((a, b) => (G.players[a].team?.id === 'commanders' ? 0 : 1) - (G.players[b].team?.id === 'commanders' ? 0 : 1));
         G.board.pendingCommandersQueue = commandersTeams.map(id => ({ playerID: id }));
 
-        advanceRaidersQueue(G);
+        advanceRaidersQueue(G, events);
+        if (G.board.preAuctionComplete) {
+          if (events && events.setPhase) {
+            events.setPhase('auctionPhase');
+          } else if (events && events.endPhase) {
+            events.endPhase();
+          }
+        }
       },
       moves: {
         dismissTradeRumorsSummary: ({ G }) => {
@@ -9198,7 +9258,7 @@ export const DeflategateGame = {
         dismissJaguarsPopup: ({ G }) => {
           G.board.jaguarsPopupNotification = null;
         },
-        raidersGivePsi: ({ G, playerID }, targetPlayerId) => {
+        raidersGivePsi: ({ G, playerID, events }, targetPlayerId) => {
           if (!G.board.pendingRaiders) return INVALID_MOVE;
           const targetId = String(targetPlayerId);
           const raidersId = String(G.board.pendingRaiders.playerID);
@@ -9211,18 +9271,18 @@ export const DeflategateGame = {
           const teamTitle = raidersPlayer?.team?.id === 'buccaneers' ? 'Bucs (Raiders Ability)' : 'Raiders';
           triggerAbilityNotification(G, raidersId, 'raiders', 'Raiders Menace', `Raiders gave 1 PSI to Player ${parseInt(targetId) + 1} (${G.players[targetId]?.team?.name || 'Rival'})!`);
           addLog(G, `☠️ ${teamTitle} Ability: Player ${parseInt(raidersId) + 1} gave 1 PSI to Player ${parseInt(targetId) + 1}.`);
-          advanceRaidersQueue(G);
+          advanceRaidersQueue(G, events);
         },
-        raidersPass: ({ G, playerID }) => {
+        raidersPass: ({ G, playerID, events }) => {
           if (!G.board.pendingRaiders) return INVALID_MOVE;
           const actingId = String(G.board.pendingRaiders.playerID || playerID);
           const displayId = parseInt(actingId) + 1;
           const raidersPlayer = G.players[actingId];
           const teamTitle = raidersPlayer?.team?.id === 'buccaneers' ? 'Bucs (Raiders Ability)' : 'Raiders';
           addLog(G, `☠️ ${teamTitle} Ability: Player ${displayId} chose to pass.`);
-          advanceRaidersQueue(G);
+          advanceRaidersQueue(G, events);
         },
-        cardinalsSwap: ({ G, playerID }, auctionCardIndex) => {
+        cardinalsSwap: ({ G, playerID, events }, auctionCardIndex) => {
           if (!G.board.pendingCardinals) return INVALID_MOVE;
           const actingId = String(G.board.pendingCardinals.playerID || playerID);
           if (auctionCardIndex < 0 || auctionCardIndex >= G.board.auctionPlayers.length) return INVALID_MOVE;
@@ -9238,9 +9298,9 @@ export const DeflategateGame = {
           const teamTitle = actingPlayer?.team?.id === 'buccaneers' ? 'Bucs (Cardinals Ability)' : 'Cardinals';
           triggerAbilityNotification(G, actingId, 'cardinals', 'Cardinals Deck Swap', `Cardinals swapped revealed player ${oldCard.name} with ${newCard.name} from the deck!`);
           addLog(G, `🦤 ${teamTitle} Ability: Player ${displayId} swapped auction card ${oldCard.name} with ${newCard.name}.`);
-          advanceCardinalsQueue(G);
+          advanceCardinalsQueue(G, events);
         },
-        cardinalsSwapCard: ({ G, playerID }, auctionCardIndex, actingPlayerId) => {
+        cardinalsSwapCard: ({ G, playerID, events }, auctionCardIndex, actingPlayerId) => {
           if (!G.board.pendingCardinals) return INVALID_MOVE;
           const actingId = String(actingPlayerId || G.board.pendingCardinals.playerID || playerID);
           if (auctionCardIndex < 0 || auctionCardIndex >= G.board.auctionPlayers.length) return INVALID_MOVE;
@@ -9256,18 +9316,18 @@ export const DeflategateGame = {
           const teamTitle = actingPlayer?.team?.id === 'buccaneers' ? 'Bucs (Cardinals Ability)' : 'Cardinals';
           triggerAbilityNotification(G, actingId, 'cardinals', 'Cardinals Deck Swap', `Cardinals swapped revealed player ${oldCard.name} with ${newCard.name} from the deck!`);
           addLog(G, `🦤 ${teamTitle} Ability: Player ${displayId} swapped auction card ${oldCard.name} with ${newCard.name}.`);
-          advanceCardinalsQueue(G);
+          advanceCardinalsQueue(G, events);
         },
-        cardinalsPass: ({ G, playerID }) => {
+        cardinalsPass: ({ G, playerID, events }) => {
           if (!G.board.pendingCardinals) return INVALID_MOVE;
           const actingId = String(G.board.pendingCardinals.playerID || playerID);
           const displayId = parseInt(actingId) + 1;
           const actingPlayer = G.players[actingId];
           const teamTitle = actingPlayer?.team?.id === 'buccaneers' ? 'Bucs (Cardinals Ability)' : 'Cardinals';
           addLog(G, `🦤 ${teamTitle} Ability: Player ${displayId} chose to keep the auction row.`);
-          advanceCardinalsQueue(G);
+          advanceCardinalsQueue(G, events);
         },
-        chiefsClaimCard: ({ G, playerID }, auctionCardIndex, actingPlayerId) => {
+        chiefsClaimCard: ({ G, playerID, events }, auctionCardIndex, actingPlayerId) => {
           if (!G.board.pendingChiefs) return INVALID_MOVE;
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (String(G.board.pendingChiefs.playerID) !== String(targetPlayerId)) return INVALID_MOVE;
@@ -9289,9 +9349,9 @@ export const DeflategateGame = {
           triggerAbilityNotification(G, chiefsId, 'chiefs', 'Chiefs Instant Claim', `Claimed ${card.name} for ${card.minBid} coins without bidding!`);
           addLog(G, `${teamTitle} Ability: Player ${displayId} claimed ${card.name} for ${card.minBid} coins without bidding!`);
 
-          advanceChiefsQueue(G);
+          advanceChiefsQueue(G, events);
         },
-        chiefsPass: ({ G, playerID }, actingPlayerId) => {
+        chiefsPass: ({ G, playerID, events }, actingPlayerId) => {
           if (!G.board.pendingChiefs) return INVALID_MOVE;
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : G.board.pendingChiefs.playerID);
           if (String(G.board.pendingChiefs.playerID) !== String(targetPlayerId)) return INVALID_MOVE;
@@ -9299,9 +9359,9 @@ export const DeflategateGame = {
           const displayId = parseInt(targetPlayerId) + 1;
           const teamTitle = chiefsPlayer?.team?.id === 'buccaneers' ? 'Bucs (Chiefs Ability)' : 'Chiefs';
           addLog(G, `${teamTitle} Ability: Player ${displayId} chose to pass.`);
-          advanceChiefsQueue(G);
+          advanceChiefsQueue(G, events);
         },
-        commandersMarkCard: ({ G, playerID }, auctionCardIndex, actingPlayerId) => {
+        commandersMarkCard: ({ G, playerID, events }, auctionCardIndex, actingPlayerId) => {
           if (!G.board.pendingCommanders) return INVALID_MOVE;
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : Object.keys(G.players)[0]);
           if (String(G.board.pendingCommanders.playerID) !== String(targetPlayerId)) return INVALID_MOVE;
@@ -9324,9 +9384,9 @@ export const DeflategateGame = {
           triggerAbilityNotification(G, targetPlayerId, 'commanders', 'Commanders Blockade', `Marked ${card.name}! First player blocked from bidding.`);
           addLog(G, `🎖️ ${teamTitle} Ability: Player ${displayId} marked ${card.name}. First Player (Player ${firstDisplayId}) cannot nominate or bid on this player!`);
 
-          advanceCommandersQueue(G);
+          advanceCommandersQueue(G, events);
         },
-        commandersPass: ({ G, playerID }, actingPlayerId) => {
+        commandersPass: ({ G, playerID, events }, actingPlayerId) => {
           if (!G.board.pendingCommanders) return INVALID_MOVE;
           const targetPlayerId = actingPlayerId || (G.players[playerID] ? playerID : G.board.pendingCommanders.playerID);
           if (String(G.board.pendingCommanders.playerID) !== String(targetPlayerId)) return INVALID_MOVE;
@@ -9334,7 +9394,23 @@ export const DeflategateGame = {
           const displayId = parseInt(targetPlayerId) + 1;
           const teamTitle = commandersPlayer?.team?.id === 'buccaneers' ? 'Bucs (Commanders Ability)' : 'Commanders';
           addLog(G, `🎖️ ${teamTitle} Ability: Player ${displayId} chose to pass.`);
-          advanceCommandersQueue(G);
+          advanceCommandersQueue(G, events);
+        },
+        proceedToAuction: ({ G, events }) => {
+          G.board.pendingRaiders = null;
+          G.board.pendingRaidersQueue = [];
+          G.board.pendingCardinals = null;
+          G.board.pendingCardinalsQueue = [];
+          G.board.pendingChiefs = null;
+          G.board.pendingChiefsQueue = [];
+          G.board.pendingCommanders = null;
+          G.board.pendingCommandersQueue = [];
+          G.board.preAuctionComplete = true;
+          if (events && events.setPhase) {
+            events.setPhase('auctionPhase');
+          } else if (events && events.endPhase) {
+            events.endPhase();
+          }
         }
       },
       endIf: ({ G }) => G.board.preAuctionComplete === true,

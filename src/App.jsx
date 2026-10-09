@@ -32,6 +32,62 @@ const DeflategateBoard = (props) => {
   return <DesktopDeflategateBoardArena {...props} onReturnHome={props.onReturnHome} />;
 };
 
+class GameErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Deflategate Game Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white text-center font-sans">
+          <div className="bg-slate-900 border-2 border-red-500/80 p-8 rounded-3xl max-w-md w-full shadow-2xl space-y-4">
+            <span className="text-4xl block">🏈⚠️</span>
+            <h2 className="text-2xl font-black uppercase text-red-400 tracking-wide">
+              Game Interrupted
+            </h2>
+            <p className="text-slate-300 text-sm">
+              An unexpected issue occurred while rendering the game state.
+            </p>
+            {this.state.error?.message && (
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400 text-left overflow-x-auto">
+                {this.state.error.message}
+              </div>
+            )}
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                onClick={() => this.setState({ hasError: false, error: null })}
+                className="w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-500 shadow-md cursor-pointer transition-all"
+              >
+                Retry Game ↻
+              </button>
+              <button
+                onClick={() => {
+                  this.setState({ hasError: false, error: null });
+                  if (this.props.onReturnHome) this.props.onReturnHome();
+                }}
+                className="w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 cursor-pointer transition-all"
+              >
+                Return to Lobby 🏠
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const DIFFICULTY_OPTIONS = [
   {
     id: 'easy',
@@ -503,21 +559,23 @@ const App = () => {
   }
 
   return (
-    <DeflategateClient 
-      matchID={matchIdChoice || "deflategate-match"} 
-      playerID={playerID} 
-      vsCpu={actualNumHumans < numPlayers}
-      playMode={gameMode === 'with_friends' ? 'online' : 'local_vs_cpu'}
-      numHumans={actualNumHumans}
-      cpuDifficulty={cpuDifficulty}
-      onReturnHome={() => setInGame(false)}
-      setupData={{ 
-        numHumans: actualNumHumans,
-        cpuDifficulty: cpuDifficulty,
-        aiEngine: aiEngine,
-        forceTitans: typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('team') === 'titans'
-      }}
-    />
+    <GameErrorBoundary onReturnHome={() => setInGame(false)}>
+      <DeflategateClient 
+        matchID={matchIdChoice || "deflategate-match"} 
+        playerID={playerID} 
+        vsCpu={actualNumHumans < numPlayers}
+        playMode={gameMode === 'with_friends' ? 'online' : 'local_vs_cpu'}
+        numHumans={actualNumHumans}
+        cpuDifficulty={cpuDifficulty}
+        onReturnHome={() => setInGame(false)}
+        setupData={{ 
+          numHumans: actualNumHumans,
+          cpuDifficulty: cpuDifficulty,
+          aiEngine: aiEngine,
+          forceTitans: typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('team') === 'titans'
+        }}
+      />
+    </GameErrorBoundary>
   );
 };
 
